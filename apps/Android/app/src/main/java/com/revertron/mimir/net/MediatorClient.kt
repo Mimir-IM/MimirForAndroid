@@ -90,7 +90,7 @@ class MediatorClient(
 
         // Timeouts
         private const val REQ_TIMEOUT_MS: Long = 10_000
-        private const val PING_DEADLINE_MS: Long = 55_000 // Ping every 55 seconds, QUIC timeout is 5 minutes
+        private const val PING_DEADLINE_MS: Long = 50_000 // Ping every 50 seconds, Ygg session drops after 60s
 
         // TLV Tag constants (purpose-based)
         private const val TAG_PUBKEY: Byte = 0x01.toByte()

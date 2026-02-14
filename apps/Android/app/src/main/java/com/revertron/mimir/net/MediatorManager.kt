@@ -120,7 +120,9 @@ class MediatorManager(
         }
 
         fun getNextDelay(): Long {
-            val delay = minOf(BASE_DELAY_MS * (1 shl attemptCount), MAX_DELAY_MS)
+            // Cap the exponent to prevent integer overflow (2^30 = 1073741824, well beyond MAX_DELAY_MS)
+            val cappedAttempt = minOf(attemptCount, 30)
+            val delay = minOf(BASE_DELAY_MS * (1 shl cappedAttempt), MAX_DELAY_MS)
             return delay
         }
 
