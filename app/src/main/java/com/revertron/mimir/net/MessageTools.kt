@@ -68,6 +68,16 @@ fun parseAndSaveGroupMessage(
                 // Don't save this system message to DB - it's invisible
                 return 0
             }
+            // Handle member leaving - mark as gone in members table
+            if (sysMsg is SystemMessage.UserLeft) {
+                Log.i(TAG, "User left chat $chatId, marking member as gone")
+                storage.deleteGroupMember(chatId, sysMsg.user)
+            }
+            // Handle member banned - mark as gone in members table
+            if (sysMsg is SystemMessage.UserBanned) {
+                Log.i(TAG, "User banned from chat $chatId, marking member as gone")
+                storage.deleteGroupMember(chatId, sysMsg.targetUser)
+            }
 
             // System messages are not encrypted, save directly to database
             // Format: [event_code(1)][...event-specific data...]
