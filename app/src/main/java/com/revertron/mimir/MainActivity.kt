@@ -141,6 +141,9 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
 
         val invites = getStorage().getPendingGroupInvites()
         menu.findItem(R.id.group_invites).isVisible = invites.isNotEmpty()
+
+        val requestCount = getStorage().getContactRequestCount()
+        menu.findItem(R.id.contact_requests).isVisible = requestCount > 0
         return true
     }
 
@@ -149,7 +152,13 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.plus -> {
-                showAddContactDialog()
+                val intent = Intent(this, AddContactActivity::class.java)
+                startActivity(intent, animFromRight.toBundle())
+                return true
+            }
+            R.id.contact_requests -> {
+                val intent = Intent(this, ContactRequestsActivity::class.java)
+                startActivity(intent, animFromRight.toBundle())
                 return true
             }
             R.id.group_invites -> {
@@ -254,6 +263,20 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         return false
     }
 
+    override fun onContactRequestReceived(requestId: Long) {
+        runOnUiThread {
+            invalidateOptionsMenu()
+            val count = getStorage().getContactRequestCount()
+            val root = findViewById<View>(android.R.id.content)
+            Snackbar.make(root, getString(R.string.contact_requests_snackbar, count), Snackbar.LENGTH_INDEFINITE)
+                .setAction(getString(R.string.view)) {
+                    val intent = Intent(this, ContactRequestsActivity::class.java)
+                    startActivity(intent, animFromRight.toBundle())
+                }
+                .show()
+        }
+    }
+
     override fun onGroupChatChanged(chatId: Long): Boolean {
         runOnUiThread {
             refreshContacts()
@@ -340,6 +363,20 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                 .show()
         }
 
+        // Check for pending contact requests
+        val requestCount = getStorage().getContactRequestCount()
+        if (requestCount > 0) {
+            val root = findViewById<View>(android.R.id.content)
+            Snackbar.make(root, getString(R.string.contact_requests_snackbar, requestCount), Snackbar.LENGTH_LONG)
+                .setAction(getString(R.string.view)) {
+                    val intent = Intent(this, ContactRequestsActivity::class.java)
+                    startActivity(intent, animFromRight.toBundle())
+                }
+                .setTextMaxLines(3)
+                .show()
+            invalidateOptionsMenu()
+        }
+
         // Check if our links are processed properly
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (!isDefaultForDomain(this, getMimirUriHost())) {
@@ -360,38 +397,6 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                     .show()
             }
         }
-    }
-
-    @Suppress("NAME_SHADOWING")
-    @SuppressLint("NotifyDataSetChanged")
-    private fun showAddContactDialog() {
-        val view = LayoutInflater.from(this).inflate(R.layout.add_contact_dialog, null)
-        val name = view.findViewById<AppCompatEditText>(R.id.contact_name)
-        val pubkey = view.findViewById<AppCompatEditText>(R.id.contact_pubkey)
-        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
-        val builder: AlertDialog.Builder = AlertDialog.Builder(wrapper)
-        builder.setTitle(getString(R.string.add_contact))
-        builder.setView(view)
-        builder.setIcon(R.drawable.ic_contact_add_daynight)
-        builder.setPositiveButton(getString(R.string.contact_add)) { _, _ ->
-            val name = name.text.toString().trim()
-            val pubKeyString = pubkey.text.toString().trim()
-            if (!validPublicKey(pubKeyString)) {
-                Toast.makeText(this@MainActivity, R.string.wrong_public_key, Toast.LENGTH_LONG).show()
-                return@setPositiveButton
-            }
-            val pubkey = Hex.decode(pubKeyString)
-            if (name.isEmpty()) {
-                Toast.makeText(this@MainActivity, R.string.empty_name, Toast.LENGTH_LONG).show()
-                return@setPositiveButton
-            }
-            (application as App).storage.addContact(pubkey, name)
-            refreshContacts()
-        }
-        builder.setNegativeButton(getString(R.string.cancel)) { dialog, _ ->
-            dialog.cancel()
-        }
-        builder.show()
     }
 
     private fun showRenameContactDialog(contact: Contact) {

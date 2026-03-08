@@ -76,6 +76,14 @@ class ConnectionService : Service(),
             storage.updateContactAvatar(id, info.avatar)
         }
         override fun getFilesDir(): String = "${this@ConnectionService.filesDir.absolutePath}/files"
+        override fun getPeerFlags(pubkey: ByteArray): Int {
+            val storage = (application as App).storage
+            val isContact = storage.getContactId(pubkey) > 0
+            if (isContact) return 1
+            val prefs = PreferenceManager.getDefaultSharedPreferences(this@ConnectionService)
+            val mode = prefs.getString(SettingsData.KEY_ACCEPT_MESSAGES, "everyone")
+            return if (mode == "contacts") 0 else 1
+        }
     }
 
     companion object {
@@ -221,6 +229,23 @@ class ConnectionService : Service(),
                     try { peerNode?.connectToPeer(it) } catch (e: Exception) {
                         Log.w(TAG, "connect failed: ${e.message}")
                     }
+                }
+            }
+
+            "send_contact_request" -> {
+                val pubkey = intent.getByteArrayExtra("pubkey")
+                val message = intent.getStringExtra("message") ?: ""
+                pubkey?.let {
+                    Thread {
+                        try {
+                            // Connect first if needed, then send request
+                            peerNode?.connectToPeer(it)
+                            sleep(2000) // give connection time to establish
+                            peerNode?.sendContactRequest(it, message)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "sendContactRequest failed: ${e.message}")
+                        }
+                    }.start()
                 }
             }
 
@@ -704,6 +729,34 @@ class ConnectionService : Service(),
     override fun onTrackerAnnounce(ok: Boolean, ttl: Int) {
         Log.i(TAG, "onTrackerAnnounce: ok=$ok, ttl=$ttl")
         App.app.trackerAnnounced = ok
+    }
+
+    override fun onContactRequest(pubkey: ByteArray, message: String, nickname: String, info: String, avatar: ByteArray?) {
+        val hex = Hex.toHexString(pubkey).take(8)
+        Log.i(TAG, "onContactRequest from $hex: $nickname")
+        val storage = (application as App).storage
+        val contactId = storage.getContactId(pubkey)
+        if (contactId > 0) {
+            // Already our contact — auto-respond with accepted, don't store a request
+            Log.i(TAG, "Auto-accepting contact request from existing contact $hex")
+            Thread {
+                try { peerNode?.sendContactResponse(pubkey, true) } catch (_: Exception) {}
+            }.start()
+            return
+        }
+        storage.addContactRequest(pubkey, message, nickname, info, avatar)
+    }
+
+    override fun onContactResponse(pubkey: ByteArray, accepted: Boolean) {
+        Log.i(TAG, "onContactResponse from ${Hex.toHexString(pubkey).take(8)}: accepted=$accepted")
+        if (accepted) {
+            val storage = (application as App).storage
+            // The peer accepted our request — create/confirm contact on our side
+            val id = storage.getContactId(pubkey)
+            if (id <= 0) {
+                storage.addContact(pubkey, "")
+            }
+        }
     }
 
     // ── MediatorEventListener ─────────────────────────────────────────────────

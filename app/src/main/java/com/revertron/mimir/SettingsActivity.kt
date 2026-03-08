@@ -10,6 +10,8 @@ import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import android.app.AlertDialog
+import android.view.ContextThemeWrapper
 import com.revertron.mimir.ui.SettingsAdapter
 import com.revertron.mimir.ui.SettingsData
 
@@ -82,10 +84,39 @@ class SettingsActivity : BaseActivity(), SettingsAdapter.Listener {
                 }
                 startService(intent)
             }
+            R.string.accept_messages_from -> {
+                showAcceptMessagesDialog()
+            }
             R.string.action_about -> {
                 val intent = Intent(this, AboutActivity::class.java)
                 startActivity(intent, animFromRight.toBundle())
             }
         }
+    }
+
+    private fun showAcceptMessagesDialog() {
+        val options = arrayOf(
+            getString(R.string.accept_from_everyone),
+            getString(R.string.accept_from_contacts_only)
+        )
+        val current = preferences.getString(SettingsData.KEY_ACCEPT_MESSAGES, "everyone")
+        val selected = if (current == "contacts") 1 else 0
+
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        AlertDialog.Builder(wrapper)
+            .setTitle(getString(R.string.accept_messages_from))
+            .setSingleChoiceItems(options, selected) { dialog, which ->
+                val value = if (which == 1) "contacts" else "everyone"
+                preferences.edit().apply {
+                    putString(SettingsData.KEY_ACCEPT_MESSAGES, value)
+                    commit()
+                }
+                dialog.dismiss()
+                // Refresh the list to show updated description
+                val recycler = findViewById<RecyclerView>(R.id.settingsRecyclerView)
+                recycler.adapter = SettingsAdapter(SettingsData.create(this), this)
+            }
+            .setNegativeButton(getString(R.string.cancel), null)
+            .show()
     }
 }

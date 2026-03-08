@@ -341,4 +341,19 @@
     <string name="audio_playback">Воспроизведение аудио</string>
     <string name="channel_name_audio_playback">Воспроизведение аудио</string>
     <string name="channel_description_audio_playback">Управление воспроизведением аудио</string>
+    <string name="accept_messages_from">Принимать сообщения от</string>
+    <string name="accept_messages_from_desc">Выберите кто может вам писать.</string>
+    <string name="accept_from_everyone">Кто угодно</string>
+    <string name="accept_from_contacts_only">Только контакты</string>
+    <string name="contact_requests">Добавления в контакты</string>
+    <string name="no_contact_requests">Нет запросов на добавление в контакты</string>
+    <string name="contact_requests_snackbar">У вас %d запрос(ов) на добавление в контакты</string>
+    <string name="view">Открыть</string>
+    <string name="accept">Принять</string>
+    <string name="decline">Отклонить</string>
+    <string name="contact_request_message">Сопровождающее сообщение (не обязательно):</string>
+    <string name="contact_request_message_hint">Расскажите кто вы такой…</string>
+    <string name="add_and_send_request">Добавить контакт и послать запрос</string>
+    <string name="contact_request_accepted">Запрос контакта одобрен</string>
+    <string name="contact_request_declined">Запрос контакта отклонён</string>
 </resources>

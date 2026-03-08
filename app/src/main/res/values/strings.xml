@@ -347,4 +347,20 @@
     <string name="channel_name_audio_playback">Audio playback</string>
     <string name="channel_description_audio_playback">Audio file playback controls</string>
 
+    <string name="accept_messages_from">Accept messages from</string>
+    <string name="accept_messages_from_desc">Choose who can send you messages.</string>
+    <string name="accept_from_everyone">Everyone</string>
+    <string name="accept_from_contacts_only">Contacts only</string>
+    <string name="contact_requests">Contact Requests</string>
+    <string name="no_contact_requests">No pending contact requests</string>
+    <string name="contact_requests_snackbar">You have %d contact request(s)</string>
+    <string name="view">View</string>
+    <string name="accept">Accept</string>
+    <string name="decline">Decline</string>
+    <string name="contact_request_message">Message (optional):</string>
+    <string name="contact_request_message_hint">Tell them who you are…</string>
+    <string name="add_and_send_request">Add contact &amp; send request</string>
+    <string name="contact_request_accepted">Contact request accepted</string>
+    <string name="contact_request_declined">Contact request declined</string>
+
 </resources>

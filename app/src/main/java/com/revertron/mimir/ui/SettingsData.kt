@@ -10,11 +10,20 @@ object SettingsData {
     const val KEY_IMAGES_FORMAT = "images-format"
     const val KEY_IMAGES_QUALITY = "images-quality"
     const val KEY_MESSAGE_FONT_SIZE = "message-font-size"
+    const val KEY_ACCEPT_MESSAGES = "accept-messages"
 
     fun create(context: Context): List<SettingsAdapter.Item> {
         val sp = PreferenceManager.getDefaultSharedPreferences(context)
 
         return listOf(
+            SettingsAdapter.Item(
+                id = R.string.accept_messages_from,
+                titleRes = R.string.accept_messages_from,
+                descriptionRes = R.string.accept_messages_from_desc,
+                isSwitch = false,
+                checked = false
+            ),
+
             SettingsAdapter.Item(
                 id = R.string.resize_big_pics,
                 titleRes = R.string.resize_big_pics,

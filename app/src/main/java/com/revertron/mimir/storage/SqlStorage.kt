@@ -43,7 +43,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     companion object {
         const val TAG = "SqlStorage"
         // If we change the database schema, we must increment the database version.
-        const val DATABASE_VERSION = 18
+        const val DATABASE_VERSION = 19
         const val DATABASE_NAME = "data.db"
         const val CREATE_ACCOUNTS = "CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, privkey TEXT, pubkey TEXT, client INTEGER, info TEXT, avatar TEXT, updated INTEGER)"
         const val CREATE_CONTACTS = "CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey BLOB, name TEXT, info TEXT, avatar TEXT, updated INTEGER, renamed BOOL, last_seen INTEGER, muted BOOL DEFAULT 0)"
@@ -56,6 +56,9 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
 
         // Drafts table (version 13+)
         const val CREATE_DRAFTS = "CREATE TABLE drafts (chat_type INTEGER NOT NULL, chat_id INTEGER NOT NULL, text TEXT, media_uri TEXT, media_type INTEGER DEFAULT 0, timestamp INTEGER NOT NULL, PRIMARY KEY(chat_type, chat_id))"
+
+        // Contact requests table (version 19+)
+        const val CREATE_CONTACT_REQUESTS = "CREATE TABLE contact_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey BLOB NOT NULL, message TEXT, nickname TEXT, info TEXT, avatar TEXT, time INTEGER NOT NULL)"
 
         // Chat types for drafts table
         const val CHAT_TYPE_CONTACT = 0
@@ -305,6 +308,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         db.execSQL(CREATE_GROUP_CHATS)
         db.execSQL(CREATE_GROUP_INVITES)
         db.execSQL(CREATE_DRAFTS)
+        db.execSQL(CREATE_CONTACT_REQUESTS)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -407,6 +411,11 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             // Add read_only column to group_chats for kicked/banned chat state
             db.execSQL("ALTER TABLE group_chats ADD COLUMN read_only BOOL DEFAULT 0")
             Log.i(TAG, "Added read_only column to group_chats table")
+        }
+
+        if (oldVersion < 19 && newVersion >= 19) {
+            db.execSQL(CREATE_CONTACT_REQUESTS)
+            Log.i(TAG, "Created contact_requests table")
         }
     }
 
@@ -661,16 +670,143 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         }
     }
 
+    fun addContactRequest(pubkey: ByteArray, message: String, nickname: String, info: String, avatar: ByteArray?): Long {
+        // Check if a request from this pubkey already exists
+        val cursor = readableDatabase.query(
+            "contact_requests", arrayOf("id"), "pubkey = ?",
+            arrayOf(Hex.toHexString(pubkey)), null, null, null
+        )
+        if (cursor.moveToNext()) {
+            val existingId = cursor.getLong(0)
+            cursor.close()
+            // Update the existing request
+            val avatarFileName = saveContactRequestAvatar(pubkey, avatar)
+            val values = ContentValues().apply {
+                put("message", message)
+                put("nickname", nickname)
+                put("info", info)
+                put("avatar", avatarFileName)
+                put("time", getUtcTime())
+            }
+            writableDatabase.update("contact_requests", values, "id = ?", arrayOf("$existingId"))
+            for (listener in listeners) {
+                listener.onContactRequestReceived(existingId)
+            }
+            return existingId
+        }
+        cursor.close()
+
+        val avatarFileName = saveContactRequestAvatar(pubkey, avatar)
+        val values = ContentValues().apply {
+            put("pubkey", pubkey)
+            put("message", message)
+            put("nickname", nickname)
+            put("info", info)
+            put("avatar", avatarFileName)
+            put("time", getUtcTime())
+        }
+        return writableDatabase.insert("contact_requests", null, values).also {
+            for (listener in listeners) {
+                listener.onContactRequestReceived(it)
+            }
+        }
+    }
+
+    private fun saveContactRequestAvatar(pubkey: ByteArray, avatar: ByteArray?): String? {
+        if (avatar == null || avatar.isEmpty()) return null
+        val ext = getImageExtensionOrNull(avatar) ?: return null
+        val dir = File(File(context.filesDir, "avatars"), "requests")
+        dir.mkdirs()
+        val fileName = "req_${Hex.toHexString(pubkey).take(16)}.$ext"
+        val file = File(dir, fileName)
+        FileOutputStream(file).use { it.write(avatar) }
+        return "requests/$fileName"
+    }
+
+    fun getContactRequests(): List<ContactRequest> {
+        val list = mutableListOf<ContactRequest>()
+        val cursor = readableDatabase.query(
+            "contact_requests",
+            arrayOf("id", "pubkey", "message", "nickname", "info", "avatar", "time"),
+            null, null, null, null, "time DESC"
+        )
+        while (cursor.moveToNext()) {
+            list.add(ContactRequest(
+                id = cursor.getLong(0),
+                pubkey = cursor.getBlob(1),
+                message = cursor.getString(2) ?: "",
+                nickname = cursor.getString(3) ?: "",
+                info = cursor.getString(4) ?: "",
+                avatarPath = cursor.getStringOrNull(5),
+                time = cursor.getLong(6)
+            ))
+        }
+        cursor.close()
+        return list
+    }
+
+    fun getContactRequestCount(): Int {
+        val cursor = readableDatabase.rawQuery("SELECT COUNT(*) FROM contact_requests", null)
+        val count = if (cursor.moveToNext()) cursor.getInt(0) else 0
+        cursor.close()
+        return count
+    }
+
+    fun acceptContactRequest(requestId: Long): Long {
+        val cursor = readableDatabase.query(
+            "contact_requests", arrayOf("pubkey", "nickname", "avatar"),
+            "id = ?", arrayOf("$requestId"), null, null, null
+        )
+        if (!cursor.moveToNext()) {
+            cursor.close()
+            return -1
+        }
+        val pubkey = cursor.getBlob(0)
+        val nickname = cursor.getString(1) ?: ""
+        val avatarPath = cursor.getStringOrNull(2)
+        cursor.close()
+
+        // Create the contact
+        val contactId = addContact(pubkey, nickname)
+
+        // Move avatar from requests dir to main avatars dir if needed
+        if (avatarPath != null) {
+            val src = File(File(context.filesDir, "avatars"), avatarPath)
+            if (src.exists()) {
+                val avatar = src.readBytes()
+                updateContactAvatar(contactId, avatar)
+                src.delete()
+            }
+        }
+
+        // Delete the request
+        writableDatabase.delete("contact_requests", "id = ?", arrayOf("$requestId"))
+        return contactId
+    }
+
+    fun deleteContactRequest(requestId: Long) {
+        // Clean up avatar file
+        val cursor = readableDatabase.query(
+            "contact_requests", arrayOf("avatar"),
+            "id = ?", arrayOf("$requestId"), null, null, null
+        )
+        if (cursor.moveToNext()) {
+            val avatarPath = cursor.getStringOrNull(0)
+            if (avatarPath != null) {
+                File(File(context.filesDir, "avatars"), avatarPath).delete()
+            }
+        }
+        cursor.close()
+        writableDatabase.delete("contact_requests", "id = ?", arrayOf("$requestId"))
+    }
+
     fun saveIp(pubkey: ByteArray, address: String, port: Short, clientId: Int, priority: Int, expiration: Long): Boolean {
-        // First we get numeric id for this contact
-        var id = getContactId(pubkey)
+        val id = getContactId(pubkey)
         return if (id >= 0) {
-            //Log.i(TAG, "Found contact id $id")
             saveIp(id, address, port, clientId, priority, expiration)
         } else {
-            id = addContact(pubkey, "")
-            //Log.i(TAG, "Created contact id $id")
-            saveIp(id, address, port, clientId, priority, expiration)
+            // Don't auto-create contacts from IP data
+            false
         }
     }
 
@@ -934,9 +1070,9 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     }
 
     fun setMessageDelivered(to: ByteArray, guid: Long, delivered: Boolean) {
-        var contact = getContactId(to)
+        val contact = getContactId(to)
         if (contact <= 0) {
-            contact = addContact(to, "")
+            return // Don't auto-create contacts from delivery ACKs
         }
         val values = ContentValues().apply {
             put("delivered", delivered)
@@ -4172,4 +4308,15 @@ interface StorageListener {
     fun onAllGroupMessagesRead(chatId: Long) {}
     fun onGroupChatChanged(chatId: Long): Boolean { return false }
     fun onGroupInviteReceived(inviteId: Long, chatId: Long, fromPubkey: ByteArray) {}
+    fun onContactRequestReceived(requestId: Long) {}
 }
+
+data class ContactRequest(
+    val id: Long,
+    val pubkey: ByteArray,
+    val message: String,
+    val nickname: String,
+    val info: String,
+    val avatarPath: String?,
+    val time: Long
+)
