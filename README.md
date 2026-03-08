@@ -33,9 +33,9 @@ So, the Mimir is the first true P2P messenger to use these unusual conditions. U
 One of Mimir’s strong points is censorship circumvention: you can connect to any of hundreds of available nodes, host your own, or even build a private network. Freedom is literally in your hands.
 
 ## How it works?
-Mimir works right on device, having Yggdrasil node inside the client (using [yggquic](https://github.com/Revertron/yggquic) library). All contacts connect to each other without using servers in the middle. Yggdrasil provides P2P connectivity without usual restrictions of regular Internet.
+Mimir works right on device, having an embedded Yggdrasil node inside the client (using the [mimir](https://github.com/Mimir-IM/mimir) Rust networking library). All contacts connect to each other without using servers in the middle. Yggdrasil provides P2P connectivity without usual restrictions of regular Internet.
 
-On top of Yggdrasil it uses QUIC implementation that listens for connections from others and makes connections to them when needed. The established connection is held for indefinite time if you are online to speed up conversations.
+On top of Yggdrasil it uses QUIC streams that listen for connections from others and make connections to them when needed. The established connection is held for indefinite time if you are online to speed up conversations.
 
 ### Multi-device support
 
