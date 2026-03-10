@@ -62,6 +62,21 @@ class ChatActivity : BaseChatActivity() {
         }
     }
 
+    private val fileDownloadReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent) {
+            when (intent.action) {
+                "ACTION_FILE_DOWNLOADING" -> {
+                    val name = intent.getStringExtra("name") ?: return
+                    adapter.markFileDownloading(name)
+                }
+                "ACTION_FILE_DOWNLOADED" -> {
+                    val name = intent.getStringExtra("name") ?: return
+                    adapter.markFileDownloaded(name)
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Check if this is saved messages
         isSavedMessages = intent.getBooleanExtra("savedMessages", false)
@@ -284,6 +299,11 @@ class ChatActivity : BaseChatActivity() {
             audioPlaybackReceiver,
             IntentFilter(AudioPlaybackService.ACTION_PLAYBACK_STATE_CHANGED)
         )
+        val fileFilter = IntentFilter().apply {
+            addAction("ACTION_FILE_DOWNLOADING")
+            addAction("ACTION_FILE_DOWNLOADED")
+        }
+        LocalBroadcastManager.getInstance(this).registerReceiver(fileDownloadReceiver, fileFilter)
     }
 
     override fun onToolbarClick() {
@@ -660,6 +680,7 @@ class ChatActivity : BaseChatActivity() {
     override fun onDestroy() {
         LocalBroadcastManager.getInstance(this).unregisterReceiver(peerStatusReceiver)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(audioPlaybackReceiver)
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(fileDownloadReceiver)
         super.onDestroy()
     }
 }

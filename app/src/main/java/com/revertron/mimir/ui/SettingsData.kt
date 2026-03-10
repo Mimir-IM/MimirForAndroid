@@ -11,6 +11,8 @@ object SettingsData {
     const val KEY_IMAGES_QUALITY = "images-quality"
     const val KEY_MESSAGE_FONT_SIZE = "message-font-size"
     const val KEY_ACCEPT_MESSAGES = "accept-messages"
+    const val KEY_AUTO_DOWNLOAD_CONTACTS = "auto-download-contacts"
+    const val KEY_AUTO_DOWNLOAD_OTHERS = "auto-download-others"
 
     fun create(context: Context): List<SettingsAdapter.Item> {
         val sp = PreferenceManager.getDefaultSharedPreferences(context)
@@ -20,6 +22,22 @@ object SettingsData {
                 id = R.string.accept_messages_from,
                 titleRes = R.string.accept_messages_from,
                 descriptionRes = R.string.accept_messages_from_desc,
+                isSwitch = false,
+                checked = false
+            ),
+
+            SettingsAdapter.Item(
+                id = R.string.auto_download_contacts,
+                titleRes = R.string.auto_download_contacts,
+                descriptionRes = R.string.auto_download_contacts_desc,
+                isSwitch = false,
+                checked = false
+            ),
+
+            SettingsAdapter.Item(
+                id = R.string.auto_download_others,
+                titleRes = R.string.auto_download_others,
+                descriptionRes = R.string.auto_download_others_desc,
                 isSwitch = false,
                 checked = false
             ),

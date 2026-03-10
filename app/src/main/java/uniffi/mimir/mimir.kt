@@ -1031,6 +1031,9 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_mimir_checksum_method_peernode_remove_peer(
     ): Short
 
+    external fun uniffi_mimir_checksum_method_peernode_request_file(
+    ): Short
+
     external fun uniffi_mimir_checksum_method_peernode_retry_peers_now(
     ): Short
 
@@ -1312,6 +1315,10 @@ internal object UniffiLib {
 
     external fun uniffi_mimir_fn_method_peernode_remove_peer(
         ptr: Long, uri: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+
+    external fun uniffi_mimir_fn_method_peernode_request_file(
+        ptr: Long, pubkey: RustBuffer.ByValue, name: RustBuffer.ByValue, hash: RustBuffer.ByValue, size: Long, uniffi_out_err: UniffiRustCallStatus,
     ): Unit
 
     external fun uniffi_mimir_fn_method_peernode_retry_peers_now(
@@ -1712,6 +1719,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_mimir_checksum_method_peernode_remove_peer() != 39068.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_peernode_request_file() != 62209.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_mimir_checksum_method_peernode_retry_peers_now() != 8707.toShort()) {
@@ -3041,6 +3051,16 @@ public interface PeerNodeInterface {
     fun removePeer(uri: String)
 
     /**
+     * Request a file from a connected peer.
+     *
+     * `name` is the random filename from the message metadata.
+     * `hash` is the SHA-256 hex hash for verification.
+     * The peer will stream the file back as a FILE_RESPONSE delivered
+     * through `on_message_received` with msg_type = 4001.
+     */
+    fun requestFile(pubkey: ByteArray, name: String, hash: String, size: Long)
+
+    /**
      * Yggdrasil spanning-tree diagnostics, JSON-encoded.
      */
     fun retryPeersNow()
@@ -3067,8 +3087,8 @@ public interface PeerNodeInterface {
      * or an inbound connection triggered on_peer_connected).
      *
      * For text (msg_type 0 or 2): pass message content as `data`.
-     * For image/file (msg_type 1 or 3): pass the already-assembled wire
-     * payload [metaJsonSize(4 BE)][metaJson][fileBytes] as `data`.
+     * For image/file (msg_type 1 or 3): pass only the JSON metadata as `data`.
+     * The recipient uses `request_file` to download the actual file separately.
      */
     fun sendMessage(pubkey: ByteArray, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, msgType: Int, `data`: ByteArray)
 
@@ -3403,6 +3423,26 @@ open class PeerNode : Disposable, AutoCloseable, PeerNodeInterface {
 
 
     /**
+     * Request a file from a connected peer.
+     *
+     * `name` is the random filename from the message metadata.
+     * `hash` is the SHA-256 hex hash for verification.
+     * The peer will stream the file back as a FILE_RESPONSE delivered
+     * through `on_message_received` with msg_type = 4001.
+     */
+    @Throws(MimirException::class)
+    override fun requestFile(pubkey: ByteArray, name: String, hash: String, size: Long) =
+        callWithHandle {
+            uniffiRustCallWithError(MimirException) { _status ->
+                UniffiLib.uniffi_mimir_fn_method_peernode_request_file(
+                    it,
+                    FfiConverterByteArray.lower(pubkey), FfiConverterString.lower(name), FfiConverterString.lower(hash), FfiConverterLong.lower(size), _status
+                )
+            }
+        }
+
+
+    /**
      * Yggdrasil spanning-tree diagnostics, JSON-encoded.
      */
     override fun retryPeersNow() =
@@ -3468,8 +3508,8 @@ open class PeerNode : Disposable, AutoCloseable, PeerNodeInterface {
      * or an inbound connection triggered on_peer_connected).
      *
      * For text (msg_type 0 or 2): pass message content as `data`.
-     * For image/file (msg_type 1 or 3): pass the already-assembled wire
-     * payload [metaJsonSize(4 BE)][metaJson][fileBytes] as `data`.
+     * For image/file (msg_type 1 or 3): pass only the JSON metadata as `data`.
+     * The recipient uses `request_file` to download the actual file separately.
      */
     @Throws(MimirException::class)
     override fun sendMessage(pubkey: ByteArray, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, msgType: Int, `data`: ByteArray) =
@@ -4371,8 +4411,10 @@ public interface PeerEventListener {
      * A text/file message arrived from `pubkey`.
      *
      * For text (msg_type == 0 or 2): `data` is the message content.
-     * For image/file (msg_type == 1 or 3): `data` is the raw wire payload —
-     * [metaJsonSize(4 BE)][metaJson][fileBytes] — exactly as received.
+     * For image/file (msg_type == 1 or 3): `data` is the JSON metadata only
+     * (no file bytes).  Use `request_file` to download the actual file.
+     * For file response (msg_type == 4001): `data` is the wire payload —
+     * [metaJsonSize(4 BE)][metaJson][fileBytes] — save the file to disk.
      */
     fun onMessageReceived(pubkey: ByteArray, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, msgType: Int, `data`: ByteArray)
 

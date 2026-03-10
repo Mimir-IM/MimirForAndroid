@@ -31,6 +31,7 @@ import androidx.core.content.FileProvider
 import androidx.core.view.updateMargins
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.AudioPlaybackService
+import com.revertron.mimir.ConnectionService
 import com.revertron.mimir.R
 import com.revertron.mimir.getAvatarColor
 import com.revertron.mimir.storage.SqlStorage
@@ -232,6 +233,7 @@ class MessageAdapter(
     // Audio playback state tracking
     private var currentPlayingMessageId: Long = -1
     private var isAudioPlaying: Boolean = false
+    private val downloadingFiles = mutableSetOf<String>()
 
     private val messageIds = if (groupChat) {
         storage.getGroupMessageIds(chatId).toMutableList()
@@ -456,7 +458,7 @@ class MessageAdapter(
 
         when (message.type) {
             1 -> {
-                // Ordinary text messages, may contain a picture
+                // Image message - may need download first
                 holder.filePanel.visibility = View.GONE
                 if (message.data != null) {
                     val string = String(message.data)
@@ -470,15 +472,35 @@ class MessageAdapter(
                         val uri: Uri = Uri.fromFile(cacheFile)
                         holder.picture.setImageURI(uri)
                         holder.picture.tag = Uri.fromFile(imageFile)
+                        holder.picturePanel.visibility = View.VISIBLE
+                    } else if (imageFile.exists()) {
+                        val uri: Uri = Uri.fromFile(imageFile)
+                        holder.picture.setImageURI(uri)
+                        holder.picture.tag = uri
+                        holder.picturePanel.visibility = View.VISIBLE
                     } else {
-                        val file = File(filePath, name)
-                        if (file.exists()) {
-                            val uri: Uri = Uri.fromFile(file)
-                            holder.picture.setImageURI(uri)
-                            holder.picture.tag = uri
+                        // File not downloaded yet — show download prompt in file panel
+                        holder.picture.setImageDrawable(null)
+                        holder.picturePanel.visibility = View.GONE
+                        val size = json.optLong("size", 0L)
+                        val isDownloading = downloadingFiles.contains(name)
+                        if (isDownloading) {
+                            holder.fileIcon.setImageResource(R.drawable.ic_folder_download_outline)
+                            holder.fileName.text = holder.itemView.context.getString(R.string.downloading_file)
+                            holder.fileSize.text = formatFileSize(size)
+                            holder.filePanel.setOnClickListener(null)
+                        } else {
+                            holder.fileIcon.setImageResource(R.drawable.ic_folder_download_outline)
+                            holder.fileName.text = holder.itemView.context.getString(R.string.download_file)
+                            holder.fileSize.text = formatFileSize(size)
+                            holder.filePanel.setOnClickListener {
+                                downloadingFiles.add(name)
+                                notifyItemChanged(holder.bindingAdapterPosition)
+                                requestFileDownload(holder.itemView.context, message.data)
+                            }
                         }
+                        holder.filePanel.visibility = View.VISIBLE
                     }
-                    holder.picturePanel.visibility = View.VISIBLE
                 }
             }
             2 -> {
@@ -554,6 +576,21 @@ class MessageAdapter(
                             // Every file - open with external app
                             holder.filePanel.setOnClickListener {
                                 openFile(holder.itemView.context, file, mimeType)
+                            }
+                        } else if (message.incoming) {
+                            // File not downloaded yet — show download icon and allow manual download
+                            val isDownloading = downloadingFiles.contains(name)
+                            if (isDownloading) {
+                                holder.fileIcon.setImageResource(R.drawable.ic_folder_download_outline)
+                                holder.fileSize.text = holder.itemView.context.getString(R.string.downloading_file)
+                                holder.filePanel.setOnClickListener(null)
+                            } else {
+                                holder.fileIcon.setImageResource(R.drawable.ic_folder_download_outline)
+                                holder.filePanel.setOnClickListener {
+                                    downloadingFiles.add(name)
+                                    notifyItemChanged(holder.bindingAdapterPosition)
+                                    requestFileDownload(holder.itemView.context, message.data)
+                                }
                             }
                         }
                     } catch (_: JSONException) {
@@ -867,6 +904,16 @@ class MessageAdapter(
         }
     }
 
+    fun markFileDownloading(name: String) {
+        downloadingFiles.add(name)
+        notifyDataSetChanged()
+    }
+
+    fun markFileDownloaded(name: String) {
+        downloadingFiles.remove(name)
+        notifyDataSetChanged()
+    }
+
     private fun getFileIconForMimeType(mimeType: String): Int {
         return when {
             mimeType.startsWith("application/pdf") -> R.drawable.ic_file_document_outline
@@ -875,6 +922,31 @@ class MessageAdapter(
             mimeType.startsWith("audio/") -> R.drawable.ic_music_note_outline
             mimeType.startsWith("video/") -> R.drawable.ic_file_document_outline
             else -> R.drawable.ic_file_document_outline
+        }
+    }
+
+    /**
+     * Sends a file download request to ConnectionService via the Rust bridge.
+     * Parses the message metadata JSON to extract name and hash.
+     */
+    private fun requestFileDownload(context: Context, metaBytes: ByteArray?) {
+        if (metaBytes == null || groupChat) return
+        try {
+            val json = JSONObject(String(metaBytes))
+            val name = json.getString("name")
+            val hash = json.getString("hash")
+            val size = json.optLong("size", 0)
+            val pubkey = storage.getContactPubkey(chatId) ?: return
+            val intent = Intent(context, ConnectionService::class.java).apply {
+                putExtra("command", "request_file")
+                putExtra("pubkey", pubkey)
+                putExtra("name", name)
+                putExtra("hash", hash)
+                putExtra("size", size)
+            }
+            context.startService(intent)
+        } catch (e: Exception) {
+            Log.e("MessageAdapter", "requestFileDownload failed", e)
         }
     }
 

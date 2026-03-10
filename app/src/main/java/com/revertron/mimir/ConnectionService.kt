@@ -21,6 +21,7 @@ import com.revertron.mimir.NotificationHelper.Companion.showCallNotification
 import com.revertron.mimir.NotificationHelper.Companion.showGroupInviteNotification
 import com.revertron.mimir.net.Message
 import com.revertron.mimir.net.PeerStatus
+import com.revertron.mimir.net.MSG_TYPE_FILE_RESPONSE
 import com.revertron.mimir.net.SYS_CHAT_DELETED
 import com.revertron.mimir.net.parseAndSaveGroupMessage
 import com.revertron.mimir.net.writeMessage
@@ -355,8 +356,9 @@ class ConnectionService : Service(),
                         Log.i(TAG, "Message $id (guid=$guid) to ${Hex.toHexString(pubkey).take(8)}")
                         Thread {
                             try {
-                                // For attachments build full payload [metaSize:4][meta][fileBytes]
-                                val sendPayload = buildAttachmentSendPayload(type, messageBytes) ?: messageBytes
+                                // For attachments, send only JSON metadata (no file bytes).
+                                // The recipient will request the file separately.
+                                val sendPayload = messageBytes
                                 // Send immediately if already connected
                                 peerNode?.sendMessage(pubkey, guid, replyTo, sendTime, 0L, type, sendPayload)
                                 Log.i(TAG, "Message $id sent directly (peer connected)")
@@ -371,6 +373,30 @@ class ConnectionService : Service(),
                             }
                         }.start()
                     }
+                }
+            }
+
+            "request_file" -> {
+                val pubkey = intent.getByteArrayExtra("pubkey")
+                val name = intent.getStringExtra("name")
+                val hash = intent.getStringExtra("hash")
+                val size = intent.getLongExtra("size", 0L)
+                if (pubkey != null && name != null && hash != null) {
+                    broadcastFileDownloading(name, pubkey)
+                    Thread {
+                        try {
+                            peerNode?.requestFile(pubkey, name, hash, size)
+                            Log.i(TAG, "Requested file $name from ${Hex.toHexString(pubkey).take(8)}")
+                        } catch (e: Exception) {
+                            Log.w(TAG, "requestFile failed: ${e.message}")
+                            // Not connected — try connecting first
+                            try {
+                                peerNode?.connectToPeer(pubkey)
+                            } catch (e2: Exception) {
+                                Log.w(TAG, "connectToPeer for file request failed: ${e2.message}")
+                            }
+                        }
+                    }.start()
                 }
             }
 
@@ -641,28 +667,88 @@ class ConnectionService : Service(),
         editTime: Long, msgType: Int, data: ByteArray
     ) {
         val storage = (application as App).storage
-        val guidL = guid
-        val replyToL = replyTo
-        val sendTimeL = sendTime
-        val editTimeL = editTime
 
         if (msgType == 1 || msgType == 3) {
-            // Attachment: the data is [metaJsonSize(4 BE)][metaJson][fileBytes]
-            val metaSize = ((data[0].toInt() and 0xFF) shl 24) or
-                    ((data[1].toInt() and 0xFF) shl 16) or
-                    ((data[2].toInt() and 0xFF) shl 8) or
-                    (data[3].toInt() and 0xFF)
-            val meta = data.copyOfRange(4, 4 + metaSize)
-            val fileBytes = data.copyOfRange(4 + metaSize, data.size)
+            // Attachment metadata only (no file bytes in the new protocol).
+            // Store the JSON metadata; the file will be downloaded on demand.
+            storage.addMessage(pubkey, guid, replyTo, true, true, sendTime, editTime, msgType, data)
+            // Auto-download if settings allow and peer is connected.
+            maybeAutoDownloadFile(pubkey, data, storage)
+        } else if (msgType == MSG_TYPE_FILE_RESPONSE) {
+            // File response: data is [metaJsonSize(4 BE)][metaJson][fileBytes]
             try {
+                val metaSize = ((data[0].toInt() and 0xFF) shl 24) or
+                        ((data[1].toInt() and 0xFF) shl 16) or
+                        ((data[2].toInt() and 0xFF) shl 8) or
+                        (data[3].toInt() and 0xFF)
+                val meta = data.copyOfRange(4, 4 + metaSize)
+                val fileBytes = data.copyOfRange(4 + metaSize, data.size)
                 val json = org.json.JSONObject(String(meta))
-                saveFileForMessage(this, json.getString("name"), fileBytes)
+                val name = json.getString("name")
+                val declaredSize = json.optLong("size", -1)
+                if (declaredSize >= 0 && fileBytes.size.toLong() != declaredSize) {
+                    Log.w(TAG, "File size mismatch for $name: declared=$declaredSize, actual=${fileBytes.size}. Discarding.")
+                    return
+                }
+                saveFileForMessage(this, name, fileBytes)
+                Log.i(TAG, "File downloaded: $name (${fileBytes.size} bytes)")
+                // Notify the UI that this file is now available.
+                LocalBroadcastManager.getInstance(this).sendBroadcast(
+                    Intent("ACTION_FILE_DOWNLOADED").apply {
+                        putExtra("name", name)
+                        putExtra("pubkey", pubkey)
+                    }
+                )
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to save attachment: ${e.message}")
+                Log.w(TAG, "Failed to handle file response: ${e.message}")
             }
-            storage.addMessage(pubkey, guidL, replyToL, true, true, sendTimeL, editTimeL, msgType, meta)
         } else {
-            storage.addMessage(pubkey, guidL, replyToL, true, true, sendTimeL, editTimeL, msgType, data)
+            storage.addMessage(pubkey, guid, replyTo, true, true, sendTime, editTime, msgType, data)
+        }
+    }
+
+    /**
+     * Check auto-download settings and request the file immediately if allowed.
+     */
+    private fun maybeAutoDownloadFile(pubkey: ByteArray, metaBytes: ByteArray, storage: SqlStorage) {
+        try {
+            val json = org.json.JSONObject(String(metaBytes))
+            val name = json.getString("name")
+            val hash = json.getString("hash")
+            val size = json.optLong("size", 0)
+
+            // Check if file already exists (e.g. we sent it ourselves)
+            val file = File(File(filesDir, "files"), name)
+            if (file.exists()) return
+
+            val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+            val isContact = storage.getContactId(pubkey) >= 0
+            val threshold = if (isContact) {
+                prefs.getString("auto-download-contacts", "5242880")?.toLongOrNull() ?: 5242880L
+            } else {
+                prefs.getString("auto-download-others", "0")?.toLongOrNull() ?: 0L
+            }
+
+            if (size <= 0L) return  // Don't auto-download files with missing/zero size
+            if (threshold == 0L) return
+            if (threshold > 0 && size > threshold) return
+
+            // Peer must be connected to request file.
+            val contact = org.bouncycastle.util.encoders.Hex.toHexString(pubkey)
+            val status = peerStatuses[contact]
+            if (status != com.revertron.mimir.net.PeerStatus.Connected) return
+
+            Log.i(TAG, "Auto-downloading file $name ($size bytes) from ${contact.take(8)}")
+            broadcastFileDownloading(name, pubkey)
+            Thread {
+                try {
+                    peerNode?.requestFile(pubkey, name, hash, size)
+                } catch (e: Exception) {
+                    Log.w(TAG, "requestFile failed: ${e.message}")
+                }
+            }.start()
+        } catch (e: Exception) {
+            Log.w(TAG, "maybeAutoDownloadFile failed: ${e.message}")
         }
     }
 
@@ -1190,7 +1276,8 @@ class ConnectionService : Service(),
             if (msg.data == null) continue
             Log.d(TAG, "  Sending pending msg id=$id guid=${msg.guid}")
             try {
-                val sendPayload = buildAttachmentSendPayload(msg.type, msg.data) ?: msg.data
+                // Send only metadata (no file bytes); recipient requests files separately.
+                val sendPayload = msg.data
                 peerNode?.sendMessage(
                     pubkey,
                     msg.guid,
@@ -1205,39 +1292,6 @@ class ConnectionService : Service(),
                 Log.w(TAG, "sendMessage failed for id=$id: ${e.message}")
                 break  // Connection gone; remaining messages will be sent on next connect
             }
-        }
-    }
-
-    /**
-     * For attachment message types (1 = image, 3 = file), builds the wire payload:
-     *   [metaJsonSize:4 BE][metaJson bytes][file bytes]
-     * Returns null for non-attachment types or if the file is missing from disk.
-     * The DB always stores only the metaJson bytes; this helper adds the file body on send.
-     */
-    private fun buildAttachmentSendPayload(msgType: Int, metaBytes: ByteArray): ByteArray? {
-        if (msgType != 1 && msgType != 3) return null
-        return try {
-            val json = org.json.JSONObject(String(metaBytes))
-            val name = json.getString("name")
-            val file = java.io.File(java.io.File(filesDir, "files"), name)
-            if (!file.exists()) {
-                Log.w(TAG, "buildAttachmentSendPayload: file not found: $name")
-                return null
-            }
-            val fileBytes = file.readBytes()
-            val metaSize = metaBytes.size
-            // [metaJsonSize:4 BE][metaJson][fileBytes]
-            val result = ByteArray(4 + metaSize + fileBytes.size)
-            result[0] = (metaSize ushr 24).toByte()
-            result[1] = (metaSize ushr 16).toByte()
-            result[2] = (metaSize ushr 8).toByte()
-            result[3] = metaSize.toByte()
-            System.arraycopy(metaBytes, 0, result, 4, metaSize)
-            System.arraycopy(fileBytes, 0, result, 4 + metaSize, fileBytes.size)
-            result
-        } catch (e: Exception) {
-            Log.w(TAG, "buildAttachmentSendPayload failed: ${e.message}")
-            null
         }
     }
 
@@ -1539,6 +1593,15 @@ class ConnectionService : Service(),
         activeAudioSender = null
         activeAudioReceiver?.stopReceiver()
         activeAudioReceiver = null
+    }
+
+    private fun broadcastFileDownloading(name: String, pubkey: ByteArray) {
+        LocalBroadcastManager.getInstance(this).sendBroadcast(
+            Intent("ACTION_FILE_DOWNLOADING").apply {
+                putExtra("name", name)
+                putExtra("pubkey", pubkey)
+            }
+        )
     }
 
     private fun broadcastGroupChatStatus(chatId: Long, storage: SqlStorage, status: String = "CONNECTING") {

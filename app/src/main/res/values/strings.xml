@@ -363,4 +363,16 @@
     <string name="contact_request_accepted">Contact request accepted</string>
     <string name="contact_request_declined">Contact request declined</string>
 
+    <string name="auto_download_contacts">Auto-download from contacts</string>
+    <string name="auto_download_contacts_desc">Max file size to download automatically from contacts.</string>
+    <string name="auto_download_others">Auto-download from others</string>
+    <string name="auto_download_others_desc">Max file size to download automatically from non-contacts.</string>
+    <string name="download_never">Never</string>
+    <string name="download_up_to_1mb">Up to 1 MB</string>
+    <string name="download_up_to_5mb">Up to 5 MB</string>
+    <string name="download_up_to_10mb">Up to 10 MB</string>
+    <string name="download_always">Always</string>
+    <string name="download_file">Download</string>
+    <string name="downloading_file">Downloading…</string>
+
 </resources>
