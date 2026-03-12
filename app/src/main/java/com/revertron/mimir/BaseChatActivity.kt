@@ -539,6 +539,11 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         recyclerView = findViewById(R.id.messages_list)
         recyclerView.adapter = adapter
         recyclerView.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
+        // Disable view recycling to prevent ConstraintLayout measurement caching
+        // that causes message bubbles to retain stale widths from previously bound content.
+        recyclerView.recycledViewPool.setMaxRecycledViews(0, 0)
+        recyclerView.recycledViewPool.setMaxRecycledViews(1, 0)
+        recyclerView.setItemViewCacheSize(0)
 
         // Setup scroll-to-bottom FAB
         setupScrollToBottomFab()

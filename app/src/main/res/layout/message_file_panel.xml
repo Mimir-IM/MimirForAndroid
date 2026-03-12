@@ -12,8 +12,10 @@
     android:paddingBottom="4dp"
     app:layout_constrainedWidth="true"
     app:layout_constraintLeft_toLeftOf="parent"
-    app:layout_constraintTop_toBottomOf="@id/reply_panel"
-    app:layout_constraintWidth_max="300dp">
+    app:layout_constraintRight_toRightOf="parent"
+    app:layout_constraintHorizontal_bias="0.0"
+    app:layout_constraintWidth_max="300dp"
+    app:layout_constraintTop_toBottomOf="@id/reply_panel">
 
     <FrameLayout
         android:id="@+id/file_icon_container"

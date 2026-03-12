@@ -715,6 +715,7 @@ class MessageAdapter(
                 onReactionsMarkedSeen?.invoke()
             }
         }
+
     }
 
     /**
