@@ -156,6 +156,28 @@ class GroupChatActivity : BaseChatActivity() {
         }
     }
 
+    private val fileProgressReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent) {
+            when (intent.action) {
+                "ACTION_FILE_DOWNLOADING" -> {
+                    val name = intent.getStringExtra("name") ?: return
+                    adapter.markFileDownloading(name)
+                }
+                "ACTION_FILE_DOWNLOADED" -> {
+                    val name = intent.getStringExtra("name") ?: return
+                    adapter.markFileDownloaded(name)
+                }
+                "ACTION_FILE_PROGRESS" -> {
+                    val name = intent.getStringExtra("name") ?: return
+                    val bytes = intent.getLongExtra("bytes", 0L)
+                    val total = intent.getLongExtra("total", 0L)
+                    val isUpload = intent.getBooleanExtra("is_upload", false)
+                    adapter.updateFileProgress(name, bytes, total, isUpload)
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Extract group chat info before calling super.onCreate()
         val chatId = intent.getLongExtra(EXTRA_CHAT_ID, 0)
@@ -448,6 +470,14 @@ class GroupChatActivity : BaseChatActivity() {
             audioPlaybackReceiver,
             IntentFilter(AudioPlaybackService.ACTION_PLAYBACK_STATE_CHANGED)
         )
+
+        // Register file progress receiver
+        val fileFilter = IntentFilter().apply {
+            addAction("ACTION_FILE_DOWNLOADING")
+            addAction("ACTION_FILE_DOWNLOADED")
+            addAction("ACTION_FILE_PROGRESS")
+        }
+        LocalBroadcastManager.getInstance(this).registerReceiver(fileProgressReceiver, fileFilter)
     }
 
     override fun onToolbarClick() {
@@ -998,6 +1028,7 @@ class GroupChatActivity : BaseChatActivity() {
         LocalBroadcastManager.getInstance(this).unregisterReceiver(mediatorReceiver)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(groupChatStatusReceiver)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(audioPlaybackReceiver)
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(fileProgressReceiver)
         super.onDestroy()
     }
 }

@@ -23,6 +23,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.Toast
 import java.util.regex.Pattern
 import androidx.appcompat.widget.AppCompatImageView
@@ -233,7 +234,10 @@ class MessageAdapter(
     // Audio playback state tracking
     private var currentPlayingMessageId: Long = -1
     private var isAudioPlaying: Boolean = false
-    private val downloadingFiles = mutableSetOf<String>()
+    /** Maps file name → (bytesTransferred, totalBytes); totalBytes=0 means indeterminate. */
+    private val downloadingFiles = mutableMapOf<String, Pair<Long, Long>>()
+    /** Maps file name → (bytesSent, totalBytes) for outgoing file uploads. */
+    private val uploadingFiles = mutableMapOf<String, Pair<Long, Long>>()
 
     private val messageIds = if (groupChat) {
         storage.getGroupMessageIds(chatId).toMutableList()
@@ -256,6 +260,7 @@ class MessageAdapter(
         val fileIcon: AppCompatImageView = view.findViewById(R.id.file_icon)
         val fileName: AppCompatTextView = view.findViewById(R.id.file_name)
         val fileSize: AppCompatTextView = view.findViewById(R.id.file_size)
+        val fileProgress: ProgressBar = view.findViewById(R.id.file_progress)
         val time: AppCompatTextView = view.findViewById(R.id.time)
         val sent: AppCompatImageView = view.findViewById(R.id.status_image)
         val replyToName: AppCompatTextView = view.findViewById(R.id.reply_contact_name)
@@ -483,20 +488,21 @@ class MessageAdapter(
                         holder.picture.setImageDrawable(null)
                         holder.picturePanel.visibility = View.GONE
                         val size = json.optLong("size", 0L)
-                        val isDownloading = downloadingFiles.contains(name)
+                        val isDownloading = downloadingFiles.containsKey(name)
                         if (isDownloading) {
                             holder.fileIcon.setImageResource(R.drawable.ic_folder_download_outline)
                             holder.fileName.text = holder.itemView.context.getString(R.string.downloading_file)
-                            holder.fileSize.text = formatFileSize(size)
+                            bindFileProgress(holder, name, size)
                             holder.filePanel.setOnClickListener(null)
                         } else {
                             holder.fileIcon.setImageResource(R.drawable.ic_folder_download_outline)
                             holder.fileName.text = holder.itemView.context.getString(R.string.download_file)
                             holder.fileSize.text = formatFileSize(size)
+                            holder.fileProgress.visibility = View.GONE
                             holder.filePanel.setOnClickListener {
-                                downloadingFiles.add(name)
+                                downloadingFiles[name] = Pair(0L, 0L)
                                 notifyItemChanged(holder.bindingAdapterPosition)
-                                requestFileDownload(holder.itemView.context, message.data)
+                                requestFileDownload(holder.itemView.context, message.guid, message.data)
                             }
                         }
                         holder.filePanel.visibility = View.VISIBLE
@@ -506,6 +512,7 @@ class MessageAdapter(
             2 -> {
                 // Audio call info
                 holder.filePanel.visibility = View.VISIBLE
+                holder.fileProgress.visibility = View.GONE
                 holder.fileIcon.setImageResource(R.drawable.ic_phone_outline_themed)
                 holder.fileName.text = if (message.incoming) {
                     holder.fileName.context.getString(R.string.audio_call_incoming)
@@ -557,6 +564,12 @@ class MessageAdapter(
                         }
 
                         // Set click listener
+                        val uploadProgress = uploadingFiles[name]
+                        if (uploadProgress != null) {
+                            bindFileProgress(holder, name, size, upload = true)
+                        } else {
+                            holder.fileProgress.visibility = View.GONE
+                        }
                         if (file.exists()) {
                             if (isAudio) {
                                 // Audio file - toggle playback in AudioPlaybackService
@@ -579,17 +592,18 @@ class MessageAdapter(
                             }
                         } else if (message.incoming) {
                             // File not downloaded yet — show download icon and allow manual download
-                            val isDownloading = downloadingFiles.contains(name)
+                            val isDownloading = downloadingFiles.containsKey(name)
                             if (isDownloading) {
                                 holder.fileIcon.setImageResource(R.drawable.ic_folder_download_outline)
-                                holder.fileSize.text = holder.itemView.context.getString(R.string.downloading_file)
+                                bindFileProgress(holder, name, size)
                                 holder.filePanel.setOnClickListener(null)
                             } else {
                                 holder.fileIcon.setImageResource(R.drawable.ic_folder_download_outline)
+                                holder.fileProgress.visibility = View.GONE
                                 holder.filePanel.setOnClickListener {
-                                    downloadingFiles.add(name)
+                                    downloadingFiles[name] = Pair(0L, 0L)
                                     notifyItemChanged(holder.bindingAdapterPosition)
-                                    requestFileDownload(holder.itemView.context, message.data)
+                                    requestFileDownload(holder.itemView.context, message.guid, message.data)
                                 }
                             }
                         }
@@ -905,13 +919,64 @@ class MessageAdapter(
     }
 
     fun markFileDownloading(name: String) {
-        downloadingFiles.add(name)
+        downloadingFiles[name] = Pair(0L, 0L)
         notifyDataSetChanged()
     }
 
     fun markFileDownloaded(name: String) {
         downloadingFiles.remove(name)
         notifyDataSetChanged()
+    }
+
+    fun updateFileProgress(name: String, bytesTransferred: Long, totalBytes: Long, isUpload: Boolean) {
+        val map = if (isUpload) uploadingFiles else downloadingFiles
+        if (bytesTransferred >= totalBytes && totalBytes > 0) {
+            // Transfer complete — remove tracking
+            map.remove(name)
+        } else {
+            map[name] = Pair(bytesTransferred, totalBytes)
+        }
+        // Find the message position by file name (search from end — recent messages first)
+        for (index in messageIds.indices.reversed()) {
+            val msg = if (groupChat) {
+                storage.getGroupMessage(chatId, messageIds[index].first)
+            } else {
+                storage.getMessage(messageIds[index].first)
+            } ?: continue
+            if (msg.data != null && (msg.type == 1 || msg.type == 3)) {
+                try {
+                    val json = JSONObject(String(msg.data))
+                    if (json.getString("name") == name) {
+                        notifyItemChanged(index)
+                        return
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    fun markFileUploaded(name: String) {
+        uploadingFiles.remove(name)
+        notifyDataSetChanged()
+    }
+
+    /**
+     * Binds the progress bar and file size text for an active file transfer.
+     */
+    private fun bindFileProgress(holder: ViewHolder, name: String, totalSize: Long, upload: Boolean = false) {
+        val map = if (upload) uploadingFiles else downloadingFiles
+        val (transferred, total) = map[name] ?: Pair(0L, 0L)
+        holder.fileProgress.visibility = View.VISIBLE
+        if (total > 0 && transferred > 0) {
+            val percent = (transferred * 100 / total).toInt()
+            holder.fileProgress.isIndeterminate = false
+            holder.fileProgress.progress = percent
+            holder.fileSize.text = "${formatFileSize(transferred)} / ${formatFileSize(totalSize)}"
+        } else {
+            // Indeterminate state — no progress data yet
+            holder.fileProgress.isIndeterminate = true
+            holder.fileSize.text = formatFileSize(totalSize)
+        }
     }
 
     private fun getFileIconForMimeType(mimeType: String): Int {
@@ -929,7 +994,7 @@ class MessageAdapter(
      * Sends a file download request to ConnectionService via the Rust bridge.
      * Parses the message metadata JSON to extract name and hash.
      */
-    private fun requestFileDownload(context: Context, metaBytes: ByteArray?) {
+    private fun requestFileDownload(context: Context, msgGuid: Long, metaBytes: ByteArray?) {
         if (metaBytes == null || groupChat) return
         try {
             val json = JSONObject(String(metaBytes))
@@ -940,6 +1005,7 @@ class MessageAdapter(
             val intent = Intent(context, ConnectionService::class.java).apply {
                 putExtra("command", "request_file")
                 putExtra("pubkey", pubkey)
+                putExtra("guid", msgGuid)
                 putExtra("name", name)
                 putExtra("hash", hash)
                 putExtra("size", size)

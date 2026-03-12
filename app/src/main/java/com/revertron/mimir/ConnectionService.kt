@@ -121,6 +121,13 @@ class ConnectionService : Service(),
     // Updated by onConnected, onDisconnected, and subscribeToChat.
     private val subscribedChats = Collections.synchronizedSet(mutableSetOf<Long>())
 
+    /** File names currently being downloaded — prevents duplicate requestFile() calls. */
+    private val activeFileDownloads = Collections.synchronizedSet(mutableSetOf<String>())
+    /** Cache: transfer guid → file name, populated on first progress callback. */
+    private val guidToFileName = java.util.concurrent.ConcurrentHashMap<Long, String>()
+    /** Throttle: guid → last broadcast timestamp (ms). */
+    private val lastProgressBroadcast = java.util.concurrent.ConcurrentHashMap<Long, Long>()
+
     private var updateAfter = 0L
     /** True while a retrySendTick is posted to the handler — prevents double-scheduling. */
     @Volatile private var retrySendPending = false
@@ -378,25 +385,31 @@ class ConnectionService : Service(),
 
             "request_file" -> {
                 val pubkey = intent.getByteArrayExtra("pubkey")
+                val guid = intent.getLongExtra("guid", 0L)
                 val name = intent.getStringExtra("name")
                 val hash = intent.getStringExtra("hash")
                 val size = intent.getLongExtra("size", 0L)
-                if (pubkey != null && name != null && hash != null) {
-                    broadcastFileDownloading(name, pubkey)
-                    Thread {
-                        try {
-                            peerNode?.requestFile(pubkey, name, hash, size)
-                            Log.i(TAG, "Requested file $name from ${Hex.toHexString(pubkey).take(8)}")
-                        } catch (e: Exception) {
-                            Log.w(TAG, "requestFile failed: ${e.message}")
-                            // Not connected — try connecting first
+                if (pubkey != null && name != null && hash != null && guid != 0L) {
+                    if (!activeFileDownloads.add(name)) {
+                        Log.i(TAG, "File $name is already being downloaded, skipping duplicate request")
+                    } else {
+                        broadcastFileDownloading(name, pubkey)
+                        Thread {
                             try {
-                                peerNode?.connectToPeer(pubkey)
-                            } catch (e2: Exception) {
-                                Log.w(TAG, "connectToPeer for file request failed: ${e2.message}")
+                                peerNode?.requestFile(pubkey, guid, name, hash, size)
+                                Log.i(TAG, "Requested file $name (guid=$guid) from ${Hex.toHexString(pubkey).take(8)}")
+                            } catch (e: Exception) {
+                                Log.w(TAG, "requestFile failed: ${e.message}")
+                                activeFileDownloads.remove(name)
+                                // Not connected — try connecting first
+                                try {
+                                    peerNode?.connectToPeer(pubkey)
+                                } catch (e2: Exception) {
+                                    Log.w(TAG, "connectToPeer for file request failed: ${e2.message}")
+                                }
                             }
-                        }
-                    }.start()
+                        }.start()
+                    }
                 }
             }
 
@@ -673,7 +686,7 @@ class ConnectionService : Service(),
             // Store the JSON metadata; the file will be downloaded on demand.
             storage.addMessage(pubkey, guid, replyTo, true, true, sendTime, editTime, msgType, data)
             // Auto-download if settings allow and peer is connected.
-            maybeAutoDownloadFile(pubkey, data, storage)
+            maybeAutoDownloadFile(pubkey, guid, data, storage)
         } else if (msgType == MSG_TYPE_FILE_RESPONSE) {
             // File response: data is [metaJsonSize(4 BE)][metaJson][fileBytes]
             try {
@@ -688,9 +701,11 @@ class ConnectionService : Service(),
                 val declaredSize = json.optLong("size", -1)
                 if (declaredSize >= 0 && fileBytes.size.toLong() != declaredSize) {
                     Log.w(TAG, "File size mismatch for $name: declared=$declaredSize, actual=${fileBytes.size}. Discarding.")
+                    activeFileDownloads.remove(name)
                     return
                 }
                 saveFileForMessage(this, name, fileBytes)
+                activeFileDownloads.remove(name)
                 Log.i(TAG, "File downloaded: $name (${fileBytes.size} bytes)")
                 // Notify the UI that this file is now available.
                 LocalBroadcastManager.getInstance(this).sendBroadcast(
@@ -710,7 +725,7 @@ class ConnectionService : Service(),
     /**
      * Check auto-download settings and request the file immediately if allowed.
      */
-    private fun maybeAutoDownloadFile(pubkey: ByteArray, metaBytes: ByteArray, storage: SqlStorage) {
+    private fun maybeAutoDownloadFile(pubkey: ByteArray, msgGuid: Long, metaBytes: ByteArray, storage: SqlStorage) {
         try {
             val json = org.json.JSONObject(String(metaBytes))
             val name = json.getString("name")
@@ -738,13 +753,18 @@ class ConnectionService : Service(),
             val status = peerStatuses[contact]
             if (status != com.revertron.mimir.net.PeerStatus.Connected) return
 
+            if (!activeFileDownloads.add(name)) {
+                Log.i(TAG, "File $name is already being downloaded, skipping auto-download")
+                return
+            }
             Log.i(TAG, "Auto-downloading file $name ($size bytes) from ${contact.take(8)}")
             broadcastFileDownloading(name, pubkey)
             Thread {
                 try {
-                    peerNode?.requestFile(pubkey, name, hash, size)
+                    peerNode?.requestFile(pubkey, msgGuid, name, hash, size)
                 } catch (e: Exception) {
                     Log.w(TAG, "requestFile failed: ${e.message}")
+                    activeFileDownloads.remove(name)
                 }
             }.start()
         } catch (e: Exception) {
@@ -806,10 +826,52 @@ class ConnectionService : Service(),
 
     override fun onFileReceiveProgress(pubkey: ByteArray, guid: Long, bytesReceived: Long, totalBytes: Long) {
         Log.d(TAG, "File receive progress $bytesReceived/$totalBytes")
+        broadcastFileProgress(guid, bytesReceived, totalBytes, isUpload = false)
     }
 
     override fun onFileSendProgress(pubkey: ByteArray, guid: Long, bytesSent: Long, totalBytes: Long) {
         Log.d(TAG, "File send progress $bytesSent/$totalBytes")
+        broadcastFileProgress(guid, bytesSent, totalBytes, isUpload = true)
+    }
+
+    /**
+     * Resolves a transfer guid to a file name, then broadcasts progress.
+     * Throttled to at most one broadcast per guid every 300 ms.
+     */
+    private fun broadcastFileProgress(guid: Long, bytes: Long, total: Long, isUpload: Boolean) {
+        // Throttle: skip if last broadcast was < 300 ms ago (unless this is the final chunk)
+        val now = System.currentTimeMillis()
+        val isFinal = bytes >= total
+        val last = lastProgressBroadcast[guid] ?: 0L
+        if (!isFinal && now - last < 300) return
+        lastProgressBroadcast[guid] = now
+
+        // Resolve guid → file name (guid is now the real message guid, so DB lookup works)
+        val name = guidToFileName.getOrPut(guid) {
+            val storage = (application as App).storage
+            val msg = storage.getMessage(guid, byGuid = true)
+            if (msg?.data != null && (msg.type == 1 || msg.type == 3)) {
+                try {
+                    org.json.JSONObject(String(msg.data)).getString("name")
+                } catch (_: Exception) { "" }
+            } else ""
+        }
+        if (name.isEmpty()) return
+
+        // Clean up caches on final chunk
+        if (isFinal) {
+            guidToFileName.remove(guid)
+            lastProgressBroadcast.remove(guid)
+        }
+
+        LocalBroadcastManager.getInstance(this).sendBroadcast(
+            Intent("ACTION_FILE_PROGRESS").apply {
+                putExtra("name", name)
+                putExtra("bytes", bytes)
+                putExtra("total", total)
+                putExtra("is_upload", isUpload)
+            }
+        )
     }
 
     override fun onTrackerAnnounce(ok: Boolean, ttl: Int) {

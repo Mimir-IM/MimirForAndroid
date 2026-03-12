@@ -150,6 +150,7 @@
     <string name="check_for_updates_desc">Проверить обновления прямо сейчас.</string>
     <string name="enable_domain_links">Пожалуйста, разрешите Мимиру открывать ссылки на его домен.</string>
     <string name="enable">Разрешить</string>
+    <string name="voice_quality_128">Высокий (128 kbps)</string>
     <string name="resize_big_pics">Сжимать большие картинки</string>
     <string name="resize_big_pics_desc">Перед отправкой сжимать картинки, которые больше 5 мегабайт.</string>
     <string name="image_settings">Настройки картинок</string>
@@ -367,4 +368,8 @@
     <string name="download_always">Всегда</string>
     <string name="download_file">Получить</string>
     <string name="downloading_file">Получение...</string>
+    <string name="voice_message_quality">Качество голосовых сообщений</string>
+    <string name="voice_message_quality_desc">Битрейт для записи голоса</string>
+    <string name="voice_quality_32">Низкий (32 kbps)</string>
+    <string name="voice_quality_64">Средний (64 kbps)</string>
 </resources>

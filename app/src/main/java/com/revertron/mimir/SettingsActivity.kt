@@ -93,6 +93,9 @@ class SettingsActivity : BaseActivity(), SettingsAdapter.Listener {
             R.string.auto_download_others -> {
                 showAutoDownloadDialog(SettingsData.KEY_AUTO_DOWNLOAD_OTHERS, R.string.auto_download_others, "0")
             }
+            R.string.voice_message_quality -> {
+                showVoiceQualityDialog()
+            }
             R.string.action_about -> {
                 val intent = Intent(this, AboutActivity::class.java)
                 startActivity(intent, animFromRight.toBundle())
@@ -118,6 +121,32 @@ class SettingsActivity : BaseActivity(), SettingsAdapter.Listener {
             .setSingleChoiceItems(options, selected) { dialog, which ->
                 preferences.edit().apply {
                     putString(prefKey, values[which])
+                    commit()
+                }
+                dialog.dismiss()
+                val recycler = findViewById<RecyclerView>(R.id.settingsRecyclerView)
+                recycler.adapter = SettingsAdapter(SettingsData.create(this), this)
+            }
+            .setNegativeButton(getString(R.string.cancel), null)
+            .show()
+    }
+
+    private fun showVoiceQualityDialog() {
+        val options = arrayOf(
+            getString(R.string.voice_quality_32),
+            getString(R.string.voice_quality_64),
+            getString(R.string.voice_quality_128)
+        )
+        val values = arrayOf("32000", "64000", "128000")
+        val current = preferences.getString(SettingsData.KEY_VOICE_QUALITY, "32000") ?: "32000"
+        val selected = values.indexOf(current).coerceAtLeast(0)
+
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        AlertDialog.Builder(wrapper)
+            .setTitle(getString(R.string.voice_message_quality))
+            .setSingleChoiceItems(options, selected) { dialog, which ->
+                preferences.edit().apply {
+                    putString(SettingsData.KEY_VOICE_QUALITY, values[which])
                     commit()
                 }
                 dialog.dismiss()

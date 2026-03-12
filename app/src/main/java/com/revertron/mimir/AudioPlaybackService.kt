@@ -79,6 +79,8 @@ class AudioPlaybackService : MediaSessionService() {
                 if (playbackState == Player.STATE_ENDED) {
                     Log.d(TAG, "Playback ended")
                     currentMessageId = -1
+                    player.stop()
+                    player.clearMediaItems()
                     broadcastPlaybackState(false)
                 }
             }
@@ -325,8 +327,8 @@ class AudioPlaybackService : MediaSessionService() {
         mediaController?.stop()
         mediaController?.clearMediaItems()
         currentMessageId = -1
-        if (mediaSession != null) {
-            removeSession(mediaSession!!)
+        mediaSession?.let {
+            try { removeSession(it) } catch (_: IllegalArgumentException) {}
         }
         broadcastPlaybackState(false)
         stopSelf()

@@ -73,6 +73,13 @@ class ChatActivity : BaseChatActivity() {
                     val name = intent.getStringExtra("name") ?: return
                     adapter.markFileDownloaded(name)
                 }
+                "ACTION_FILE_PROGRESS" -> {
+                    val name = intent.getStringExtra("name") ?: return
+                    val bytes = intent.getLongExtra("bytes", 0L)
+                    val total = intent.getLongExtra("total", 0L)
+                    val isUpload = intent.getBooleanExtra("is_upload", false)
+                    adapter.updateFileProgress(name, bytes, total, isUpload)
+                }
             }
         }
     }
@@ -302,6 +309,7 @@ class ChatActivity : BaseChatActivity() {
         val fileFilter = IntentFilter().apply {
             addAction("ACTION_FILE_DOWNLOADING")
             addAction("ACTION_FILE_DOWNLOADED")
+            addAction("ACTION_FILE_PROGRESS")
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(fileDownloadReceiver, fileFilter)
     }

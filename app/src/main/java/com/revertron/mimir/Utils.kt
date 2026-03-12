@@ -62,7 +62,7 @@ import kotlin.math.abs
 import kotlin.math.min
 
 const val PICTURE_MAX_SIZE = 5 * 1024 * 1024
-const val MAX_FILE_SIZE = 10 * 1024 * 1024
+const val MAX_FILE_SIZE = 1024 * 1024 * 1024
 const val UPDATE_SERVER = "https://update.mimir-app.net"
 const val IP_CACHE_DEFAULT_TTL = 900
 
@@ -578,7 +578,7 @@ fun prepareGeneralFileForMessage(context: Context, uri: Uri): JSONObject? {
     // Check file size limit (10MB)
     if (size > MAX_FILE_SIZE) {
         Log.e(tag, "File too large: $size bytes (max: $MAX_FILE_SIZE)")
-        Toast.makeText(context, "File is too large. Maximum size is 10 MB.", Toast.LENGTH_LONG).show()
+        Toast.makeText(context, "File is too large. Maximum size is 1024 MB.", Toast.LENGTH_LONG).show()
         return null
     }
 

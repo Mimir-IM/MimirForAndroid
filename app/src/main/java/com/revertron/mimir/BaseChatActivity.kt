@@ -10,9 +10,16 @@ import android.graphics.Color
 import android.graphics.PorterDuff
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import android.media.MediaRecorder
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.Log
+import android.view.MotionEvent
 import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -44,6 +51,8 @@ import com.revertron.mimir.ui.MessageTag
 import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_FORMAT
 import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_QUALITY
 import com.revertron.mimir.ui.SettingsData.KEY_MESSAGE_FONT_SIZE
+import com.revertron.mimir.ui.SettingsData.KEY_VOICE_QUALITY
+import org.bouncycastle.util.encoders.Hex
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
@@ -139,6 +148,14 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     // Emoji usage counts (loaded from prefs in onCreate)
     private val emojiUsageCounts = mutableMapOf<String, Int>()
 
+    // Voice recording state
+    private var isInMicMode = true
+    private var mediaRecorder: MediaRecorder? = null
+    private var isRecording = false
+    private var voiceRecordFile: File? = null
+    private var recordingStartTime: Long = 0L
+    private val recordingHandler = Handler(Looper.getMainLooper())
+
     // Permission launchers
     protected val cameraPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
@@ -147,6 +164,12 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             } else {
                 Toast.makeText(this, "Camera permission is required to take photos", Toast.LENGTH_SHORT).show()
             }
+        }
+
+    private val micPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) startVoiceRecording()
+            else Toast.makeText(this, "Microphone permission required", Toast.LENGTH_SHORT).show()
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -385,66 +408,126 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         }
     }
 
+    private fun updateSendButtonIcon() {
+        val editText = findViewById<AppCompatEditText>(R.id.message_edit)
+        val sendButton = findViewById<AppCompatImageButton>(R.id.send_button)
+        if (editText.text.isNullOrBlank() && attachmentJson == null) {
+            sendButton.setImageResource(R.drawable.ic_microphone_outline)
+            isInMicMode = true
+        } else {
+            sendButton.setImageResource(R.drawable.ic_arrow_up_right)
+            isInMicMode = false
+        }
+    }
+
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
     private fun setupMessageInput() {
         val editText = findViewById<AppCompatEditText>(R.id.message_edit)
         val sendButton = findViewById<AppCompatImageButton>(R.id.send_button)
-        sendButton.setOnClickListener {
-            val text: String = editText.text.toString().trim()
-            val isForwardMode = intent.getBooleanExtra("FORWARD_MODE", false)
 
-            if (isForwardMode && replyTo == 0L) {
-                // Forward mode: send user text first (if present), then forwarded message
-                editText.text?.clear()
+        editText.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) { updateSendButtonIcon() }
+        })
 
-                // Send user's text first if present
-                if (text.isNotEmpty()) {
-                    sendMessage(text, 0L)
-                }
-
-                // Then send the forwarded message
-                if (attachmentJson != null) {
-                    // Media forward - send with attachment and original caption
-                    val originalCaption = attachmentJson?.optString("text", "") ?: ""
-                    sendMessage(originalCaption, 0L)
-                } else {
-                    // Text forward - get text from reply panel and send
-                    val forwardedText = replyText.text.toString()
-                    if (forwardedText.isNotEmpty()) {
-                        // Temporarily clear attachment to ensure text-only send
-                        val savedAttachment = attachmentJson
-                        val savedType = attachmentType
-                        attachmentJson = null
-                        sendMessage(forwardedText, 0L)
-                        attachmentJson = savedAttachment
-                        attachmentType = savedType
+        sendButton.setOnTouchListener { v, event ->
+            if (isInMicMode) {
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                            startVoiceRecording()
+                        } else {
+                            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                        true
                     }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        stopVoiceRecording()
+                        true
+                    }
+                    else -> false
                 }
-
-                clearReplyPanel()
-                clearAttachment()
-
-                // Clear forward mode
-                intent.removeExtra("FORWARD_MODE")
-                intent.removeExtra("FORWARD_MESSAGE_ID")
-                intent.removeExtra("FORWARD_MESSAGE_GUID")
-                intent.removeExtra("FORWARD_MESSAGE_TYPE")
-                intent.removeExtra("FORWARD_MESSAGE_TEXT")
-                intent.removeExtra("FORWARD_MESSAGE_JSON")
-
-                // Delete the draft since message was sent
-                val chatType = if (isGroupChat()) SqlStorage.CHAT_TYPE_GROUP else SqlStorage.CHAT_TYPE_CONTACT
-                getStorage().deleteDraft(chatType, getChatId())
-            } else if (text.isNotEmpty() || attachmentJson != null) {
-                // Normal send flow
-                editText.text?.clear()
-                sendMessage(text, replyTo)
-                clearReplyPanel()
-                clearAttachment()
-
-                // Delete the draft since message was sent
-                val chatType = if (isGroupChat()) SqlStorage.CHAT_TYPE_GROUP else SqlStorage.CHAT_TYPE_CONTACT
-                getStorage().deleteDraft(chatType, getChatId())
+            } else {
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        v.isPressed = true
+                        true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        v.isPressed = false
+                        performSend()
+                        true
+                    }
+                    MotionEvent.ACTION_CANCEL -> {
+                        v.isPressed = false
+                        true
+                    }
+                    else -> false
+                }
             }
+        }
+
+        updateSendButtonIcon()
+    }
+
+    private fun performSend() {
+        val editText = findViewById<AppCompatEditText>(R.id.message_edit)
+        val text: String = editText.text.toString().trim()
+        val isForwardMode = intent.getBooleanExtra("FORWARD_MODE", false)
+
+        if (isForwardMode && replyTo == 0L) {
+            // Forward mode: send user text first (if present), then forwarded message
+            editText.text?.clear()
+
+            // Send user's text first if present
+            if (text.isNotEmpty()) {
+                sendMessage(text, 0L)
+            }
+
+            // Then send the forwarded message
+            if (attachmentJson != null) {
+                // Media forward - send with attachment and original caption
+                val originalCaption = attachmentJson?.optString("text", "") ?: ""
+                sendMessage(originalCaption, 0L)
+            } else {
+                // Text forward - get text from reply panel and send
+                val forwardedText = replyText.text.toString()
+                if (forwardedText.isNotEmpty()) {
+                    // Temporarily clear attachment to ensure text-only send
+                    val savedAttachment = attachmentJson
+                    val savedType = attachmentType
+                    attachmentJson = null
+                    sendMessage(forwardedText, 0L)
+                    attachmentJson = savedAttachment
+                    attachmentType = savedType
+                }
+            }
+
+            clearReplyPanel()
+            clearAttachment()
+
+            // Clear forward mode
+            intent.removeExtra("FORWARD_MODE")
+            intent.removeExtra("FORWARD_MESSAGE_ID")
+            intent.removeExtra("FORWARD_MESSAGE_GUID")
+            intent.removeExtra("FORWARD_MESSAGE_TYPE")
+            intent.removeExtra("FORWARD_MESSAGE_TEXT")
+            intent.removeExtra("FORWARD_MESSAGE_JSON")
+
+            // Delete the draft since message was sent
+            val chatType = if (isGroupChat()) SqlStorage.CHAT_TYPE_GROUP else SqlStorage.CHAT_TYPE_CONTACT
+            getStorage().deleteDraft(chatType, getChatId())
+        } else if (text.isNotEmpty() || attachmentJson != null) {
+            // Normal send flow
+            editText.text?.clear()
+            sendMessage(text, replyTo)
+            clearReplyPanel()
+            clearAttachment()
+
+            // Delete the draft since message was sent
+            val chatType = if (isGroupChat()) SqlStorage.CHAT_TYPE_GROUP else SqlStorage.CHAT_TYPE_CONTACT
+            getStorage().deleteDraft(chatType, getChatId())
         }
     }
 
@@ -757,6 +840,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             attachmentSize.text = formatFileSize(fileSize)
             attachmentPanel.visibility = View.VISIBLE
             attachmentJson = message
+            updateSendButtonIcon()
         }
     }
 
@@ -783,6 +867,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             attachmentSize.text = formatFileSize(fileSize)
             attachmentPanel.visibility = View.VISIBLE
             attachmentJson = message
+            updateSendButtonIcon()
         }
     }
 
@@ -867,6 +952,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             attachmentPreview.setImageDrawable(null)
             attachmentJson = null
         }
+        updateSendButtonIcon()
     }
 
     // Context Menu
@@ -1395,6 +1481,113 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         }
     }
 
+    // Voice Recording
+
+    private fun startVoiceRecording() {
+        val filesDir = File(filesDir, "files").apply { mkdirs() }
+        val file = File(filesDir, "${randomString(16)}.m4a")
+        voiceRecordFile = file
+
+        try {
+            val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+            val bitrate = (prefs.getString(KEY_VOICE_QUALITY, "32000") ?: "32000").toInt()
+
+            mediaRecorder = (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                MediaRecorder(this)
+            } else {
+                @Suppress("DEPRECATION")
+                MediaRecorder()
+            }).apply {
+                setAudioSource(MediaRecorder.AudioSource.MIC)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                setAudioEncodingBitRate(bitrate)
+                setAudioSamplingRate(44100)
+                setMaxDuration(60000)
+                setOutputFile(file.absolutePath)
+                setOnInfoListener { _, what, _ ->
+                    if (what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED) {
+                        stopVoiceRecording()
+                    }
+                }
+                prepare()
+                start()
+            }
+
+            isRecording = true
+            recordingStartTime = System.currentTimeMillis()
+
+            // Visual feedback: tint send button red
+            val sendButton = findViewById<AppCompatImageButton>(R.id.send_button)
+            sendButton.setColorFilter(Color.RED)
+
+            // Safety timeout at 60s
+            recordingHandler.postDelayed({ stopVoiceRecording() }, 60000L)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start voice recording", e)
+            Toast.makeText(this, "Failed to start recording", Toast.LENGTH_SHORT).show()
+            mediaRecorder?.release()
+            mediaRecorder = null
+            voiceRecordFile?.delete()
+            voiceRecordFile = null
+        }
+    }
+
+    private fun stopVoiceRecording() {
+        if (!isRecording) return
+        isRecording = false
+        recordingHandler.removeCallbacksAndMessages(null)
+
+        val sendButton = findViewById<AppCompatImageButton>(R.id.send_button)
+        sendButton.clearColorFilter()
+
+        try {
+            mediaRecorder?.stop()
+        } catch (_: RuntimeException) {
+            // Recording was too short
+            mediaRecorder?.release()
+            mediaRecorder = null
+            voiceRecordFile?.delete()
+            voiceRecordFile = null
+            Toast.makeText(this, "Recording too short", Toast.LENGTH_SHORT).show()
+            return
+        }
+        mediaRecorder?.release()
+        mediaRecorder = null
+
+        val duration = System.currentTimeMillis() - recordingStartTime
+        val file = voiceRecordFile ?: return
+        if (duration < 1000 || !file.exists() || file.length() == 0L) {
+            file.delete()
+            voiceRecordFile = null
+            Toast.makeText(this, "Recording too short", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        attachVoiceRecording(file)
+    }
+
+    private fun attachVoiceRecording(file: File) {
+        val hash = getFileHash(file)
+        val json = JSONObject().apply {
+            put("name", file.name)
+            put("size", file.length())
+            put("hash", Hex.toHexString(hash))
+            put("originalName", "voice_message.m4a")
+            put("mimeType", "audio/mp4")
+        }
+        attachmentType = 3
+        attachmentJson = json
+
+        attachmentPreview.setImageResource(R.drawable.ic_microphone_outline)
+        attachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+        attachmentName.text = "Voice message"
+        attachmentSize.text = formatFileSize(file.length())
+        attachmentPanel.visibility = View.VISIBLE
+
+        updateSendButtonIcon()
+    }
+
     // Lifecycle
 
     override fun onStart() {
@@ -1404,6 +1597,18 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
 
     override fun onPause() {
         super.onPause()
+        // Discard any in-progress recording
+        if (isRecording) {
+            isRecording = false
+            recordingHandler.removeCallbacksAndMessages(null)
+            try { mediaRecorder?.stop() } catch (_: RuntimeException) {}
+            mediaRecorder?.release()
+            mediaRecorder = null
+            voiceRecordFile?.delete()
+            voiceRecordFile = null
+            val sendButton = findViewById<AppCompatImageButton>(R.id.send_button)
+            sendButton.clearColorFilter()
+        }
         saveDraft()
     }
 

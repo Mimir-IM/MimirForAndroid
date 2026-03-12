@@ -164,6 +164,11 @@
     <string name="check_for_updates_desc">Check for updates right now.</string>
     <string name="enable_domain_links">Please, enable Mimir to open links for it\'s own domain.</string>
     <string name="enable">Enable</string>
+    <string name="voice_message_quality">Voice message quality</string>
+    <string name="voice_message_quality_desc">Audio bitrate for voice recordings.</string>
+    <string name="voice_quality_32">Low (32 kbps)</string>
+    <string name="voice_quality_64">Medium (64 kbps)</string>
+    <string name="voice_quality_128">High (128 kbps)</string>
     <string name="resize_big_pics">Resize big images</string>
     <string name="resize_big_pics_desc">Before sending resize images bigger than 5 megabytes.</string>
     <string name="image_settings">Image settings</string>
