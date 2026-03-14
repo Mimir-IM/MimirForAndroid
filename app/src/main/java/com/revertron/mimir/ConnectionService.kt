@@ -24,7 +24,7 @@ import com.revertron.mimir.net.PeerStatus
 import com.revertron.mimir.net.MSG_TYPE_FILE_RESPONSE
 import com.revertron.mimir.net.SYS_CHAT_DELETED
 import com.revertron.mimir.net.parseAndSaveGroupMessage
-import com.revertron.mimir.net.writeMessage
+import com.revertron.mimir.net.serializeGroupMessage
 import com.revertron.mimir.storage.PeerProvider
 import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.ui.SettingsData
@@ -100,6 +100,10 @@ class ConnectionService : Service(),
 
         // Default mediator (same as MediatorManager.DEFAULT_MEDIATOR_PUBKEY)
         private const val DEFAULT_MEDIATOR_HEX = "817474e1393a55ef8ab8f0407c17c447d336474fe9af2de429b4cc2861f5b278"
+
+        // Group member permission flags (must match mediator server)
+        private const val PERM_READ_ONLY = 0x08
+        private const val PERM_BANNED = 0x01
     }
 
     private var peerNode: PeerNode? = null
@@ -140,6 +144,12 @@ class ConnectionService : Service(),
         super.onCreate()
         updaterThread = HandlerThread("UpdateThread").apply { start() }
         handler = Handler(updaterThread.looper)
+        // Clean up orphaned temp files from interrupted file transfers
+        val filesDir = File(filesDir, "files")
+        filesDir.listFiles()?.filter { it.name.startsWith(".recv_") && it.name.endsWith(".tmp") }?.forEach {
+            Log.i(TAG, "Cleaning up orphaned temp file: ${it.name}")
+            it.delete()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -687,38 +697,65 @@ class ConnectionService : Service(),
             storage.addMessage(pubkey, guid, replyTo, true, true, sendTime, editTime, msgType, data)
             // Auto-download if settings allow and peer is connected.
             maybeAutoDownloadFile(pubkey, guid, data, storage)
-        } else if (msgType == MSG_TYPE_FILE_RESPONSE) {
-            // File response: data is [metaJsonSize(4 BE)][metaJson][fileBytes]
-            try {
-                val metaSize = ((data[0].toInt() and 0xFF) shl 24) or
-                        ((data[1].toInt() and 0xFF) shl 16) or
-                        ((data[2].toInt() and 0xFF) shl 8) or
-                        (data[3].toInt() and 0xFF)
-                val meta = data.copyOfRange(4, 4 + metaSize)
-                val fileBytes = data.copyOfRange(4 + metaSize, data.size)
-                val json = org.json.JSONObject(String(meta))
-                val name = json.getString("name")
-                val declaredSize = json.optLong("size", -1)
-                if (declaredSize >= 0 && fileBytes.size.toLong() != declaredSize) {
-                    Log.w(TAG, "File size mismatch for $name: declared=$declaredSize, actual=${fileBytes.size}. Discarding.")
-                    activeFileDownloads.remove(name)
-                    return
-                }
-                saveFileForMessage(this, name, fileBytes)
-                activeFileDownloads.remove(name)
-                Log.i(TAG, "File downloaded: $name (${fileBytes.size} bytes)")
-                // Notify the UI that this file is now available.
-                LocalBroadcastManager.getInstance(this).sendBroadcast(
-                    Intent("ACTION_FILE_DOWNLOADED").apply {
-                        putExtra("name", name)
-                        putExtra("pubkey", pubkey)
-                    }
-                )
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to handle file response: ${e.message}")
-            }
         } else {
             storage.addMessage(pubkey, guid, replyTo, true, true, sendTime, editTime, msgType, data)
+        }
+    }
+
+    override fun onFileReceived(
+        pubkey: ByteArray, guid: Long, replyTo: Long, sendTime: Long,
+        editTime: Long, msgType: Int, metaJson: String, filePath: String
+    ) {
+        try {
+            val json = org.json.JSONObject(metaJson)
+            val name = json.getString("name")
+            val declaredSize = json.optLong("size", -1)
+
+            val tempFile = File(filePath)
+            if (!tempFile.exists()) {
+                Log.w(TAG, "onFileReceived: temp file $filePath does not exist")
+                activeFileDownloads.remove(name)
+                return
+            }
+
+            // Size validation
+            if (declaredSize >= 0 && tempFile.length() != declaredSize) {
+                Log.w(TAG, "File size mismatch for $name: declared=$declaredSize, actual=${tempFile.length()}. Discarding.")
+                tempFile.delete()
+                activeFileDownloads.remove(name)
+                return
+            }
+
+            // Move temp file to final location (same filesystem, so renameTo should work)
+            val filesDir = File(this.filesDir, "files")
+            filesDir.mkdirs()
+            val finalFile = File(filesDir, name)
+            if (!tempFile.renameTo(finalFile)) {
+                // renameTo can fail across filesystems; fall back to copy+delete
+                tempFile.copyTo(finalFile, overwrite = true)
+                tempFile.delete()
+            }
+
+            // Generate image preview for large images
+            val cacheDir = File(this.cacheDir, "files")
+            cacheDir.mkdirs()
+            val previewFile = File(cacheDir, name)
+            createImagePreview(finalFile.absolutePath, previewFile.absolutePath, 512, 80)
+
+            activeFileDownloads.remove(name)
+            Log.i(TAG, "File received: $name (${finalFile.length()} bytes)")
+
+            // Notify the UI that this file is now available.
+            LocalBroadcastManager.getInstance(this).sendBroadcast(
+                Intent("ACTION_FILE_DOWNLOADED").apply {
+                    putExtra("name", name)
+                    putExtra("pubkey", pubkey)
+                }
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to handle file received: ${e.message}")
+            // Clean up temp file
+            try { File(filePath).delete() } catch (_: Exception) {}
         }
     }
 
@@ -826,25 +863,32 @@ class ConnectionService : Service(),
 
     override fun onFileReceiveProgress(pubkey: ByteArray, guid: Long, bytesReceived: Long, totalBytes: Long) {
         Log.d(TAG, "File receive progress $bytesReceived/$totalBytes")
-        broadcastFileProgress(guid, bytesReceived, totalBytes, isUpload = false)
+        // Throttle early on the callback thread to avoid unnecessary handler posts
+        val now = System.currentTimeMillis()
+        val isFinal = bytesReceived >= totalBytes
+        val last = lastProgressBroadcast[guid] ?: 0L
+        if (!isFinal && now - last < 300) return
+        lastProgressBroadcast[guid] = now
+        // Post DB lookup + broadcast to handler thread so Rust callback returns immediately
+        handler.post { broadcastFileProgress(guid, bytesReceived, totalBytes, isUpload = false) }
     }
 
     override fun onFileSendProgress(pubkey: ByteArray, guid: Long, bytesSent: Long, totalBytes: Long) {
         Log.d(TAG, "File send progress $bytesSent/$totalBytes")
-        broadcastFileProgress(guid, bytesSent, totalBytes, isUpload = true)
+        val now = System.currentTimeMillis()
+        val isFinal = bytesSent >= totalBytes
+        val last = lastProgressBroadcast[guid] ?: 0L
+        if (!isFinal && now - last < 300) return
+        lastProgressBroadcast[guid] = now
+        handler.post { broadcastFileProgress(guid, bytesSent, totalBytes, isUpload = true) }
     }
 
     /**
      * Resolves a transfer guid to a file name, then broadcasts progress.
-     * Throttled to at most one broadcast per guid every 300 ms.
+     * Runs on the handler thread (not on the Rust callback thread).
      */
     private fun broadcastFileProgress(guid: Long, bytes: Long, total: Long, isUpload: Boolean) {
-        // Throttle: skip if last broadcast was < 300 ms ago (unless this is the final chunk)
-        val now = System.currentTimeMillis()
         val isFinal = bytes >= total
-        val last = lastProgressBroadcast[guid] ?: 0L
-        if (!isFinal && now - last < 300) return
-        lastProgressBroadcast[guid] = now
 
         // Resolve guid → file name (guid is now the real message guid, so DB lookup works)
         val name = guidToFileName.getOrPut(guid) {
@@ -1140,8 +1184,18 @@ class ConnectionService : Service(),
             }
             // Update permissions and online status now that all members exist in DB
             val members = mediatorNode!!.getMembers(mediatorPubkey, chatId)
+            val myPubkey = peerNode?.publicKey()
             for (member in members) {
                 storage.updateGroupMemberStatus(chatId, member.pubkey, member.permissions.toInt(), member.online)
+                // Update readOnly based on our own permissions from the server
+                if (myPubkey != null && member.pubkey.contentEquals(myPubkey)) {
+                    val perms = member.permissions.toInt()
+                    val shouldBeReadOnly = (perms and PERM_READ_ONLY) != 0 || (perms and PERM_BANNED) != 0
+                    storage.setGroupChatReadOnly(chatId, shouldBeReadOnly)
+                    if (shouldBeReadOnly) {
+                        broadcastGroupChatStatus(chatId, storage, "READ_ONLY")
+                    }
+                }
             }
             Log.i(TAG, "Synced ${membersInfo.size} member(s) for chat $chatId")
             LocalBroadcastManager.getInstance(this).sendBroadcast(
@@ -1295,8 +1349,20 @@ class ConnectionService : Service(),
         for (msg in undelivered) {
             try {
                 val messageData = String(msg.data ?: ByteArray(0))
-                val baos = ByteArrayOutputStream()
-                val dos = DataOutputStream(baos)
+
+                // Skip oversized file messages to prevent OOM crash
+                if (msg.type == 1 || msg.type == 3) {
+                    try {
+                        val meta = org.json.JSONObject(messageData)
+                        val fileSize = meta.optLong("size", 0)
+                        if (fileSize > MAX_GROUP_FILE_SIZE) {
+                            Log.w(TAG, "Skipping oversized group file msg ${msg.guid}: $fileSize bytes")
+                            storage.setGroupMessageDelivered(chatId, msg.guid, true)
+                            continue
+                        }
+                    } catch (_: Exception) { }
+                }
+
                 val netMsg = Message(
                     guid = msg.guid,
                     replyTo = msg.replyTo,
@@ -1306,8 +1372,8 @@ class ConnectionService : Service(),
                     data = messageData.toByteArray()
                 )
                 val filePath = if (msg.type == 1 || msg.type == 3) filesPath else ""
-                writeMessage(dos, netMsg, filePath)
-                val encryptedData = mimirEncryptMessage(baos.toByteArray(), chatInfo.sharedKey)
+                val serialized = serializeGroupMessage(netMsg, filePath)
+                val encryptedData = mimirEncryptMessage(serialized, chatInfo.sharedKey)
                 val messageId = mediatorNode!!.sendGroupMessage(
                     mediatorPubkey, chatId, msg.guid, msg.timestamp, encryptedData
                 )
@@ -1397,15 +1463,27 @@ class ConnectionService : Service(),
         sendTime: Long, type: Int, messageData: String
     ) {
         try {
+            // Check file size before loading into memory to prevent OOM
+            if (type == 1 || type == 3) {
+                val meta = org.json.JSONObject(messageData)
+                val fileSize = meta.optLong("size", 0)
+                if (fileSize > MAX_GROUP_FILE_SIZE) {
+                    Log.e(TAG, "Group file too large: $fileSize bytes (max: $MAX_GROUP_FILE_SIZE)")
+                    storage.setGroupMessageDelivered(chatId, guid, true) // Mark as delivered to stop retries
+                    broadcastMediatorError("send", "File too large for group chat")
+                    return
+                }
+            }
+
             val chatInfo = storage.getGroupChat(chatId) ?: run {
                 broadcastMediatorError("send", "Chat not found")
                 return
             }
-            val baos = ByteArrayOutputStream()
-            val dos = DataOutputStream(baos)
-            val filePath = if (type == 1 || type == 3) File(filesDir, "files").absolutePath else ""
-            writeMessage(dos, Message(guid, replyTo, sendTime, 0, type, messageData.toByteArray()), filePath)
-            val encryptedData = mimirEncryptMessage(baos.toByteArray(), chatInfo.sharedKey)
+            val serialized = serializeGroupMessage(
+                Message(guid, replyTo, sendTime, 0, type, messageData.toByteArray()),
+                if (type == 1 || type == 3) File(filesDir, "files").absolutePath else ""
+            )
+            val encryptedData = mimirEncryptMessage(serialized, chatInfo.sharedKey)
             val messageId = mediatorNode!!.sendGroupMessage(
                 chatInfo.mediatorPubkey, chatId, guid, sendTime, encryptedData
             )

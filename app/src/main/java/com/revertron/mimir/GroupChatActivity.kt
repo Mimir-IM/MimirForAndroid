@@ -55,6 +55,9 @@ class GroupChatActivity : BaseChatActivity() {
         private const val REQUEST_SELECT_CONTACT = 100
     }
 
+    override fun getMaxFileSize(): Long = MAX_GROUP_FILE_SIZE
+    override fun getFileTooLargeMessageResId(): Int = R.string.group_file_too_large
+
     private lateinit var groupChat: GroupChat
     private var mediatorAddress: ByteArray? = null
     private lateinit var publicKey: ByteArray
@@ -135,6 +138,9 @@ class GroupChatActivity : BaseChatActivity() {
                             if (status == MediatorManager.GroupChatStatus.READ_ONLY && !groupChat.readOnly) {
                                 groupChat.readOnly = true
                                 applyReadOnlyMode()
+                            } else if (status == MediatorManager.GroupChatStatus.SUBSCRIBED && groupChat.readOnly) {
+                                groupChat.readOnly = false
+                                exitReadOnlyMode()
                             }
                         }
                     } catch (e: IllegalArgumentException) {
@@ -960,6 +966,13 @@ class GroupChatActivity : BaseChatActivity() {
         findViewById<View>(R.id.tools).visibility = View.GONE
         setToolbarSubtitle(getString(R.string.read_only))
         showConnectionStatus(MediatorManager.GroupChatStatus.READ_ONLY)
+        invalidateOptionsMenu()
+    }
+
+    private fun exitReadOnlyMode() {
+        findViewById<View>(R.id.tools).visibility = View.VISIBLE
+        setToolbarSubtitle(getString(R.string.member_count, groupChat.memberCount, 0))
+        showConnectionStatus(MediatorManager.GroupChatStatus.SUBSCRIBED)
         invalidateOptionsMenu()
     }
 

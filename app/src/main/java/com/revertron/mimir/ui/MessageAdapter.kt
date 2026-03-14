@@ -238,6 +238,8 @@ class MessageAdapter(
     private val downloadingFiles = mutableMapOf<String, Pair<Long, Long>>()
     /** Maps file name → (bytesSent, totalBytes) for outgoing file uploads. */
     private val uploadingFiles = mutableMapOf<String, Pair<Long, Long>>()
+    /** Cache: file name → adapter position, to avoid O(n) DB scans on every progress tick. */
+    private val fileNamePositionCache = mutableMapOf<String, Int>()
 
     private val messageIds = if (groupChat) {
         storage.getGroupMessageIds(chatId).toMutableList()
@@ -801,6 +803,7 @@ class MessageAdapter(
 
     fun addMessageId(messageId: Long, incoming: Boolean) {
         messageIds.add(messageId to incoming)
+        fileNamePositionCache.clear()
         notifyItemInserted(messageIds.size - 1)
     }
 
@@ -808,6 +811,7 @@ class MessageAdapter(
         for ((index, message) in messageIds.withIndex()) {
             if (message.first == messageId) {
                 messageIds.removeAt(index)
+                fileNamePositionCache.clear()
                 notifyItemRemoved(index)
                 break
             }
@@ -827,6 +831,7 @@ class MessageAdapter(
     fun clearAllMessages() {
         val oldSize = messageIds.size
         messageIds.clear()
+        fileNamePositionCache.clear()
         notifyItemRangeRemoved(0, oldSize)
     }
 
@@ -934,10 +939,19 @@ class MessageAdapter(
         if (bytesTransferred >= totalBytes && totalBytes > 0) {
             // Transfer complete — remove tracking
             map.remove(name)
+            fileNamePositionCache.remove(name)
         } else {
             map[name] = Pair(bytesTransferred, totalBytes)
         }
-        // Find the message position by file name (search from end — recent messages first)
+
+        // Try cached position first
+        val cached = fileNamePositionCache[name]
+        if (cached != null && cached in messageIds.indices) {
+            notifyItemChanged(cached)
+            return
+        }
+
+        // Cache miss — scan and cache the result
         for (index in messageIds.indices.reversed()) {
             val msg = if (groupChat) {
                 storage.getGroupMessage(chatId, messageIds[index].first)
@@ -948,6 +962,7 @@ class MessageAdapter(
                 try {
                     val json = JSONObject(String(msg.data))
                     if (json.getString("name") == name) {
+                        fileNamePositionCache[name] = index
                         notifyItemChanged(index)
                         return
                     }

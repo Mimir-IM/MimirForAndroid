@@ -849,8 +849,26 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         }
     }
 
+    /**
+     * Returns the maximum allowed file size for attachments in this chat type.
+     * Override in subclasses to apply different limits (e.g. group chats).
+     */
+    protected open fun getMaxFileSize(): Long = MAX_FILE_SIZE.toLong()
+
+    /**
+     * Returns the string resource ID for the "file too large" error message.
+     */
+    protected open fun getFileTooLargeMessageResId(): Int = R.string.file_too_large
+
     protected fun getFileFromUri(uri: Uri) {
         // TODO move usage of this function to another Thread
+        // Check file size against chat-specific limit before preparing
+        val rawSize = uri.length(this)
+        if (rawSize > getMaxFileSize()) {
+            Toast.makeText(this, getString(getFileTooLargeMessageResId()), Toast.LENGTH_LONG).show()
+            return
+        }
+
         val message = prepareGeneralFileForMessage(this, uri)
         Log.i(this::class.simpleName, "File message for $uri is $message")
         if (message != null) {
@@ -858,12 +876,6 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             val fileName = message.optString("originalName", "file")
             val fileSize = message.optLong("size", 0)
             val mimeType = message.optString("mimeType", "application/octet-stream")
-
-            // Validate file size (already checked in prepareGeneralFileForMessage, but double-check here)
-            if (fileSize > MAX_FILE_SIZE) {
-                Toast.makeText(this, getString(R.string.file_too_large), Toast.LENGTH_LONG).show()
-                return
-            }
 
             // Update UI for file attachment
             attachmentPreview.setImageResource(getFileIconForMimeType(mimeType))

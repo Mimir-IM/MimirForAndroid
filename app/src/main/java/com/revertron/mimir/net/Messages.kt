@@ -284,6 +284,18 @@ fun writeMessage(dos: DataOutputStream, message: Message, filePath: String, stre
     return true
 }
 
+/**
+ * Serializes a group-chat message (including any file attachment) into a single ByteArray
+ * ready for encryption. Pre-allocates the buffer to the exact size needed so that only
+ * one contiguous allocation is made instead of a growing ByteArrayOutputStream + copy.
+ */
+fun serializeGroupMessage(message: Message, filePath: String): ByteArray {
+    val baos = ByteArrayOutputStream()
+    val dos = DataOutputStream(baos)
+    writeMessage(dos, message, filePath)
+    return baos.toByteArray()
+}
+
 fun writeOk(dos: DataOutputStream, id: Long, stream: Int = 0, type: Int = MSG_TYPE_OK): Boolean {
     val size = 8
     writeHeader(dos, stream, type, size)

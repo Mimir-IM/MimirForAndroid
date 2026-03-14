@@ -2,6 +2,7 @@ package com.revertron.mimir.net
 
 import android.content.Context
 import android.util.Log
+import com.revertron.mimir.App
 import com.revertron.mimir.getImageExtensionOrNull
 import com.revertron.mimir.randomString
 import com.revertron.mimir.saveFileForMessage
@@ -77,6 +78,16 @@ fun parseAndSaveGroupMessage(
             if (sysMsg is SystemMessage.UserBanned) {
                 Log.i(TAG, "User banned from chat $chatId, marking member as gone")
                 storage.deleteGroupMember(chatId, sysMsg.targetUser)
+            }
+            // Handle permissions changed - update readOnly if it affects us
+            if (sysMsg is SystemMessage.PermsChanged) {
+                val myPubkey = App.app.peerNode?.publicKey()
+                if (myPubkey != null && sysMsg.targetUser.contentEquals(myPubkey)) {
+                    val perms = sysMsg.newPermissions
+                    val shouldBeReadOnly = (perms and 0x08) != 0 || (perms and 0x01) != 0
+                    Log.i(TAG, "Our permissions changed in chat $chatId: 0x${perms.toString(16)}, readOnly=$shouldBeReadOnly")
+                    storage.setGroupChatReadOnly(chatId, shouldBeReadOnly)
+                }
             }
 
             // System messages are not encrypted, save directly to database
@@ -158,22 +169,24 @@ fun parseAndSaveGroupMessage(
                 val originalJson = JSONObject(String(message.data, offset, jsonSize, Charsets.UTF_8))
                 offset += jsonSize
 
-                // Extract file bytes
-                val fileBytes = message.data.copyOfRange(offset, message.data.size)
+                // File bytes start at offset, length = remaining data
+                val fileOffset = offset
+                val fileLength = message.data.size - fileOffset
 
                 // Generate new filename and save file bytes
                 val fileName = randomString(16)
                 val ext = if (message.type == 1) {
-                    // For images, detect extension from image bytes
-                    getImageExtensionOrNull(fileBytes)
+                    // For images, detect extension from magic bytes at the file offset
+                    getImageExtensionOrNull(message.data.copyOfRange(fileOffset, minOf(fileOffset + 12, message.data.size)))
                 } else {
                     // For files, use original extension from metadata
                     originalJson.optString("originalName", "file").substringAfterLast('.', "bin")
                 }
                 val fullName = "$fileName.$ext"
 
-                saveFileForMessage(context, fullName, fileBytes)
-                Log.i(TAG, "Saved $typeLabel attachment: $fullName (${fileBytes.size} bytes)")
+                // Write file directly from the data array without an extra copy
+                saveFileForMessage(context, fullName, message.data, fileOffset, fileLength)
+                Log.i(TAG, "Saved $typeLabel attachment: $fullName ($fileLength bytes)")
 
                 // Update JSON with new filename, keep all other fields (text, size, hash, originalName, mimeType)
                 originalJson.put("name", fullName)

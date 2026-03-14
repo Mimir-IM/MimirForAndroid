@@ -63,6 +63,7 @@ import kotlin.math.min
 
 const val PICTURE_MAX_SIZE = 5 * 1024 * 1024
 const val MAX_FILE_SIZE = 1024 * 1024 * 1024
+const val MAX_GROUP_FILE_SIZE = 50L * 1024 * 1024
 const val UPDATE_SERVER = "https://update.mimir-app.net"
 const val IP_CACHE_DEFAULT_TTL = 900
 
@@ -862,7 +863,7 @@ fun getFileContents(filePath: String): ByteArray {
     return bytes
 }
 
-fun saveFileForMessage(context: Context, fileName: String, data: ByteArray) {
+fun saveFileForMessage(context: Context, fileName: String, data: ByteArray, offset: Int = 0, length: Int = data.size) {
     val imagesDir = File(context.filesDir, "files")
     if (!imagesDir.exists()) {
         imagesDir.mkdirs()
@@ -870,7 +871,7 @@ fun saveFileForMessage(context: Context, fileName: String, data: ByteArray) {
     val outputFile = File(imagesDir, fileName)
     val outputStream = FileOutputStream(outputFile)
     outputStream.use {
-        it.write(data)
+        it.write(data, offset, length)
         it.flush()
     }
     val cacheDir = File(context.cacheDir, "files")
