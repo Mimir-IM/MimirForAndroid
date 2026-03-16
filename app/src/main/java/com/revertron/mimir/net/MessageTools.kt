@@ -65,7 +65,11 @@ fun parseAndSaveGroupMessage(
             // Handle message deletion - this is an invisible system message
             if (sysMsg is SystemMessage.MessageDeleted) {
                 Log.i(TAG, "Deleting message with guid ${sysMsg.deletedGuid} from chat $chatId")
-                storage.deleteGroupMessageByGuid(chatId, sysMsg.deletedGuid)
+                val (_, attachmentFileName) = storage.deleteGroupMessageByGuid(chatId, sysMsg.deletedGuid)
+                if (attachmentFileName != null) {
+                    java.io.File(java.io.File(context.filesDir, "files"), attachmentFileName).delete()
+                    java.io.File(java.io.File(context.cacheDir, "files"), attachmentFileName).delete()
+                }
                 // Don't save this system message to DB - it's invisible
                 return 0
             }
@@ -150,50 +154,67 @@ fun parseAndSaveGroupMessage(
         // Handle different message types
         if (message.type == 1 || message.type == 3) {
             // Media attachment: extract file and get text from JSON
-            // Type 1 = image, Type 2 = general file
             val typeLabel = if (message.type == 1) "image" else "file"
             Log.i(TAG, "Processing $typeLabel attachment for chat $chatId")
 
-            try {
-                // Parse wire format: [jsonSize(u32)][JSON][fileBytes]
-                var offset = 0
+            // Check if this is the new file-server format (data is pure JSON with "key" field)
+            val isNewFormat = try {
+                val dataStr = String(message.data, Charsets.UTF_8)
+                val json = JSONObject(dataStr)
+                json.has("key")
+            } catch (_: Exception) { false }
 
-                // Read JSON length (first 4 bytes, big-endian)
-                val jsonSize = ((message.data[offset].toInt() and 0xFF) shl 24) or
-                        ((message.data[offset + 1].toInt() and 0xFF) shl 16) or
-                        ((message.data[offset + 2].toInt() and 0xFF) shl 8) or
-                        (message.data[offset + 3].toInt() and 0xFF)
-                offset += 4
-
-                // Extract original JSON metadata
-                val originalJson = JSONObject(String(message.data, offset, jsonSize, Charsets.UTF_8))
-                offset += jsonSize
-
-                // File bytes start at offset, length = remaining data
-                val fileOffset = offset
-                val fileLength = message.data.size - fileOffset
-
-                // Generate new filename and save file bytes
-                val fileName = randomString(16)
-                val ext = if (message.type == 1) {
-                    // For images, detect extension from magic bytes at the file offset
-                    getImageExtensionOrNull(message.data.copyOfRange(fileOffset, minOf(fileOffset + 12, message.data.size)))
-                } else {
-                    // For files, use original extension from metadata
-                    originalJson.optString("originalName", "file").substringAfterLast('.', "bin")
+            if (isNewFormat) {
+                // New file-server format: data is metadata JSON with key, hash, server.
+                // Just save the metadata; the file will be downloaded on demand or by auto-download.
+                try {
+                    val meta = JSONObject(String(message.data, Charsets.UTF_8))
+                    m = meta.toString().toByteArray()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error processing new-format attachment: ${e.message}", e)
                 }
-                val fullName = "$fileName.$ext"
+            } else {
+                // Legacy inline format: [jsonSize(u32)][JSON][fileBytes]
+                try {
+                    var offset = 0
 
-                // Write file directly from the data array without an extra copy
-                saveFileForMessage(context, fullName, message.data, fileOffset, fileLength)
-                Log.i(TAG, "Saved $typeLabel attachment: $fullName ($fileLength bytes)")
+                    // Read JSON length (first 4 bytes, big-endian)
+                    val jsonSize = ((message.data[offset].toInt() and 0xFF) shl 24) or
+                            ((message.data[offset + 1].toInt() and 0xFF) shl 16) or
+                            ((message.data[offset + 2].toInt() and 0xFF) shl 8) or
+                            (message.data[offset + 3].toInt() and 0xFF)
+                    offset += 4
 
-                // Update JSON with new filename, keep all other fields (text, size, hash, originalName, mimeType)
-                originalJson.put("name", fullName)
-                m = originalJson.toString().toByteArray()
+                    // Extract original JSON metadata
+                    val originalJson = JSONObject(String(message.data, offset, jsonSize, Charsets.UTF_8))
+                    offset += jsonSize
 
-            } catch (e: Exception) {
-                Log.e(TAG, "Error processing attachment: ${e.message}", e)
+                    // File bytes start at offset, length = remaining data
+                    val fileOffset = offset
+                    val fileLength = message.data.size - fileOffset
+
+                    // Generate new filename and save file bytes
+                    val fileName = randomString(16)
+                    val extLegacy = if (message.type == 1) {
+                        // For images, detect extension from magic bytes at the file offset
+                        getImageExtensionOrNull(message.data.copyOfRange(fileOffset, minOf(fileOffset + 12, message.data.size)))
+                    } else {
+                        // For files, use original extension from metadata
+                        originalJson.optString("originalName", "file").substringAfterLast('.', "bin")
+                    }
+                    val fullName = "$fileName.$extLegacy"
+
+                    // Write file directly from the data array without an extra copy
+                    saveFileForMessage(context, fullName, message.data, fileOffset, fileLength)
+                    Log.i(TAG, "Saved $typeLabel attachment: $fullName ($fileLength bytes)")
+
+                    // Update JSON with new filename, keep all other fields (text, size, hash, originalName, mimeType)
+                    originalJson.put("name", fullName)
+                    m = originalJson.toString().toByteArray()
+
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error processing legacy attachment: ${e.message}", e)
+                }
             }
         } else {
             // Plain text message

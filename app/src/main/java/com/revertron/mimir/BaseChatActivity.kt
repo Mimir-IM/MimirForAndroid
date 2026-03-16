@@ -480,27 +480,22 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             // Forward mode: send user text first (if present), then forwarded message
             editText.text?.clear()
 
-            // Send user's text first if present
-            if (text.isNotEmpty()) {
-                sendMessage(text, 0L)
-            }
-
             // Then send the forwarded message
             if (attachmentJson != null) {
-                // Media forward - send with attachment and original caption
+                // Media forward - combine user text with original caption
                 val originalCaption = attachmentJson?.optString("text", "") ?: ""
-                sendMessage(originalCaption, 0L)
+                val combinedText = if (text.isNotEmpty() && originalCaption.isNotEmpty()) {
+                    "$text\n$originalCaption"
+                } else text.ifEmpty { originalCaption }
+                sendMessage(combinedText, 0L)
             } else {
-                // Text forward - get text from reply panel and send
+                // Text forward - send user text first, then forwarded text
+                if (text.isNotEmpty()) {
+                    sendMessage(text, 0L)
+                }
                 val forwardedText = replyText.text.toString()
                 if (forwardedText.isNotEmpty()) {
-                    // Temporarily clear attachment to ensure text-only send
-                    val savedAttachment = attachmentJson
-                    val savedType = attachmentType
-                    attachmentJson = null
                     sendMessage(forwardedText, 0L)
-                    attachmentJson = savedAttachment
-                    attachmentType = savedType
                 }
             }
 
@@ -1019,9 +1014,10 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         menuPopup.inputMethodMode = PopupWindow.INPUT_METHOD_NOT_NEEDED
         menuPopup.elevation = 8f * resources.displayMetrics.density
 
-        // Hide "Save" menu item for messages without file attachments (type != 1 and type != 3)
+        // Hide "Save" and "Delete file" menu items for messages without file attachments (type != 1 and type != 3)
         if (messageType != 1 && messageType != 3) {
             menuView.findViewById<View>(R.id.menu_save).visibility = View.GONE
+            menuView.findViewById<View>(R.id.menu_delete_file).visibility = View.GONE
         }
 
         // Measure menu popup
@@ -1161,6 +1157,12 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             menuPopup.dismiss()
         }
 
+        menuView.findViewById<View>(R.id.menu_delete_file).setOnClickListener {
+            handleDeleteFile(anchorView)
+            reactionsPopup?.dismiss()
+            menuPopup.dismiss()
+        }
+
         // Dismiss reactions when menu is dismissed
         menuPopup.setOnDismissListener {
             reactionsPopup?.dismiss()
@@ -1283,6 +1285,67 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         } catch (e: Exception) {
             Log.e(TAG, "Error saving file", e)
             Toast.makeText(this, "Error saving file: ${e.message}", Toast.LENGTH_LONG).show()
+            return false
+        }
+    }
+
+    private fun handleDeleteFile(view: View): Boolean {
+        val tag = view.tag as? MessageTag ?: return false
+        val id = tag.messageId
+
+        val message = getMessageFromStorage(id)
+        if (message == null) {
+            Toast.makeText(this, "Message not found", Toast.LENGTH_SHORT).show()
+            return false
+        }
+
+        if (message.type != 1 && message.type != 3) {
+            return false
+        }
+
+        if (message.data == null) {
+            Toast.makeText(this, "No file data available", Toast.LENGTH_SHORT).show()
+            return false
+        }
+
+        try {
+            val json = JSONObject(String(message.data))
+            val fileName = json.getString("name")
+
+            val filesDir = File(this.filesDir, "files")
+            val sourceFile = File(filesDir, fileName)
+
+            if (!sourceFile.exists()) {
+                Toast.makeText(this, getString(R.string.file_not_found_in_storage), Toast.LENGTH_SHORT).show()
+                return false
+            }
+
+            val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+            val builder = AlertDialog.Builder(wrapper)
+            builder.setTitle(getString(R.string.delete_file_dialog_title))
+            builder.setMessage(R.string.delete_file_dialog_text)
+            builder.setIcon(R.drawable.ic_delete)
+            builder.setPositiveButton(getString(R.string.menu_delete)) { _, _ ->
+                if (sourceFile.delete()) {
+                    // Also delete cached preview if it exists
+                    val cacheDir = File(this.cacheDir, "files")
+                    val cacheFile = File(cacheDir, fileName)
+                    if (cacheFile.exists()) {
+                        cacheFile.delete()
+                    }
+                    Toast.makeText(this, getString(R.string.file_deleted), Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "Failed to delete file", Toast.LENGTH_SHORT).show()
+                }
+            }
+            builder.setNegativeButton(getString(R.string.cancel)) { dialog, _ ->
+                dialog.cancel()
+            }
+            builder.show()
+            return true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting file", e)
+            Toast.makeText(this, "Error deleting file: ${e.message}", Toast.LENGTH_LONG).show()
             return false
         }
     }

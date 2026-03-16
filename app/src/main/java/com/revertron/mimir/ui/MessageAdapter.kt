@@ -1007,24 +1007,24 @@ class MessageAdapter(
     }
 
     /**
-     * Sends a file download request to ConnectionService via the Rust bridge.
-     * Parses the message metadata JSON to extract name and hash.
+     * Sends a file download request to ConnectionService via the file server.
+     * Works for both P2P and group chat messages.
      */
     private fun requestFileDownload(context: Context, msgGuid: Long, metaBytes: ByteArray?) {
-        if (metaBytes == null || groupChat) return
+        if (metaBytes == null) return
         try {
             val json = JSONObject(String(metaBytes))
             val name = json.getString("name")
             val hash = json.getString("hash")
             val size = json.optLong("size", 0)
-            val pubkey = storage.getContactPubkey(chatId) ?: return
             val intent = Intent(context, ConnectionService::class.java).apply {
                 putExtra("command", "request_file")
-                putExtra("pubkey", pubkey)
                 putExtra("guid", msgGuid)
                 putExtra("name", name)
                 putExtra("hash", hash)
                 putExtra("size", size)
+                putExtra("group_chat", groupChat)
+                putExtra("chat_id", chatId)
             }
             context.startService(intent)
         } catch (e: Exception) {

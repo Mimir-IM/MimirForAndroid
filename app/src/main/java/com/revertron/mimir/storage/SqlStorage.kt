@@ -103,9 +103,9 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                     when (type) {
                         1 -> {
                             val json = JSONObject(String(data))
-                            val text = json.getString("text")
+                            val text = json.optString("text", "")
                             if (text.isEmpty()) {
-                                json.getString("name")
+                                "\uD83D\uDDBC " + json.optString("originalName", json.optString("name", context.getString(R.string.draft_image)))
                             } else {
                                 text
                             }
@@ -118,7 +118,12 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                         3 -> {
                             // File attachment - show original filename with optional message text
                             val json = JSONObject(String(data))
-                            json.optString("text", "")
+                            val text = json.optString("text", "")
+                            if (text.isEmpty()) {
+                                "\uD83D\uDCCE " + json.optString("originalName", json.optString("name", ""))
+                            } else {
+                                text
+                            }
                         }
                         else -> {
                             String(data)
@@ -146,9 +151,9 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                     when (type) {
                         1 -> {
                             val json = JSONObject(String(data))
-                            val text = json.getString("text")
+                            val text = json.optString("text", "")
                             if (text.isEmpty()) {
-                                json.getString("name")
+                                "\uD83D\uDDBC " + json.optString("originalName", json.optString("name", context.getString(R.string.draft_image)))
                             } else {
                                 text
                             }
@@ -161,7 +166,12 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                         3 -> {
                             // File attachment - show original filename with optional message text
                             val json = JSONObject(String(data))
-                            json.optString("text", "")
+                            val text = json.optString("text", "")
+                            if (text.isEmpty()) {
+                                "\uD83D\uDCCE " + json.optString("originalName", json.optString("name", ""))
+                            } else {
+                                text
+                            }
                         }
                         1000 -> {
                             // System message - parse and format
@@ -1194,6 +1204,23 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                 listener.onGroupChatChanged(chatId)
             }
         }
+    }
+
+    fun updateMessageData(guid: Long, data: ByteArray): Boolean {
+        val values = ContentValues().apply { put("message", data) }
+        return writableDatabase.update("messages", values, "guid = ?", arrayOf(guid.toString())) > 0
+    }
+
+    fun updateGroupMessageData(chatId: Long, guid: Long, data: ByteArray): Boolean {
+        val messagesTable = "messages_$chatId"
+        val values = ContentValues().apply { put("data", data) }
+        val rows = writableDatabase.update(messagesTable, values, "guid = ?", arrayOf(guid.toString()))
+        if (rows > 0) {
+            for (listener in listeners) {
+                listener.onGroupChatChanged(chatId)
+            }
+        }
+        return rows > 0
     }
 
     // Sometimes, when the collision on mediator occurs, it sends us new guid, and we change it locally
@@ -2702,6 +2729,108 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
 
         Log.i(TAG, "Found ${fileNames.size} media files referenced in database")
         return fileNames
+    }
+
+    data class FileInfo(
+        val storageName: String,
+        val originalName: String,
+        val size: Long,
+        val timestamp: Long,
+        val isImage: Boolean,
+        val contactId: Long,
+        val groupChatId: Long
+    )
+
+    fun getAllFileItems(): List<FileInfo> {
+        val items = mutableListOf<FileInfo>()
+
+        // 1. Collect from contact messages (type 1=image, 3=file)
+        readableDatabase.query(
+            "messages",
+            arrayOf("message", "contact", "time", "type"),
+            "type IN (1, 3)",
+            null, null, null, null
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val messageData = cursor.getBlobOrNull(0)
+                val contactId = cursor.getLong(1)
+                val time = cursor.getLong(2)
+                val type = cursor.getInt(3)
+                if (messageData != null) {
+                    try {
+                        val json = JSONObject(String(messageData))
+                        val storageName = json.optString("name", "")
+                        if (storageName.isNotEmpty()) {
+                            items.add(FileInfo(
+                                storageName = storageName,
+                                originalName = json.optString("originalName", storageName),
+                                size = json.optLong("size", 0),
+                                timestamp = time,
+                                isImage = type == 1,
+                                contactId = contactId,
+                                groupChatId = -1
+                            ))
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error parsing attachment data in messages table", e)
+                    }
+                }
+            }
+        }
+
+        // 2. Collect from all group chat messages
+        val groupChatIds = mutableListOf<Long>()
+        readableDatabase.query(
+            "group_chats",
+            arrayOf("chat_id"),
+            null, null, null, null, null
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                groupChatIds.add(cursor.getLong(0))
+            }
+        }
+
+        for (chatId in groupChatIds) {
+            val messagesTable = "messages_$chatId"
+            try {
+                readableDatabase.query(
+                    messagesTable,
+                    arrayOf("data", "timestamp", "type"),
+                    "type IN (1, 3)",
+                    null, null, null, null
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val messageData = cursor.getBlobOrNull(0)
+                        val timestamp = cursor.getLong(1)
+                        val type = cursor.getInt(2)
+                        if (messageData != null) {
+                            try {
+                                val json = JSONObject(String(messageData))
+                                val storageName = json.optString("name", "")
+                                if (storageName.isNotEmpty()) {
+                                    items.add(FileInfo(
+                                        storageName = storageName,
+                                        originalName = json.optString("originalName", storageName),
+                                        size = json.optLong("size", 0),
+                                        timestamp = timestamp,
+                                        isImage = type == 1,
+                                        contactId = -1,
+                                        groupChatId = chatId
+                                    ))
+                                }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error parsing attachment data in $messagesTable", e)
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error querying $messagesTable for file items", e)
+            }
+        }
+
+        Log.i(TAG, "Found ${items.size} file items referenced in database")
+        return items
     }
 
     fun generateGuid(time: Long, data: ByteArray): Long {

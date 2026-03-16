@@ -24,6 +24,7 @@ class App: Application() {
 
     var peerNode: uniffi.mimir.PeerNode? = null
     var mediatorNode: uniffi.mimir.MediatorNode? = null
+    var filesNode: uniffi.mimir.FilesNode? = null
     var online: Boolean = false
     @Volatile var trackerAnnounced: Boolean = false
     @Volatile var mediatorConnected: Boolean = false

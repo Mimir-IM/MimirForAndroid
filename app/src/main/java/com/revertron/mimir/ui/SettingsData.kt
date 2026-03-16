@@ -14,6 +14,7 @@ object SettingsData {
     const val KEY_AUTO_DOWNLOAD_CONTACTS = "auto-download-contacts"
     const val KEY_AUTO_DOWNLOAD_OTHERS = "auto-download-others"
     const val KEY_VOICE_QUALITY = "voice-quality"
+    const val KEY_FILE_SERVER_PUBKEY = "file-server-pubkey"
 
     fun create(context: Context): List<SettingsAdapter.Item> {
         val sp = PreferenceManager.getDefaultSharedPreferences(context)
@@ -71,6 +72,14 @@ object SettingsData {
                 id = R.string.backup_and_restore,
                 titleRes = R.string.backup_and_restore,
                 descriptionRes = R.string.backup_and_restore_desc,
+                isSwitch = false,
+                checked = false
+            ),
+
+            SettingsAdapter.Item(
+                id = R.string.manage_files,
+                titleRes = R.string.manage_files,
+                descriptionRes = R.string.manage_files_desc,
                 isSwitch = false,
                 checked = false
             ),

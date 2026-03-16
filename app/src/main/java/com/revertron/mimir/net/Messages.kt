@@ -247,9 +247,9 @@ fun writeMessage(dos: DataOutputStream, message: Message, filePath: String, stre
     var jsonSize = -1
     var attachedFile: File? = null
     if (message.data.isNotEmpty()) {
-        when (message.type) {
-            1, 3 -> {
-                // Type 1: Image, Type 3: File
+        when {
+            (message.type == 1 || message.type == 3) && filePath.isNotEmpty() -> {
+                // Type 1: Image, Type 3: File — with inline file bytes
                 // Stream file bytes directly to avoid loading the full file into RAM.
                 val meta = JSONObject(String(message.data))
                 jsonSize = message.data.size

@@ -3,6 +3,7 @@ package com.revertron.mimir
 import android.Manifest
 import android.app.NotificationManager
 import android.app.Service
+import android.util.Base64
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -33,6 +34,7 @@ import org.bouncycastle.util.encoders.Hex
 import uniffi.mimir.CallStatus
 import uniffi.mimir.ContactInfo
 import uniffi.mimir.MemberInfoData
+import uniffi.mimir.FilesNode
 import uniffi.mimir.MediatorNode
 import uniffi.mimir.PeerNode
 import uniffi.mimir.decryptMessage as mimirDecryptMessage
@@ -56,7 +58,7 @@ class ConnectionService : Service(),
             val info = (application as App).storage.getAccountInfo(1, sinceTime) ?: return null
             var avatar: ByteArray? = null
             if (info.avatar.isNotEmpty()) {
-                val f = java.io.File(java.io.File(filesDir, "avatars"), info.avatar)
+                val f = File(File(filesDir, "avatars"), info.avatar)
                 if (f.exists()) avatar = f.readBytes()
             }
             return ContactInfo(
@@ -87,6 +89,27 @@ class ConnectionService : Service(),
         }
     }
 
+    private val filesEventListener = object : uniffi.mimir.FilesEventListener {
+        override fun onUploadProgress(fileHash: ByteArray, bytesSent: ULong, totalBytes: ULong) {
+            Log.d(TAG, "File upload progress ${bytesSent}/${totalBytes}")
+        }
+        override fun onUploadComplete(fileHash: ByteArray) {
+            Log.i(TAG, "File upload complete: ${Hex.toHexString(fileHash)}")
+        }
+        override fun onUploadError(fileHash: ByteArray, error: String) {
+            Log.e(TAG, "File upload error: $error")
+        }
+        override fun onDownloadProgress(fileHash: ByteArray, bytesReceived: ULong, totalBytes: ULong) {
+            Log.d(TAG, "File download progress ${bytesReceived}/${totalBytes}")
+        }
+        override fun onDownloadComplete(fileHash: ByteArray, filePath: String) {
+            Log.i(TAG, "File download complete: $filePath")
+        }
+        override fun onDownloadError(fileHash: ByteArray, error: String) {
+            Log.e(TAG, "File download error: $error")
+        }
+    }
+
     companion object {
         const val TAG = "ConnectionService"
 
@@ -101,6 +124,9 @@ class ConnectionService : Service(),
         // Default mediator (same as MediatorManager.DEFAULT_MEDIATOR_PUBKEY)
         private const val DEFAULT_MEDIATOR_HEX = "817474e1393a55ef8ab8f0407c17c447d336474fe9af2de429b4cc2861f5b278"
 
+        private const val FILES_PORT: UShort = 80u
+        const val DEFAULT_FILE_SERVER_HEX = "b0553a35b2f53fdcc092a10e78226209ca3d96958ef76c5564e28c5d88c9417c"
+
         // Group member permission flags (must match mediator server)
         private const val PERM_READ_ONLY = 0x08
         private const val PERM_BANNED = 0x01
@@ -108,6 +134,7 @@ class ConnectionService : Service(),
 
     private var peerNode: PeerNode? = null
     private var mediatorNode: MediatorNode? = null
+    private var filesNode: FilesNode? = null
 
     // Call state
     private var callingPubkey: ByteArray? = null
@@ -188,6 +215,10 @@ class ConnectionService : Service(),
                                 val mNode = MediatorNode(node, MEDIATOR_PORT, this)
                                 mediatorNode = mNode
                                 App.app.mediatorNode = mNode
+
+                                val fNode = FilesNode(node, FILES_PORT, filesEventListener)
+                                filesNode = fNode
+                                App.app.filesNode = fNode
 
                                 node.announceToTrackers()
 
@@ -373,9 +404,12 @@ class ConnectionService : Service(),
                         Log.i(TAG, "Message $id (guid=$guid) to ${Hex.toHexString(pubkey).take(8)}")
                         Thread {
                             try {
-                                // For attachments, send only JSON metadata (no file bytes).
-                                // The recipient will request the file separately.
-                                val sendPayload = messageBytes
+                                // For file attachments, upload to file server first
+                                val sendPayload = if (type == 1 || type == 3) {
+                                    uploadP2PFileToServer(guid, messageBytes, storage)
+                                } else {
+                                    messageBytes
+                                }
                                 // Send immediately if already connected
                                 peerNode?.sendMessage(pubkey, guid, replyTo, sendTime, 0L, type, sendPayload)
                                 Log.i(TAG, "Message $id sent directly (peer connected)")
@@ -394,31 +428,92 @@ class ConnectionService : Service(),
             }
 
             "request_file" -> {
-                val pubkey = intent.getByteArrayExtra("pubkey")
                 val guid = intent.getLongExtra("guid", 0L)
                 val name = intent.getStringExtra("name")
-                val hash = intent.getStringExtra("hash")
-                val size = intent.getLongExtra("size", 0L)
-                if (pubkey != null && name != null && hash != null && guid != 0L) {
-                    if (!activeFileDownloads.add(name)) {
-                        Log.i(TAG, "File $name is already being downloaded, skipping duplicate request")
+                val isGroupChat = intent.getBooleanExtra("group_chat", false)
+                val chatId = intent.getLongExtra("chat_id", 0L)
+                if (name != null && guid != 0L) {
+                    // Get message metadata from DB
+                    val storage = (application as App).storage
+                    val metaBytes = if (isGroupChat) {
+                        storage.getGroupMessage(chatId, guid, byGuid = true)?.data
                     } else {
-                        broadcastFileDownloading(name, pubkey)
+                        storage.getMessage(guid, byGuid = true)?.data
+                    }
+                    if (metaBytes == null) {
+                        Log.e(TAG, "request_file: message not found for guid=$guid")
+                        return START_STICKY
+                    }
+                    val meta = try { org.json.JSONObject(String(metaBytes)) } catch (_: Exception) {
+                        Log.e(TAG, "request_file: invalid metadata for guid=$guid")
+                        return START_STICKY
+                    }
+
+                    if (meta.has("key")) {
+                        // File server download
+                        val rawKey = if (isGroupChat) {
+                            val chatInfo = storage.getGroupChat(chatId)
+                            if (chatInfo == null) {
+                                Log.e(TAG, "request_file: group chat $chatId not found")
+                                return START_STICKY
+                            }
+                            val wrappedKey = Base64.decode(meta.getString("key"), Base64.NO_WRAP)
+                            mimirDecryptMessage(wrappedKey, chatInfo.sharedKey)
+                        } else {
+                            Base64.decode(meta.getString("key"), Base64.NO_WRAP)
+                        }
+                        val serverPubkey = Hex.decode(meta.getString("server"))
+                        val fileHash = Hex.decode(meta.getString("hash"))
+
+                        if (!activeFileDownloads.add(name)) {
+                            Log.i(TAG, "File $name already downloading, skipping")
+                            return START_STICKY
+                        }
+                        broadcastFileDownloading(name, ByteArray(0))
                         Thread {
                             try {
-                                peerNode?.requestFile(pubkey, guid, name, hash, size)
-                                Log.i(TAG, "Requested file $name (guid=$guid) from ${Hex.toHexString(pubkey).take(8)}")
-                            } catch (e: Exception) {
-                                Log.w(TAG, "requestFile failed: ${e.message}")
+                                val filesDir = File(this.filesDir, "files")
+                                filesDir.mkdirs()
+                                val destPath = File(filesDir, name).absolutePath
+                                filesNode!!.downloadFile(serverPubkey, fileHash, guid, destPath, rawKey)
+                                val cacheDir = File(this.cacheDir, "files")
+                                cacheDir.mkdirs()
+                                createImagePreview(destPath, File(cacheDir, name).absolutePath, 512, 80)
                                 activeFileDownloads.remove(name)
-                                // Not connected — try connecting first
-                                try {
-                                    peerNode?.connectToPeer(pubkey)
-                                } catch (e2: Exception) {
-                                    Log.w(TAG, "connectToPeer for file request failed: ${e2.message}")
-                                }
+                                Log.i(TAG, "File downloaded from server: $name")
+                                LocalBroadcastManager.getInstance(this).sendBroadcast(
+                                    Intent("ACTION_FILE_DOWNLOADED").apply { putExtra("name", name) }
+                                )
+                            } catch (e: Exception) {
+                                Log.e(TAG, "File server download failed: ${e.message}", e)
+                                activeFileDownloads.remove(name)
+                                LocalBroadcastManager.getInstance(this).sendBroadcast(
+                                    Intent("ACTION_FILE_DOWNLOADED").apply { putExtra("name", name) }
+                                )
                             }
                         }.start()
+                    } else {
+                        // Legacy P2P download
+                        val hash = intent.getStringExtra("hash")
+                        val size = intent.getLongExtra("size", 0L)
+                        val pubkey = if (!isGroupChat) storage.getContactPubkey(chatId) else null
+                        if (pubkey != null && hash != null) {
+                            if (!activeFileDownloads.add(name)) {
+                                Log.i(TAG, "File $name is already being downloaded, skipping")
+                            } else {
+                                broadcastFileDownloading(name, pubkey)
+                                Thread {
+                                    try {
+                                        peerNode?.requestFile(pubkey, guid, name, hash, size)
+                                        Log.i(TAG, "Requested file $name (guid=$guid) from ${Hex.toHexString(pubkey).take(8)}")
+                                    } catch (e: Exception) {
+                                        Log.w(TAG, "requestFile failed: ${e.message}")
+                                        activeFileDownloads.remove(name)
+                                        try { peerNode?.connectToPeer(pubkey) } catch (_: Exception) {}
+                                    }
+                                }.start()
+                            }
+                        }
                     }
                 }
             }
@@ -592,6 +687,10 @@ class ConnectionService : Service(),
         Log.i(TAG, "ConnectionService destroying")
         stopAudioSession()
 
+        filesNode?.stop()
+        filesNode = null
+        App.app.filesNode = null
+
         mediatorNode?.stop()
         mediatorNode = null
         App.app.mediatorNode = null
@@ -695,8 +794,16 @@ class ConnectionService : Service(),
             // Attachment metadata only (no file bytes in the new protocol).
             // Store the JSON metadata; the file will be downloaded on demand.
             storage.addMessage(pubkey, guid, replyTo, true, true, sendTime, editTime, msgType, data)
-            // Auto-download if settings allow and peer is connected.
-            maybeAutoDownloadFile(pubkey, guid, data, storage)
+            // Check for file-server format (has "key" field) — download from server
+            val hasServerKey = try {
+                org.json.JSONObject(String(data)).has("key")
+            } catch (_: Exception) { false }
+            if (hasServerKey) {
+                maybeAutoDownloadFromServer(pubkey, guid, data, storage)
+            } else {
+                // Legacy P2P format — request file directly from peer
+                maybeAutoDownloadFile(pubkey, guid, data, storage)
+            }
         } else {
             storage.addMessage(pubkey, guid, replyTo, true, true, sendTime, editTime, msgType, data)
         }
@@ -773,7 +880,7 @@ class ConnectionService : Service(),
             val file = File(File(filesDir, "files"), name)
             if (file.exists()) return
 
-            val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+            val prefs = PreferenceManager.getDefaultSharedPreferences(this)
             val isContact = storage.getContactId(pubkey) >= 0
             val threshold = if (isContact) {
                 prefs.getString("auto-download-contacts", "5242880")?.toLongOrNull() ?: 5242880L
@@ -786,9 +893,9 @@ class ConnectionService : Service(),
             if (threshold > 0 && size > threshold) return
 
             // Peer must be connected to request file.
-            val contact = org.bouncycastle.util.encoders.Hex.toHexString(pubkey)
+            val contact = Hex.toHexString(pubkey)
             val status = peerStatuses[contact]
-            if (status != com.revertron.mimir.net.PeerStatus.Connected) return
+            if (status != PeerStatus.Connected) return
 
             if (!activeFileDownloads.add(name)) {
                 Log.i(TAG, "File $name is already being downloaded, skipping auto-download")
@@ -807,6 +914,123 @@ class ConnectionService : Service(),
         } catch (e: Exception) {
             Log.w(TAG, "maybeAutoDownloadFile failed: ${e.message}")
         }
+    }
+
+    /**
+     * Download a file from the file server (new format with key/server fields).
+     * Respects the same auto-download size thresholds as P2P downloads.
+     */
+    private fun maybeAutoDownloadFromServer(pubkey: ByteArray, msgGuid: Long, metaBytes: ByteArray, storage: SqlStorage) {
+        try {
+            val json = org.json.JSONObject(String(metaBytes))
+            val name = json.getString("name")
+            val size = json.optLong("size", 0)
+
+            // Check if file already exists
+            val file = File(File(filesDir, "files"), name)
+            if (file.exists()) return
+
+            val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+            val isContact = storage.getContactId(pubkey) >= 0
+            val threshold = if (isContact) {
+                prefs.getString("auto-download-contacts", "5242880")?.toLongOrNull() ?: 5242880L
+            } else {
+                prefs.getString("auto-download-others", "0")?.toLongOrNull() ?: 0L
+            }
+
+            if (size <= 0L) return
+            if (threshold == 0L) return
+            if (threshold > 0 && size > threshold) return
+
+            downloadFileFromServer(pubkey, msgGuid, metaBytes, storage)
+        } catch (e: Exception) {
+            Log.w(TAG, "maybeAutoDownloadFromServer failed: ${e.message}")
+        }
+    }
+
+    /**
+     * Downloads a file from the file server using metadata with key/server fields.
+     * Runs the download on a background thread.
+     */
+    private fun downloadFileFromServer(pubkey: ByteArray, msgGuid: Long, metaBytes: ByteArray, storage: SqlStorage) {
+        try {
+            val json = org.json.JSONObject(String(metaBytes))
+            val name = json.getString("name")
+
+            if (!activeFileDownloads.add(name)) {
+                Log.i(TAG, "File $name is already being downloaded, skipping")
+                return
+            }
+            broadcastFileDownloading(name, pubkey)
+            Thread {
+                try {
+                    val fileKey = Base64.decode(json.getString("key"), Base64.NO_WRAP)
+                    val serverPubkey = Hex.decode(json.getString("server"))
+                    val fileHash = Hex.decode(json.getString("hash"))
+                    val filesDir = File(this.filesDir, "files")
+                    filesDir.mkdirs()
+                    val destPath = File(filesDir, name).absolutePath
+
+                    filesNode?.downloadFile(serverPubkey, fileHash, msgGuid, destPath, fileKey)
+
+                    // Generate image preview
+                    val cacheDir = File(this.cacheDir, "files")
+                    cacheDir.mkdirs()
+                    val previewFile = File(cacheDir, name)
+                    createImagePreview(destPath, previewFile.absolutePath, 512, 80)
+
+                    activeFileDownloads.remove(name)
+                    Log.i(TAG, "File downloaded from server: $name")
+
+                    LocalBroadcastManager.getInstance(this).sendBroadcast(
+                        Intent("ACTION_FILE_DOWNLOADED").apply {
+                            putExtra("name", name)
+                            putExtra("pubkey", pubkey)
+                        }
+                    )
+                } catch (e: Exception) {
+                    Log.w(TAG, "downloadFileFromServer failed: ${e.message}")
+                    activeFileDownloads.remove(name)
+                }
+            }.start()
+        } catch (e: Exception) {
+            Log.w(TAG, "downloadFileFromServer parse failed: ${e.message}")
+        }
+    }
+
+    /**
+     * Uploads a P2P file attachment to the file server and returns updated metadata with
+     * key/server/hash fields (raw key, not wrapped).
+     * Checks if already uploaded for this guid by verifying the key length is raw (32 bytes).
+     * Updates the local DB with the new metadata.
+     */
+    private fun uploadP2PFileToServer(guid: Long, metaBytes: ByteArray, storage: SqlStorage): ByteArray {
+        val meta = org.json.JSONObject(String(metaBytes))
+        // Check if already uploaded with a raw P2P key (32 bytes = 44 chars base64).
+        // Group-wrapped keys are longer (has nonce + tag), so we re-upload those.
+        if (meta.has("key")) {
+            val keyBytes = Base64.decode(meta.getString("key"), Base64.NO_WRAP)
+            if (keyBytes.size == 32) {
+                // Already uploaded with raw key — skip re-upload
+                return metaBytes
+            }
+            // Wrapped key from group forward — strip and re-upload
+            meta.remove("key")
+            meta.remove("server")
+        }
+        val fileKey = uniffi.mimir.generateSharedKey()
+        val preferences = PreferenceManager.getDefaultSharedPreferences(this)
+        val serverPubkey = Hex.decode(preferences.getString(SettingsData.KEY_FILE_SERVER_PUBKEY, DEFAULT_FILE_SERVER_HEX)!!)
+        val fileName = meta.getString("name")
+        val filePath = File(filesDir, "files/$fileName").absolutePath
+        val fileHash = filesNode!!.uploadFile(serverPubkey, filePath, guid, fileKey)
+        // Add file server fields — raw key for P2P (no wrapping)
+        meta.put("key", Base64.encodeToString(fileKey, Base64.NO_WRAP))
+        meta.put("server", Hex.toHexString(serverPubkey))
+        meta.put("hash", Hex.toHexString(fileHash))
+        val updatedBytes = meta.toString().toByteArray()
+        storage.updateMessageData(guid, updatedBytes)
+        return updatedBytes
     }
 
     override fun onMessageDelivered(pubkey: ByteArray, guid: Long) {
@@ -1345,10 +1569,9 @@ class ConnectionService : Service(),
         val undelivered = storage.getUndeliveredGroupMessages(chatId)
         if (undelivered.isEmpty()) return
 
-        val filesPath = File(filesDir, "files").absolutePath
         for (msg in undelivered) {
             try {
-                val messageData = String(msg.data ?: ByteArray(0))
+                var messageData = String(msg.data ?: ByteArray(0))
 
                 // Skip oversized file messages to prevent OOM crash
                 if (msg.type == 1 || msg.type == 3) {
@@ -1359,6 +1582,27 @@ class ConnectionService : Service(),
                             Log.w(TAG, "Skipping oversized group file msg ${msg.guid}: $fileSize bytes")
                             storage.setGroupMessageDelivered(chatId, msg.guid, true)
                             continue
+                        }
+                        // Check if already uploaded (has "key" field)
+                        if (!meta.has("key")) {
+                            // Not yet uploaded — upload now via FilesNode
+                            val fileKey = uniffi.mimir.generateSharedKey()
+                            val preferences = PreferenceManager.getDefaultSharedPreferences(this)
+                            val serverPubkey = Hex.decode(preferences.getString(SettingsData.KEY_FILE_SERVER_PUBKEY, DEFAULT_FILE_SERVER_HEX)!!)
+                            val fileName = meta.getString("name")
+                            val filePath = File(filesDir, "files/$fileName").absolutePath
+                            val fileHash = filesNode!!.uploadFile(serverPubkey, filePath, msg.guid, fileKey)
+                            val wrappedKey = mimirEncryptMessage(fileKey, chatInfo.sharedKey)
+                            val newMeta = org.json.JSONObject()
+                            newMeta.put("name", meta.getString("name"))
+                            newMeta.put("hash", Hex.toHexString(fileHash))
+                            newMeta.put("size", meta.optLong("size", 0))
+                            if (meta.has("text")) newMeta.put("text", meta.getString("text"))
+                            newMeta.put("key", Base64.encodeToString(wrappedKey, Base64.NO_WRAP))
+                            newMeta.put("server", Hex.toHexString(serverPubkey))
+                            if (meta.has("originalName")) newMeta.put("originalName", meta.getString("originalName"))
+                            if (meta.has("mimeType")) newMeta.put("mimeType", meta.getString("mimeType"))
+                            messageData = newMeta.toString()
                         }
                     } catch (_: Exception) { }
                 }
@@ -1371,8 +1615,7 @@ class ConnectionService : Service(),
                     type = msg.type,
                     data = messageData.toByteArray()
                 )
-                val filePath = if (msg.type == 1 || msg.type == 3) filesPath else ""
-                val serialized = serializeGroupMessage(netMsg, filePath)
+                val serialized = serializeGroupMessage(netMsg, "")
                 val encryptedData = mimirEncryptMessage(serialized, chatInfo.sharedKey)
                 val messageId = mediatorNode!!.sendGroupMessage(
                     mediatorPubkey, chatId, msg.guid, msg.timestamp, encryptedData
@@ -1388,7 +1631,7 @@ class ConnectionService : Service(),
                         putExtra("replyTo", msg.replyTo)
                     }
                 )
-                Thread.sleep(100)
+                sleep(100)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to resend msg ${msg.guid}: ${e.message}")
             }
@@ -1404,8 +1647,12 @@ class ConnectionService : Service(),
             if (msg.data == null) continue
             Log.d(TAG, "  Sending pending msg id=$id guid=${msg.guid}")
             try {
-                // Send only metadata (no file bytes); recipient requests files separately.
-                val sendPayload = msg.data
+                // For file attachments, upload to file server if not yet uploaded
+                val sendPayload = if ((msg.type == 1 || msg.type == 3) && msg.data != null) {
+                    uploadP2PFileToServer(msg.guid, msg.data, storage)
+                } else {
+                    msg.data
+                }
                 peerNode?.sendMessage(
                     pubkey,
                     msg.guid,
@@ -1441,7 +1688,7 @@ class ConnectionService : Service(),
                 Intent("ACTION_MEDIATOR_SUBSCRIBED").apply { putExtra("chat_id", chatId) }
             )
             syncInitialMemberList(chatId, chatInfo.mediatorPubkey, storage)
-            Thread.sleep(1000)
+            sleep(1000)
             syncMissedMessages(chatId, chatInfo.mediatorPubkey, storage, serverLastId)
             resendUndeliveredGroupMessages(chatId, chatInfo.mediatorPubkey, storage)
         } catch (e: Exception) {
@@ -1479,9 +1726,35 @@ class ConnectionService : Service(),
                 broadcastMediatorError("send", "Chat not found")
                 return
             }
+
+            val actualMessageData = if (type == 1 || type == 3) {
+                // Upload file via FilesNode, send only metadata through mediator
+                val meta = org.json.JSONObject(messageData)
+                val fileKey = uniffi.mimir.generateSharedKey()
+                val preferences = PreferenceManager.getDefaultSharedPreferences(this)
+                val serverPubkey = Hex.decode(preferences.getString(SettingsData.KEY_FILE_SERVER_PUBKEY, DEFAULT_FILE_SERVER_HEX)!!)
+                val fileName = meta.getString("name")
+                val filePath = File(filesDir, "files/$fileName").absolutePath
+                val fileHash = filesNode!!.uploadFile(serverPubkey, filePath, guid, fileKey)
+                val wrappedKey = mimirEncryptMessage(fileKey, chatInfo.sharedKey)
+                // Build metadata-only JSON
+                val newMeta = org.json.JSONObject()
+                newMeta.put("name", meta.getString("name"))
+                newMeta.put("hash", Hex.toHexString(fileHash))
+                newMeta.put("size", meta.optLong("size", 0))
+                if (meta.has("text")) newMeta.put("text", meta.getString("text"))
+                newMeta.put("key", Base64.encodeToString(wrappedKey, Base64.NO_WRAP))
+                newMeta.put("server", Hex.toHexString(serverPubkey))
+                if (meta.has("originalName")) newMeta.put("originalName", meta.getString("originalName"))
+                if (meta.has("mimeType")) newMeta.put("mimeType", meta.getString("mimeType"))
+                newMeta.toString()
+            } else {
+                messageData
+            }
+
             val serialized = serializeGroupMessage(
-                Message(guid, replyTo, sendTime, 0, type, messageData.toByteArray()),
-                if (type == 1 || type == 3) File(filesDir, "files").absolutePath else ""
+                Message(guid, replyTo, sendTime, 0, type, actualMessageData.toByteArray()),
+                "" // No file path — file data is on the server, not embedded
             )
             val encryptedData = mimirEncryptMessage(serialized, chatInfo.sharedKey)
             val messageId = mediatorNode!!.sendGroupMessage(
@@ -1671,7 +1944,7 @@ class ConnectionService : Service(),
                     break
                 }
                 // Any other error (including "not found" = invite expired/revoked): retry.
-                if (attempt < 3) Thread.sleep(2000)
+                if (attempt < 3) sleep(2000)
             }
         }
 

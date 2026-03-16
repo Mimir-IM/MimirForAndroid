@@ -63,7 +63,7 @@ import kotlin.math.min
 
 const val PICTURE_MAX_SIZE = 5 * 1024 * 1024
 const val MAX_FILE_SIZE = 1024 * 1024 * 1024
-const val MAX_GROUP_FILE_SIZE = 50L * 1024 * 1024
+const val MAX_GROUP_FILE_SIZE = 500L * 1024 * 1024
 const val UPDATE_SERVER = "https://update.mimir-app.net"
 const val IP_CACHE_DEFAULT_TTL = 900
 
@@ -799,20 +799,18 @@ fun getImagePreview(context: Context, fileName: String, maxSize: Int, quality: I
     val imagesDir = File(context.filesDir, "files")
     val cacheDir = File(context.cacheDir, "files")
     val previewFile = File(cacheDir, fileName)
-    val created = if (!previewFile.exists()) {
-        if (!cacheDir.exists()) {
-            cacheDir.mkdirs()
-        }
-        val originalFile = File(imagesDir, fileName).absolutePath
-        createImagePreview(originalFile, previewFile.absolutePath, maxSize, quality)
-    } else {
-        false
-    }
-    if (created) {
+    if (previewFile.exists()) {
         return BitmapFactory.decodeFile(previewFile.absolutePath)
+    }
+    if (!cacheDir.exists()) {
+        cacheDir.mkdirs()
+    }
+    val originalPath = File(imagesDir, fileName).absolutePath
+    val created = createImagePreview(originalPath, previewFile.absolutePath, maxSize, quality)
+    return if (created) {
+        BitmapFactory.decodeFile(previewFile.absolutePath)
     } else {
-        val originalFile = File(imagesDir, fileName).absolutePath
-        return BitmapFactory.decodeFile(originalFile)
+        BitmapFactory.decodeFile(originalPath)
     }
 }
 

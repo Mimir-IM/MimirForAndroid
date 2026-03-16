@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/action_delete"
+        android:icon="@drawable/ic_trash_can_outline"
+        android:title="@string/menu_delete"
+        android:visible="false"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/sort_by_name"
+        android:title="@string/sort_by_name"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/sort_by_size"
+        android:title="@string/sort_by_size"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/sort_by_date"
+        android:title="@string/sort_by_date"
+        app:showAsAction="never" />
+</menu>

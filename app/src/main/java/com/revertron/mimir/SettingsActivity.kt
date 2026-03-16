@@ -74,6 +74,10 @@ class SettingsActivity : BaseActivity(), SettingsAdapter.Listener {
                 val intent = Intent(this, BackupActivity::class.java)
                 startActivity(intent, animFromRight.toBundle())
             }
+            R.string.manage_files -> {
+                val intent = Intent(this, FilesActivity::class.java)
+                startActivity(intent, animFromRight.toBundle())
+            }
             R.string.advanced -> {
                 val intent = Intent(this, AdvancedSettingsActivity::class.java)
                 startActivity(intent, animFromRight.toBundle())

@@ -12,7 +12,10 @@ import androidx.appcompat.widget.Toolbar
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import android.widget.EditText
+import androidx.preference.PreferenceManager
 import com.revertron.mimir.ui.SettingsAdapter
+import com.revertron.mimir.ui.SettingsData
 import java.io.File
 
 class AdvancedSettingsActivity : BaseActivity(), SettingsAdapter.Listener {
@@ -44,6 +47,13 @@ class AdvancedSettingsActivity : BaseActivity(), SettingsAdapter.Listener {
                 id = R.string.delete_orphaned_media,
                 titleRes = R.string.delete_orphaned_media,
                 descriptionRes = R.string.delete_orphaned_media_desc,
+                isSwitch = false,
+                checked = false
+            ),
+            SettingsAdapter.Item(
+                id = R.string.file_server_pubkey,
+                titleRes = R.string.file_server_pubkey,
+                descriptionRes = R.string.file_server_pubkey_desc,
                 isSwitch = false,
                 checked = false
             ),
@@ -98,6 +108,9 @@ class AdvancedSettingsActivity : BaseActivity(), SettingsAdapter.Listener {
             }
             R.string.delete_orphaned_media -> {
                 showDeleteOrphanedMediaDialog()
+            }
+            R.string.file_server_pubkey -> {
+                showFileServerPubkeyDialog()
             }
             R.string.collect_logs -> {
                 val intent = Intent(this, LogActivity::class.java)
@@ -235,6 +248,31 @@ class AdvancedSettingsActivity : BaseActivity(), SettingsAdapter.Listener {
                 }
             }
         }.start()
+    }
+
+    private fun showFileServerPubkeyDialog() {
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        val sp = PreferenceManager.getDefaultSharedPreferences(this)
+        val currentKey = sp.getString(SettingsData.KEY_FILE_SERVER_PUBKEY, ConnectionService.DEFAULT_FILE_SERVER_HEX) ?: ConnectionService.DEFAULT_FILE_SERVER_HEX
+
+        val editText = EditText(wrapper).apply {
+            setText(currentKey)
+            hint = getString(R.string.file_server_pubkey_hint)
+            isSingleLine = true
+            setPadding(48, 32, 48, 32)
+        }
+
+        AlertDialog.Builder(wrapper)
+            .setTitle(R.string.file_server_pubkey_dialog_title)
+            .setView(editText)
+            .setPositiveButton(R.string.save_button) { _, _ ->
+                val newKey = editText.text.toString().trim()
+                if (newKey.length == 64) {
+                    sp.edit().putString(SettingsData.KEY_FILE_SERVER_PUBKEY, newKey).apply()
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     private fun showExitConfirmation() {
