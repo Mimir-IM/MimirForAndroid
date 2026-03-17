@@ -618,6 +618,8 @@ class ChatActivity : BaseChatActivity() {
                 // Text message - stored in reply panel already
             }
         }
+
+        updateSendButtonIcon()
     }
 
     // Peer status display

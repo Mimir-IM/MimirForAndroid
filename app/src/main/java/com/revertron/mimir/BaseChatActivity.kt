@@ -408,10 +408,11 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         }
     }
 
-    private fun updateSendButtonIcon() {
+    protected fun updateSendButtonIcon() {
         val editText = findViewById<AppCompatEditText>(R.id.message_edit)
         val sendButton = findViewById<AppCompatImageButton>(R.id.send_button)
-        if (editText.text.isNullOrBlank() && attachmentJson == null) {
+        val isForwardMode = intent.getBooleanExtra("FORWARD_MODE", false)
+        if (editText.text.isNullOrBlank() && attachmentJson == null && !isForwardMode) {
             sendButton.setImageResource(R.drawable.ic_microphone_outline)
             isInMicMode = true
         } else {
@@ -489,13 +490,13 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
                 } else text.ifEmpty { originalCaption }
                 sendMessage(combinedText, 0L)
             } else {
-                // Text forward - send user text first, then forwarded text
-                if (text.isNotEmpty()) {
-                    sendMessage(text, 0L)
-                }
+                // Text forward - combine user text and forwarded text into one message
                 val forwardedText = replyText.text.toString()
-                if (forwardedText.isNotEmpty()) {
-                    sendMessage(forwardedText, 0L)
+                val combinedText = if (text.isNotEmpty() && forwardedText.isNotEmpty()) {
+                    "$text\n$forwardedText"
+                } else text.ifEmpty { forwardedText }
+                if (combinedText.isNotEmpty()) {
+                    sendMessage(combinedText, 0L)
                 }
             }
 

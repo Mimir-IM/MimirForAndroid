@@ -501,6 +501,8 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             val lastMessage = storage.getLastGroupMessage(groupChat.chatId)
             val lastMessageText = if (lastMessage?.type == 1) {
                 "\uD83D\uDDBC\uFE0F " + lastMessage.getText(this)
+            } else if (lastMessage?.type == 3) {
+                "\uD83D\uDCC4 " +lastMessage.getText(this)
             } else {
                 lastMessage?.getText(this)
             }

@@ -116,24 +116,13 @@ class ContactsAdapter(
                     }
                 }
                 3 -> {
-                    if (contact.lastMessage.data != null) {
-                        val string = String(contact.lastMessage.data)
-                        try {
-                            val json = JSONObject(string)
-                            val name = json.getString("name")
-                            json.optString("originalName", name)
-                        } catch (e: JSONException) {
-                            "Error. Message type ${contact.lastMessage.type}:\n"
-                        }
-                    } else {
-                        "Bad message"
-                    }
+                    "\uD83D\uDCC4 " + contact.lastMessage.getText(holder.avatar.context)
                 }
                 else -> {
                     contact.lastMessage?.getText(holder.avatar.context)
                 }
             }
-            if (lastMessageText == null || lastMessageText.isEmpty()) {
+            if (lastMessageText.isNullOrEmpty()) {
                 lastMessageText = holder.itemView.context.getString(R.string.empty_chat)
             }
             holder.lastMessage.text = lastMessageText

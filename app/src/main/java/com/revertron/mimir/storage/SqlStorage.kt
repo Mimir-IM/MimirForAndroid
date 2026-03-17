@@ -103,9 +103,9 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                     when (type) {
                         1 -> {
                             val json = JSONObject(String(data))
-                            val text = json.optString("text", "")
+                            val text = json.getString("text")
                             if (text.isEmpty()) {
-                                "\uD83D\uDDBC " + json.optString("originalName", json.optString("name", context.getString(R.string.draft_image)))
+                                json.optString("originalName", json.optString("name"))
                             } else {
                                 text
                             }
@@ -118,9 +118,10 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                         3 -> {
                             // File attachment - show original filename with optional message text
                             val json = JSONObject(String(data))
-                            val text = json.optString("text", "")
+                            val filename = json.optString("originalName", json.optString("name"))
+                            val text = json.optString("text", filename)
                             if (text.isEmpty()) {
-                                "\uD83D\uDCCE " + json.optString("originalName", json.optString("name", ""))
+                                filename
                             } else {
                                 text
                             }
@@ -151,9 +152,9 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                     when (type) {
                         1 -> {
                             val json = JSONObject(String(data))
-                            val text = json.optString("text", "")
+                            val text = json.getString("text")
                             if (text.isEmpty()) {
-                                "\uD83D\uDDBC " + json.optString("originalName", json.optString("name", context.getString(R.string.draft_image)))
+                                json.optString("originalName", json.optString("name"))
                             } else {
                                 text
                             }
@@ -166,9 +167,10 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                         3 -> {
                             // File attachment - show original filename with optional message text
                             val json = JSONObject(String(data))
-                            val text = json.optString("text", "")
+                            val filename = json.optString("originalName", json.optString("name"))
+                            val text = json.optString("text", filename)
                             if (text.isEmpty()) {
-                                "\uD83D\uDCCE " + json.optString("originalName", json.optString("name", ""))
+                                filename
                             } else {
                                 text
                             }

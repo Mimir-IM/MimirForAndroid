@@ -590,6 +590,8 @@ class GroupChatActivity : BaseChatActivity() {
                 // Text message - stored in reply panel already
             }
         }
+
+        updateSendButtonIcon()
     }
 
     // Menu handling
