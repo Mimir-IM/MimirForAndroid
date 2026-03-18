@@ -373,10 +373,14 @@
     <string name="contact_request_accepted">Contact request accepted</string>
     <string name="contact_request_declined">Contact request declined</string>
 
+    <string name="receive_settings">Receive settings</string>
+    <string name="receive_settings_desc">Message acceptance, auto-download limits</string>
     <string name="auto_download_contacts">Auto-download from contacts</string>
     <string name="auto_download_contacts_desc">Max file size to download automatically from contacts.</string>
     <string name="auto_download_others">Auto-download from others</string>
     <string name="auto_download_others_desc">Max file size to download automatically from non-contacts.</string>
+    <string name="auto_download_groups">Auto-download in group chats</string>
+    <string name="auto_download_groups_desc">Max file size to download automatically in group chats.</string>
     <string name="download_never">Never</string>
     <string name="download_up_to_1mb">Up to 1 MB</string>
     <string name="download_up_to_5mb">Up to 5 MB</string>

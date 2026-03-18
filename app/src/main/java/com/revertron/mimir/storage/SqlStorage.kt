@@ -43,7 +43,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     companion object {
         const val TAG = "SqlStorage"
         // If we change the database schema, we must increment the database version.
-        const val DATABASE_VERSION = 19
+        const val DATABASE_VERSION = 20
         const val DATABASE_NAME = "data.db"
         const val CREATE_ACCOUNTS = "CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, privkey TEXT, pubkey TEXT, client INTEGER, info TEXT, avatar TEXT, updated INTEGER)"
         const val CREATE_CONTACTS = "CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey BLOB, name TEXT, info TEXT, avatar TEXT, updated INTEGER, renamed BOOL, last_seen INTEGER, muted BOOL DEFAULT 0)"
@@ -428,6 +428,15 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         if (oldVersion < 19 && newVersion >= 19) {
             db.execSQL(CREATE_CONTACT_REQUESTS)
             Log.i(TAG, "Created contact_requests table")
+        }
+
+        if (oldVersion < 20 && newVersion >= 20) {
+            // Migrate group chats from old mediator to new mediator
+            db.execSQL(
+                "UPDATE group_chats SET mediator_pubkey = X'000096390fde19f30d3ba042d77f5f5ce0e6c23bd62ff0afc2e6c29a6fe96b33' " +
+                "WHERE mediator_pubkey = X'42a0b0da2d8b2fd9d8242c3ab3d316ebd4d3adedeeacf4b77d741d23fc9c6902'"
+            )
+            Log.i(TAG, "Migrated group chats to new mediator pubkey")
         }
     }
 

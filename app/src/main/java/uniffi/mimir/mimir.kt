@@ -113,7 +113,7 @@ internal open class ForeignBytes : Structure() {
  *
  * @suppress
  */
-interface FfiConverter<KotlinType, FfiType> {
+public interface FfiConverter<KotlinType, FfiType> {
     // Convert an FFI type to a Kotlin type
     fun lift(value: FfiType): KotlinType
 
@@ -180,7 +180,7 @@ interface FfiConverter<KotlinType, FfiType> {
  *
  * @suppress
  */
-interface FfiConverterRustBuffer<KotlinType> : FfiConverter<KotlinType, RustBuffer.ByValue> {
+public interface FfiConverterRustBuffer<KotlinType> : FfiConverter<KotlinType, RustBuffer.ByValue> {
     override fun lift(value: RustBuffer.ByValue) = liftFromRustBuffer(value)
     override fun lower(value: KotlinType) = lowerIntoRustBuffer(value)
 }
@@ -661,27 +661,27 @@ internal interface UniffiForeignFutureCompleteVoid : Callback {
 }
 
 internal interface UniffiCallbackInterfaceFilesEventListenerMethod0 : Callback {
-    fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, bytesSent: Long, totalBytes: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+    fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, bytesSent: Long, totalBytes: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
 }
 
 internal interface UniffiCallbackInterfaceFilesEventListenerMethod1 : Callback {
-    fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+    fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
 }
 
 internal interface UniffiCallbackInterfaceFilesEventListenerMethod2 : Callback {
-    fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, error: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+    fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, error: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
 }
 
 internal interface UniffiCallbackInterfaceFilesEventListenerMethod3 : Callback {
-    fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, bytesReceived: Long, totalBytes: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+    fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, bytesReceived: Long, totalBytes: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
 }
 
 internal interface UniffiCallbackInterfaceFilesEventListenerMethod4 : Callback {
-    fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, filePath: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+    fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, filePath: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
 }
 
 internal interface UniffiCallbackInterfaceFilesEventListenerMethod5 : Callback {
-    fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, error: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+    fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, error: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
 }
 
 internal interface UniffiCallbackInterfaceInfoProviderMethod0 : Callback {
@@ -1911,22 +1911,22 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_mimir_checksum_constructor_peernode_new() != 5727.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_fileseventlistener_on_upload_progress() != 56420.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_fileseventlistener_on_upload_progress() != 59179.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_fileseventlistener_on_upload_complete() != 27000.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_fileseventlistener_on_upload_complete() != 58000.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_fileseventlistener_on_upload_error() != 36472.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_fileseventlistener_on_upload_error() != 32295.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_fileseventlistener_on_download_progress() != 57772.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_fileseventlistener_on_download_progress() != 7346.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_fileseventlistener_on_download_complete() != 41898.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_fileseventlistener_on_download_complete() != 29041.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_fileseventlistener_on_download_error() != 65413.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_fileseventlistener_on_download_error() != 53835.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_mimir_checksum_method_infoprovider_get_my_info() != 53015.toShort()) {
@@ -2018,7 +2018,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
 /**
  * @suppress
  */
-fun uniffiEnsureInitialized() {
+public fun uniffiEnsureInitialized() {
     IntegrityCheckingUniffiLib
     // UniffiLib() initialized as objects are used, but we still need to explicitly
     // reference it so initialization across crates works as expected.
@@ -2120,7 +2120,7 @@ internal const val UNIFFI_CALLBACK_UNEXPECTED_ERROR = 2
 /**
  * @suppress
  */
-abstract class FfiConverterCallbackInterface<CallbackInterface : Any> : FfiConverter<CallbackInterface, Long> {
+public abstract class FfiConverterCallbackInterface<CallbackInterface : Any> : FfiConverter<CallbackInterface, Long> {
     internal val handleMap = UniffiHandleMap<CallbackInterface>()
 
     internal fun drop(handle: Long) {
@@ -2210,7 +2210,7 @@ private class JavaLangRefCleanable(
 /**
  * @suppress
  */
-object FfiConverterUByte : FfiConverter<UByte, Byte> {
+public object FfiConverterUByte : FfiConverter<UByte, Byte> {
     override fun lift(value: Byte): UByte {
         return value.toUByte()
     }
@@ -2233,7 +2233,7 @@ object FfiConverterUByte : FfiConverter<UByte, Byte> {
 /**
  * @suppress
  */
-object FfiConverterUShort : FfiConverter<UShort, Short> {
+public object FfiConverterUShort : FfiConverter<UShort, Short> {
     override fun lift(value: Short): UShort {
         return value.toUShort()
     }
@@ -2256,7 +2256,7 @@ object FfiConverterUShort : FfiConverter<UShort, Short> {
 /**
  * @suppress
  */
-object FfiConverterUInt : FfiConverter<UInt, Int> {
+public object FfiConverterUInt : FfiConverter<UInt, Int> {
     override fun lift(value: Int): UInt {
         return value.toUInt()
     }
@@ -2279,7 +2279,7 @@ object FfiConverterUInt : FfiConverter<UInt, Int> {
 /**
  * @suppress
  */
-object FfiConverterInt : FfiConverter<Int, Int> {
+public object FfiConverterInt : FfiConverter<Int, Int> {
     override fun lift(value: Int): Int {
         return value
     }
@@ -2302,7 +2302,7 @@ object FfiConverterInt : FfiConverter<Int, Int> {
 /**
  * @suppress
  */
-object FfiConverterULong : FfiConverter<ULong, Long> {
+public object FfiConverterULong : FfiConverter<ULong, Long> {
     override fun lift(value: Long): ULong {
         return value.toULong()
     }
@@ -2325,7 +2325,7 @@ object FfiConverterULong : FfiConverter<ULong, Long> {
 /**
  * @suppress
  */
-object FfiConverterLong : FfiConverter<Long, Long> {
+public object FfiConverterLong : FfiConverter<Long, Long> {
     override fun lift(value: Long): Long {
         return value
     }
@@ -2348,7 +2348,7 @@ object FfiConverterLong : FfiConverter<Long, Long> {
 /**
  * @suppress
  */
-object FfiConverterBoolean : FfiConverter<Boolean, Byte> {
+public object FfiConverterBoolean : FfiConverter<Boolean, Byte> {
     override fun lift(value: Byte): Boolean {
         return value.toInt() != 0
     }
@@ -2371,7 +2371,7 @@ object FfiConverterBoolean : FfiConverter<Boolean, Byte> {
 /**
  * @suppress
  */
-object FfiConverterString : FfiConverter<String, RustBuffer.ByValue> {
+public object FfiConverterString : FfiConverter<String, RustBuffer.ByValue> {
     // Note: we don't inherit from FfiConverterRustBuffer, because we use a
     // special encoding when lowering/lifting.  We can use `RustBuffer.len` to
     // store our length and avoid writing it out to the buffer.
@@ -2428,7 +2428,7 @@ object FfiConverterString : FfiConverter<String, RustBuffer.ByValue> {
 /**
  * @suppress
  */
-object FfiConverterByteArray : FfiConverterRustBuffer<ByteArray> {
+public object FfiConverterByteArray : FfiConverterRustBuffer<ByteArray> {
     override fun read(buf: ByteBuffer): ByteArray {
         val len = buf.getInt()
         val byteArr = ByteArray(len)
@@ -2548,7 +2548,7 @@ object FfiConverterByteArray : FfiConverterRustBuffer<ByteArray> {
  * Shares the Yggdrasil identity from an existing `PeerNode`.
  * All methods are thread-safe.
  */
-interface FilesNodeInterface {
+public interface FilesNodeInterface {
 
     /**
      * Download a file from the server and decrypt it to `dest_path`.
@@ -2793,7 +2793,7 @@ open class FilesNode : Disposable, AutoCloseable, FilesNodeInterface {
 /**
  * @suppress
  */
-object FfiConverterTypeFilesNode : FfiConverter<FilesNode, Long> {
+public object FfiConverterTypeFilesNode : FfiConverter<FilesNode, Long> {
     override fun lower(value: FilesNode): Long {
         return value.uniffiCloneHandle()
     }
@@ -2915,7 +2915,7 @@ object FfiConverterTypeFilesNode : FfiConverter<FilesNode, Long> {
  * Shares the Yggdrasil identity from an existing `PeerNode`.
  * All methods are thread-safe.
  */
-interface MediatorNodeInterface {
+public interface MediatorNodeInterface {
 
     fun addUser(mediatorPubkey: ByteArray, chatId: Long, userPubkey: ByteArray)
 
@@ -3403,7 +3403,7 @@ open class MediatorNode : Disposable, AutoCloseable, MediatorNodeInterface {
 /**
  * @suppress
  */
-object FfiConverterTypeMediatorNode : FfiConverter<MediatorNode, Long> {
+public object FfiConverterTypeMediatorNode : FfiConverter<MediatorNode, Long> {
     override fun lower(value: MediatorNode): Long {
         return value.uniffiCloneHandle()
     }
@@ -3528,7 +3528,7 @@ object FfiConverterTypeMediatorNode : FfiConverter<MediatorNode, Long> {
  *
  * All methods are thread-safe.
  */
-interface PeerNodeInterface {
+public interface PeerNodeInterface {
 
     /**
      * Add new peer to connect
@@ -4151,7 +4151,7 @@ open class PeerNode : Disposable, AutoCloseable, PeerNodeInterface {
 /**
  * @suppress
  */
-object FfiConverterTypePeerNode : FfiConverter<PeerNode, Long> {
+public object FfiConverterTypePeerNode : FfiConverter<PeerNode, Long> {
     override fun lower(value: PeerNode): Long {
         return value.uniffiCloneHandle()
     }
@@ -4190,7 +4190,7 @@ data class ContactInfo(
 /**
  * @suppress
  */
-object FfiConverterTypeContactInfo : FfiConverterRustBuffer<ContactInfo> {
+public object FfiConverterTypeContactInfo : FfiConverterRustBuffer<ContactInfo> {
     override fun read(buf: ByteBuffer): ContactInfo {
         return ContactInfo(
             FfiConverterString.read(buf),
@@ -4232,7 +4232,7 @@ data class FileInfo(
 /**
  * @suppress
  */
-object FfiConverterTypeFileInfo : FfiConverterRustBuffer<FileInfo> {
+public object FfiConverterTypeFileInfo : FfiConverterRustBuffer<FileInfo> {
     override fun read(buf: ByteBuffer): FileInfo {
         return FileInfo(
             FfiConverterULong.read(buf),
@@ -4270,7 +4270,7 @@ data class GroupMember(
 /**
  * @suppress
  */
-object FfiConverterTypeGroupMember : FfiConverterRustBuffer<GroupMember> {
+public object FfiConverterTypeGroupMember : FfiConverterRustBuffer<GroupMember> {
     override fun read(buf: ByteBuffer): GroupMember {
         return GroupMember(
             FfiConverterByteArray.read(buf),
@@ -4313,7 +4313,7 @@ data class GroupMemberInfo(
 /**
  * @suppress
  */
-object FfiConverterTypeGroupMemberInfo : FfiConverterRustBuffer<GroupMemberInfo> {
+public object FfiConverterTypeGroupMemberInfo : FfiConverterRustBuffer<GroupMemberInfo> {
     override fun read(buf: ByteBuffer): GroupMemberInfo {
         return GroupMemberInfo(
             FfiConverterByteArray.read(buf),
@@ -4355,7 +4355,7 @@ data class GroupMessage(
 /**
  * @suppress
  */
-object FfiConverterTypeGroupMessage : FfiConverterRustBuffer<GroupMessage> {
+public object FfiConverterTypeGroupMessage : FfiConverterRustBuffer<GroupMessage> {
     override fun read(buf: ByteBuffer): GroupMessage {
         return GroupMessage(
             FfiConverterLong.read(buf),
@@ -4402,7 +4402,7 @@ data class MemberInfoData(
 /**
  * @suppress
  */
-object FfiConverterTypeMemberInfoData : FfiConverterRustBuffer<MemberInfoData> {
+public object FfiConverterTypeMemberInfoData : FfiConverterRustBuffer<MemberInfoData> {
     override fun read(buf: ByteBuffer): MemberInfoData {
         return MemberInfoData(
             FfiConverterByteArray.read(buf),
@@ -4440,7 +4440,7 @@ data class YggPeerInfo(
 /**
  * @suppress
  */
-object FfiConverterTypeYggPeerInfo : FfiConverterRustBuffer<YggPeerInfo> {
+public object FfiConverterTypeYggPeerInfo : FfiConverterRustBuffer<YggPeerInfo> {
     override fun read(buf: ByteBuffer): YggPeerInfo {
         return YggPeerInfo(
             FfiConverterOptionalString.read(buf),
@@ -4479,7 +4479,7 @@ enum class CallStatus {
 /**
  * @suppress
  */
-object FfiConverterTypeCallStatus : FfiConverterRustBuffer<CallStatus> {
+public object FfiConverterTypeCallStatus : FfiConverterRustBuffer<CallStatus> {
     override fun read(buf: ByteBuffer) = try {
         CallStatus.values()[buf.getInt() - 1]
     } catch (e: IndexOutOfBoundsException) {
@@ -4515,7 +4515,7 @@ sealed class MimirException(message: String) : Exception(message) {
 /**
  * @suppress
  */
-object FfiConverterTypeMimirError : FfiConverterRustBuffer<MimirException> {
+public object FfiConverterTypeMimirError : FfiConverterRustBuffer<MimirException> {
     override fun read(buf: ByteBuffer): MimirException {
 
         return when (buf.getInt()) {
@@ -4569,19 +4569,19 @@ object FfiConverterTypeMimirError : FfiConverterRustBuffer<MimirException> {
  * Receives file server upload/download events.
  * All callbacks are invoked from Rust async tasks — must return quickly.
  */
-interface FilesEventListener {
+public interface FilesEventListener {
 
-    fun onUploadProgress(fileHash: ByteArray, bytesSent: ULong, totalBytes: ULong)
+    fun onUploadProgress(fileHash: ByteArray, messageGuid: Long, bytesSent: ULong, totalBytes: ULong)
 
-    fun onUploadComplete(fileHash: ByteArray)
+    fun onUploadComplete(fileHash: ByteArray, messageGuid: Long)
 
-    fun onUploadError(fileHash: ByteArray, error: String)
+    fun onUploadError(fileHash: ByteArray, messageGuid: Long, error: String)
 
-    fun onDownloadProgress(fileHash: ByteArray, bytesReceived: ULong, totalBytes: ULong)
+    fun onDownloadProgress(fileHash: ByteArray, messageGuid: Long, bytesReceived: ULong, totalBytes: ULong)
 
-    fun onDownloadComplete(fileHash: ByteArray, filePath: String)
+    fun onDownloadComplete(fileHash: ByteArray, messageGuid: Long, filePath: String)
 
-    fun onDownloadError(fileHash: ByteArray, error: String)
+    fun onDownloadError(fileHash: ByteArray, messageGuid: Long, error: String)
 
     companion object
 }
@@ -4590,11 +4590,12 @@ interface FilesEventListener {
 // Put the implementation in an object so we don't pollute the top-level namespace
 internal object uniffiCallbackInterfaceFilesEventListener {
     internal object onUploadProgress : UniffiCallbackInterfaceFilesEventListenerMethod0 {
-        override fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, bytesSent: Long, totalBytes: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
+        override fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, bytesSent: Long, totalBytes: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
             val uniffiObj = FfiConverterTypeFilesEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
                 uniffiObj.onUploadProgress(
                     FfiConverterByteArray.lift(fileHash),
+                    FfiConverterLong.lift(messageGuid),
                     FfiConverterULong.lift(bytesSent),
                     FfiConverterULong.lift(totalBytes),
                 )
@@ -4605,11 +4606,12 @@ internal object uniffiCallbackInterfaceFilesEventListener {
     }
 
     internal object onUploadComplete : UniffiCallbackInterfaceFilesEventListenerMethod1 {
-        override fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
+        override fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
             val uniffiObj = FfiConverterTypeFilesEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
                 uniffiObj.onUploadComplete(
                     FfiConverterByteArray.lift(fileHash),
+                    FfiConverterLong.lift(messageGuid),
                 )
             }
             val writeReturn = { _: Unit -> Unit }
@@ -4618,11 +4620,12 @@ internal object uniffiCallbackInterfaceFilesEventListener {
     }
 
     internal object onUploadError : UniffiCallbackInterfaceFilesEventListenerMethod2 {
-        override fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, error: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
+        override fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, error: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
             val uniffiObj = FfiConverterTypeFilesEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
                 uniffiObj.onUploadError(
                     FfiConverterByteArray.lift(fileHash),
+                    FfiConverterLong.lift(messageGuid),
                     FfiConverterString.lift(error),
                 )
             }
@@ -4632,11 +4635,12 @@ internal object uniffiCallbackInterfaceFilesEventListener {
     }
 
     internal object onDownloadProgress : UniffiCallbackInterfaceFilesEventListenerMethod3 {
-        override fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, bytesReceived: Long, totalBytes: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
+        override fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, bytesReceived: Long, totalBytes: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
             val uniffiObj = FfiConverterTypeFilesEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
                 uniffiObj.onDownloadProgress(
                     FfiConverterByteArray.lift(fileHash),
+                    FfiConverterLong.lift(messageGuid),
                     FfiConverterULong.lift(bytesReceived),
                     FfiConverterULong.lift(totalBytes),
                 )
@@ -4647,11 +4651,12 @@ internal object uniffiCallbackInterfaceFilesEventListener {
     }
 
     internal object onDownloadComplete : UniffiCallbackInterfaceFilesEventListenerMethod4 {
-        override fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, filePath: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
+        override fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, filePath: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
             val uniffiObj = FfiConverterTypeFilesEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
                 uniffiObj.onDownloadComplete(
                     FfiConverterByteArray.lift(fileHash),
+                    FfiConverterLong.lift(messageGuid),
                     FfiConverterString.lift(filePath),
                 )
             }
@@ -4661,11 +4666,12 @@ internal object uniffiCallbackInterfaceFilesEventListener {
     }
 
     internal object onDownloadError : UniffiCallbackInterfaceFilesEventListenerMethod5 {
-        override fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, error: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
+        override fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, error: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
             val uniffiObj = FfiConverterTypeFilesEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
                 uniffiObj.onDownloadError(
                     FfiConverterByteArray.lift(fileHash),
+                    FfiConverterLong.lift(messageGuid),
                     FfiConverterString.lift(error),
                 )
             }
@@ -4709,14 +4715,14 @@ internal object uniffiCallbackInterfaceFilesEventListener {
  *
  * @suppress
  */
-object FfiConverterTypeFilesEventListener : FfiConverterCallbackInterface<FilesEventListener>()
+public object FfiConverterTypeFilesEventListener : FfiConverterCallbackInterface<FilesEventListener>()
 
 
 /**
  * Provides local user info and stores contact info received from peers.
  * All methods are called from Rust connection tasks — must not block long.
  */
-interface InfoProvider {
+public interface InfoProvider {
 
     /**
      * Return our current contact info if it was updated after `since_time`,
@@ -4853,7 +4859,7 @@ internal object uniffiCallbackInterfaceInfoProvider {
  *
  * @suppress
  */
-object FfiConverterTypeInfoProvider : FfiConverterCallbackInterface<InfoProvider>()
+public object FfiConverterTypeInfoProvider : FfiConverterCallbackInterface<InfoProvider>()
 
 
 /**
@@ -4863,7 +4869,7 @@ object FfiConverterTypeInfoProvider : FfiConverterCallbackInterface<InfoProvider
  * Note: encryption of message blobs is handled by the caller (Kotlin/Swift).
  * Rust passes encrypted bytes through unchanged.
  */
-interface MediatorEventListener {
+public interface MediatorEventListener {
 
     /**
      * Authenticated connection established to this mediator.
@@ -5104,14 +5110,14 @@ internal object uniffiCallbackInterfaceMediatorEventListener {
  *
  * @suppress
  */
-object FfiConverterTypeMediatorEventListener : FfiConverterCallbackInterface<MediatorEventListener>()
+public object FfiConverterTypeMediatorEventListener : FfiConverterCallbackInterface<MediatorEventListener>()
 
 
 /**
  * Receives P2P networking events. All callbacks are invoked from Rust
  * connection tasks and must return quickly.
  */
-interface PeerEventListener {
+public interface PeerEventListener {
 
     /**
      * Yggdrasil overlay network came online (first peer) or went offline (last peer).
@@ -5463,13 +5469,13 @@ internal object uniffiCallbackInterfacePeerEventListener {
  *
  * @suppress
  */
-object FfiConverterTypePeerEventListener : FfiConverterCallbackInterface<PeerEventListener>()
+public object FfiConverterTypePeerEventListener : FfiConverterCallbackInterface<PeerEventListener>()
 
 
 /**
  * @suppress
  */
-object FfiConverterOptionalString : FfiConverterRustBuffer<String?> {
+public object FfiConverterOptionalString : FfiConverterRustBuffer<String?> {
     override fun read(buf: ByteBuffer): String? {
         if (buf.get().toInt() == 0) {
             return null
@@ -5499,7 +5505,7 @@ object FfiConverterOptionalString : FfiConverterRustBuffer<String?> {
 /**
  * @suppress
  */
-object FfiConverterOptionalByteArray : FfiConverterRustBuffer<ByteArray?> {
+public object FfiConverterOptionalByteArray : FfiConverterRustBuffer<ByteArray?> {
     override fun read(buf: ByteBuffer): ByteArray? {
         if (buf.get().toInt() == 0) {
             return null
@@ -5529,7 +5535,7 @@ object FfiConverterOptionalByteArray : FfiConverterRustBuffer<ByteArray?> {
 /**
  * @suppress
  */
-object FfiConverterOptionalTypeContactInfo : FfiConverterRustBuffer<ContactInfo?> {
+public object FfiConverterOptionalTypeContactInfo : FfiConverterRustBuffer<ContactInfo?> {
     override fun read(buf: ByteBuffer): ContactInfo? {
         if (buf.get().toInt() == 0) {
             return null
@@ -5559,7 +5565,7 @@ object FfiConverterOptionalTypeContactInfo : FfiConverterRustBuffer<ContactInfo?
 /**
  * @suppress
  */
-object FfiConverterOptionalTypeMemberInfoData : FfiConverterRustBuffer<MemberInfoData?> {
+public object FfiConverterOptionalTypeMemberInfoData : FfiConverterRustBuffer<MemberInfoData?> {
     override fun read(buf: ByteBuffer): MemberInfoData? {
         if (buf.get().toInt() == 0) {
             return null
@@ -5589,7 +5595,7 @@ object FfiConverterOptionalTypeMemberInfoData : FfiConverterRustBuffer<MemberInf
 /**
  * @suppress
  */
-object FfiConverterSequenceString : FfiConverterRustBuffer<List<String>> {
+public object FfiConverterSequenceString : FfiConverterRustBuffer<List<String>> {
     override fun read(buf: ByteBuffer): List<String> {
         val len = buf.getInt()
         return List<String>(len) {
@@ -5615,7 +5621,7 @@ object FfiConverterSequenceString : FfiConverterRustBuffer<List<String>> {
 /**
  * @suppress
  */
-object FfiConverterSequenceTypeGroupMember : FfiConverterRustBuffer<List<GroupMember>> {
+public object FfiConverterSequenceTypeGroupMember : FfiConverterRustBuffer<List<GroupMember>> {
     override fun read(buf: ByteBuffer): List<GroupMember> {
         val len = buf.getInt()
         return List<GroupMember>(len) {
@@ -5641,7 +5647,7 @@ object FfiConverterSequenceTypeGroupMember : FfiConverterRustBuffer<List<GroupMe
 /**
  * @suppress
  */
-object FfiConverterSequenceTypeGroupMemberInfo : FfiConverterRustBuffer<List<GroupMemberInfo>> {
+public object FfiConverterSequenceTypeGroupMemberInfo : FfiConverterRustBuffer<List<GroupMemberInfo>> {
     override fun read(buf: ByteBuffer): List<GroupMemberInfo> {
         val len = buf.getInt()
         return List<GroupMemberInfo>(len) {
@@ -5667,7 +5673,7 @@ object FfiConverterSequenceTypeGroupMemberInfo : FfiConverterRustBuffer<List<Gro
 /**
  * @suppress
  */
-object FfiConverterSequenceTypeGroupMessage : FfiConverterRustBuffer<List<GroupMessage>> {
+public object FfiConverterSequenceTypeGroupMessage : FfiConverterRustBuffer<List<GroupMessage>> {
     override fun read(buf: ByteBuffer): List<GroupMessage> {
         val len = buf.getInt()
         return List<GroupMessage>(len) {

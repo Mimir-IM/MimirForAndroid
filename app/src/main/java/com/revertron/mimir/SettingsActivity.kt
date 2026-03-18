@@ -62,6 +62,10 @@ class SettingsActivity : BaseActivity(), SettingsAdapter.Listener {
 
     override fun onItemClicked(id: Int) {
         when (id) {
+            R.string.receive_settings -> {
+                val intent = Intent(this, ReceiveSettingsActivity::class.java)
+                startActivity(intent, animFromRight.toBundle())
+            }
             R.string.resize_big_pics -> {
                 val intent = Intent(this, ImageSettingsActivity::class.java)
                 startActivity(intent, animFromRight.toBundle())
@@ -88,15 +92,6 @@ class SettingsActivity : BaseActivity(), SettingsAdapter.Listener {
                 }
                 startService(intent)
             }
-            R.string.accept_messages_from -> {
-                showAcceptMessagesDialog()
-            }
-            R.string.auto_download_contacts -> {
-                showAutoDownloadDialog(SettingsData.KEY_AUTO_DOWNLOAD_CONTACTS, R.string.auto_download_contacts, "5242880")
-            }
-            R.string.auto_download_others -> {
-                showAutoDownloadDialog(SettingsData.KEY_AUTO_DOWNLOAD_OTHERS, R.string.auto_download_others, "0")
-            }
             R.string.voice_message_quality -> {
                 showVoiceQualityDialog()
             }
@@ -105,34 +100,6 @@ class SettingsActivity : BaseActivity(), SettingsAdapter.Listener {
                 startActivity(intent, animFromRight.toBundle())
             }
         }
-    }
-
-    private fun showAutoDownloadDialog(prefKey: String, titleRes: Int, defaultValue: String) {
-        val options = arrayOf(
-            getString(R.string.download_never),
-            getString(R.string.download_up_to_1mb),
-            getString(R.string.download_up_to_5mb),
-            getString(R.string.download_up_to_10mb),
-            getString(R.string.download_always)
-        )
-        val values = arrayOf("0", "1048576", "5242880", "10485760", "-1")
-        val current = preferences.getString(prefKey, defaultValue) ?: defaultValue
-        val selected = values.indexOf(current).coerceAtLeast(0)
-
-        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
-        AlertDialog.Builder(wrapper)
-            .setTitle(getString(titleRes))
-            .setSingleChoiceItems(options, selected) { dialog, which ->
-                preferences.edit().apply {
-                    putString(prefKey, values[which])
-                    commit()
-                }
-                dialog.dismiss()
-                val recycler = findViewById<RecyclerView>(R.id.settingsRecyclerView)
-                recycler.adapter = SettingsAdapter(SettingsData.create(this), this)
-            }
-            .setNegativeButton(getString(R.string.cancel), null)
-            .show()
     }
 
     private fun showVoiceQualityDialog() {
@@ -154,32 +121,6 @@ class SettingsActivity : BaseActivity(), SettingsAdapter.Listener {
                     commit()
                 }
                 dialog.dismiss()
-                val recycler = findViewById<RecyclerView>(R.id.settingsRecyclerView)
-                recycler.adapter = SettingsAdapter(SettingsData.create(this), this)
-            }
-            .setNegativeButton(getString(R.string.cancel), null)
-            .show()
-    }
-
-    private fun showAcceptMessagesDialog() {
-        val options = arrayOf(
-            getString(R.string.accept_from_everyone),
-            getString(R.string.accept_from_contacts_only)
-        )
-        val current = preferences.getString(SettingsData.KEY_ACCEPT_MESSAGES, "everyone")
-        val selected = if (current == "contacts") 1 else 0
-
-        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
-        AlertDialog.Builder(wrapper)
-            .setTitle(getString(R.string.accept_messages_from))
-            .setSingleChoiceItems(options, selected) { dialog, which ->
-                val value = if (which == 1) "contacts" else "everyone"
-                preferences.edit().apply {
-                    putString(SettingsData.KEY_ACCEPT_MESSAGES, value)
-                    commit()
-                }
-                dialog.dismiss()
-                // Refresh the list to show updated description
                 val recycler = findViewById<RecyclerView>(R.id.settingsRecyclerView)
                 recycler.adapter = SettingsAdapter(SettingsData.create(this), this)
             }

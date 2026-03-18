@@ -13,6 +13,7 @@ object SettingsData {
     const val KEY_ACCEPT_MESSAGES = "accept-messages"
     const val KEY_AUTO_DOWNLOAD_CONTACTS = "auto-download-contacts"
     const val KEY_AUTO_DOWNLOAD_OTHERS = "auto-download-others"
+    const val KEY_AUTO_DOWNLOAD_GROUPS = "auto-download-groups"
     const val KEY_VOICE_QUALITY = "voice-quality"
     const val KEY_FILE_SERVER_PUBKEY = "file-server-pubkey"
 
@@ -21,25 +22,9 @@ object SettingsData {
 
         return listOf(
             SettingsAdapter.Item(
-                id = R.string.accept_messages_from,
-                titleRes = R.string.accept_messages_from,
-                descriptionRes = R.string.accept_messages_from_desc,
-                isSwitch = false,
-                checked = false
-            ),
-
-            SettingsAdapter.Item(
-                id = R.string.auto_download_contacts,
-                titleRes = R.string.auto_download_contacts,
-                descriptionRes = R.string.auto_download_contacts_desc,
-                isSwitch = false,
-                checked = false
-            ),
-
-            SettingsAdapter.Item(
-                id = R.string.auto_download_others,
-                titleRes = R.string.auto_download_others,
-                descriptionRes = R.string.auto_download_others_desc,
+                id = R.string.receive_settings,
+                titleRes = R.string.receive_settings,
+                descriptionRes = R.string.receive_settings_desc,
                 isSwitch = false,
                 checked = false
             ),
@@ -112,6 +97,42 @@ object SettingsData {
                 id = R.string.action_about,
                 titleRes = R.string.action_about,
                 descriptionRes = R.string.action_about_desc,
+                isSwitch = false,
+                checked = false
+            )
+        )
+    }
+
+    fun createReceiveSettings(context: Context): List<SettingsAdapter.Item> {
+        return listOf(
+            SettingsAdapter.Item(
+                id = R.string.accept_messages_from,
+                titleRes = R.string.accept_messages_from,
+                descriptionRes = R.string.accept_messages_from_desc,
+                isSwitch = false,
+                checked = false
+            ),
+
+            SettingsAdapter.Item(
+                id = R.string.auto_download_contacts,
+                titleRes = R.string.auto_download_contacts,
+                descriptionRes = R.string.auto_download_contacts_desc,
+                isSwitch = false,
+                checked = false
+            ),
+
+            SettingsAdapter.Item(
+                id = R.string.auto_download_others,
+                titleRes = R.string.auto_download_others,
+                descriptionRes = R.string.auto_download_others_desc,
+                isSwitch = false,
+                checked = false
+            ),
+
+            SettingsAdapter.Item(
+                id = R.string.auto_download_groups,
+                titleRes = R.string.auto_download_groups,
+                descriptionRes = R.string.auto_download_groups_desc,
                 isSwitch = false,
                 checked = false
             )

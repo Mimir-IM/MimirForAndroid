@@ -66,19 +66,24 @@ class ChatActivity : BaseChatActivity() {
         override fun onReceive(context: Context?, intent: Intent) {
             when (intent.action) {
                 "ACTION_FILE_DOWNLOADING" -> {
-                    val name = intent.getStringExtra("name") ?: return
-                    adapter.markFileDownloading(name)
+                    val guid = intent.getLongExtra("guid", 0L)
+                    if (guid != 0L) adapter.markFileDownloading(guid)
                 }
                 "ACTION_FILE_DOWNLOADED" -> {
-                    val name = intent.getStringExtra("name") ?: return
-                    adapter.markFileDownloaded(name)
+                    val guid = intent.getLongExtra("guid", 0L)
+                    if (guid != 0L) adapter.markFileDownloaded(guid)
                 }
                 "ACTION_FILE_PROGRESS" -> {
-                    val name = intent.getStringExtra("name") ?: return
+                    val guid = intent.getLongExtra("guid", 0L)
+                    if (guid == 0L) return
                     val bytes = intent.getLongExtra("bytes", 0L)
                     val total = intent.getLongExtra("total", 0L)
                     val isUpload = intent.getBooleanExtra("is_upload", false)
-                    adapter.updateFileProgress(name, bytes, total, isUpload)
+                    adapter.updateFileProgress(guid, bytes, total, isUpload)
+                }
+                "ACTION_FILE_UPLOADED" -> {
+                    val guid = intent.getLongExtra("guid", 0L)
+                    if (guid != 0L) adapter.markFileUploaded(guid)
                 }
             }
         }
@@ -310,6 +315,7 @@ class ChatActivity : BaseChatActivity() {
             addAction("ACTION_FILE_DOWNLOADING")
             addAction("ACTION_FILE_DOWNLOADED")
             addAction("ACTION_FILE_PROGRESS")
+            addAction("ACTION_FILE_UPLOADED")
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(fileDownloadReceiver, fileFilter)
     }

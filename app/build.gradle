@@ -8,11 +8,11 @@ android {
     compileSdk 36
 
     defaultConfig {
-        applicationId "com.revertron.mimir_ng"
+        applicationId "com.revertron.mimir"
         minSdk 23
         targetSdk 33
-        versionCode 37
-        versionName "2.0.0b17"
+        versionCode 300001 // 3.00.000
+        versionName "3.0.1"
         resourceConfigurations += ['en', 'ru']
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"

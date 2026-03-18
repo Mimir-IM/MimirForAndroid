@@ -540,6 +540,8 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         recyclerView.recycledViewPool.setMaxRecycledViews(0, 0)
         recyclerView.recycledViewPool.setMaxRecycledViews(1, 0)
         recyclerView.setItemViewCacheSize(0)
+        // Disable item change animations to prevent flicker during file transfer progress updates
+        recyclerView.itemAnimator = null
 
         // Setup scroll-to-bottom FAB
         setupScrollToBottomFab()

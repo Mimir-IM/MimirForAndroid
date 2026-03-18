@@ -358,10 +358,14 @@
     <string name="add_and_send_request">Добавить контакт и послать запрос</string>
     <string name="contact_request_accepted">Запрос контакта одобрен</string>
     <string name="contact_request_declined">Запрос контакта отклонён</string>
+    <string name="receive_settings">Настройки приёма</string>
+    <string name="receive_settings_desc">Приём сообщений, лимиты авто-получения</string>
     <string name="auto_download_contacts">Авто-получение файлов от контактов</string>
     <string name="auto_download_contacts_desc">Макс. размер файлов для авто-получения от контактов.</string>
     <string name="auto_download_others">Авто-получение от незнакомцев</string>
     <string name="auto_download_others_desc">Макс. размер файлов для авто-получения от незнакомцев.</string>
+    <string name="auto_download_groups">Авто-получение в групповых чатах</string>
+    <string name="auto_download_groups_desc">Макс. размер файлов для авто-получения в группах.</string>
     <string name="download_never">Никогда</string>
     <string name="download_up_to_1mb">До 1 мегабайта</string>
     <string name="download_up_to_5mb">До 5 мегабайт</string>

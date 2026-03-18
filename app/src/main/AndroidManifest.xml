@@ -73,6 +73,10 @@
             <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".SettingsActivity" />
         </activity>
 
+        <activity android:name=".ReceiveSettingsActivity" android:exported="false" android:parentActivityName=".SettingsActivity">
+            <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".SettingsActivity" />
+        </activity>
+
         <activity android:name=".AdvancedSettingsActivity" android:exported="false" android:parentActivityName=".SettingsActivity">
             <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".SettingsActivity" />
         </activity>

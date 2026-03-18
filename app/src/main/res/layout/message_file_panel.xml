@@ -32,6 +32,18 @@
             android:tint="?android:attr/textColorPrimary"
             app:srcCompat="@drawable/ic_file_document_outline" />
 
+        <com.google.android.material.progressindicator.CircularProgressIndicator
+            android:id="@+id/file_progress"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_gravity="center"
+            android:visibility="gone"
+            app:indicatorSize="36dp"
+            app:trackThickness="3dp"
+            app:indicatorColor="?attr/colorPrimary"
+            app:trackColor="@android:color/transparent"
+            android:max="100" />
+
     </FrameLayout>
 
     <LinearLayout
@@ -59,15 +71,6 @@
             android:alpha="0.7"
             android:layout_marginTop="2dp"
             tools:text="1.2 MB" />
-
-        <ProgressBar
-            android:id="@+id/file_progress"
-            style="?android:attr/progressBarStyleHorizontal"
-            android:layout_width="match_parent"
-            android:layout_height="4dp"
-            android:layout_marginTop="4dp"
-            android:max="100"
-            android:visibility="gone" />
 
     </LinearLayout>
 
