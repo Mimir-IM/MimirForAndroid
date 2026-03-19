@@ -1242,6 +1242,7 @@ class ConnectionService : Service(),
         App.app.mediatorConnected = true
         val storage = (application as App).storage
         Thread {
+            sleep(1000)
             val chats = storage.getGroupChatList()
             for (chat in chats.filter { it.mediatorPubkey.contentEquals(mediatorPubkey) }) {
                 try {
@@ -1456,12 +1457,14 @@ class ConnectionService : Service(),
         try {
             val chatInfo = storage.getGroupChat(chatId) ?: return
             val membersInfo = mediatorNode!!.getMembersInfo(mediatorPubkey, chatId, 0L)
+            val oldMediatorPubkey = Hex.decode(SqlStorage.OLD_MEDIATOR_PUBKEY_HEX)
             for (info in membersInfo) {
+                if (info.pubkey.contentEquals(oldMediatorPubkey)) continue
                 if (info.encryptedInfo != null) {
                     try {
                         processMemberInfo(chatId, info.pubkey, info.encryptedInfo!!, chatInfo.sharedKey, storage)
                     } catch (e: Exception) {
-                        Log.w(TAG, "Could not decrypt member info for ${info.pubkey.take(4)}: ${e.message}")
+                        Log.d(TAG, "Could not decrypt member info for ${info.pubkey.take(4)}: ${e.message}")
                         storage.updateGroupMemberInfo(chatId, info.pubkey, null, null, null)
                     }
                 } else {
@@ -1473,6 +1476,7 @@ class ConnectionService : Service(),
             val members = mediatorNode!!.getMembers(mediatorPubkey, chatId)
             val myPubkey = peerNode?.publicKey()
             for (member in members) {
+                if (member.pubkey.contentEquals(oldMediatorPubkey)) continue
                 storage.updateGroupMemberStatus(chatId, member.pubkey, member.permissions.toInt(), member.online)
                 // Update readOnly based on our own permissions from the server
                 if (myPubkey != null && member.pubkey.contentEquals(myPubkey)) {

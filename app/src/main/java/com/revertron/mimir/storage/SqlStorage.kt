@@ -43,7 +43,8 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     companion object {
         const val TAG = "SqlStorage"
         // If we change the database schema, we must increment the database version.
-        const val DATABASE_VERSION = 20
+        const val DATABASE_VERSION = 21
+        const val OLD_MEDIATOR_PUBKEY_HEX = "42a0b0da2d8b2fd9d8242c3ab3d316ebd4d3adedeeacf4b77d741d23fc9c6902"
         const val DATABASE_NAME = "data.db"
         const val CREATE_ACCOUNTS = "CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, privkey TEXT, pubkey TEXT, client INTEGER, info TEXT, avatar TEXT, updated INTEGER)"
         const val CREATE_CONTACTS = "CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, pubkey BLOB, name TEXT, info TEXT, avatar TEXT, updated INTEGER, renamed BOOL, last_seen INTEGER, muted BOOL DEFAULT 0)"
@@ -438,6 +439,33 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             )
             Log.i(TAG, "Migrated group chats to new mediator pubkey")
         }
+
+        if (oldVersion < 21 && newVersion >= 21) {
+            removeOldMediatorMember(db)
+        }
+    }
+
+    private fun removeOldMediatorMember(db: SQLiteDatabase) {
+        val chatsCursor = db.rawQuery("SELECT chat_id FROM group_chats", null)
+        while (chatsCursor.moveToNext()) {
+            val chatId = chatsCursor.getLong(0)
+            val membersTable = "members_$chatId"
+            val messagesTable = "messages_$chatId"
+
+            val memberCursor = db.rawQuery(
+                "SELECT id FROM $membersTable WHERE pubkey = ?",
+                arrayOf(OLD_MEDIATOR_PUBKEY_HEX)
+            )
+            if (memberCursor.moveToNext()) {
+                val senderId = memberCursor.getLong(0)
+                val deletedMessages = db.delete(messagesTable, "senderId = ?", arrayOf(senderId.toString()))
+                val deletedMembers = db.delete(membersTable, "id = ?", arrayOf(senderId.toString()))
+                Log.i(TAG, "Migration 21: chat $chatId — removed $deletedMessages messages and $deletedMembers member row for old mediator")
+            }
+            memberCursor.close()
+        }
+        chatsCursor.close()
+        Log.i(TAG, "Migration 21: cleaned up old mediator member entries")
     }
 
     fun updateUnreadCountsForGroups() {
@@ -3418,8 +3446,9 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             return -1
         }
 
-        // Check if author is the mediator (system message)
-        val senderId = if (author.contentEquals(chatInfo.mediatorPubkey)) {
+        // Check if author is the mediator (current or old) — treat as system message
+        val oldMediatorPubkey = Hex.decode(OLD_MEDIATOR_PUBKEY_HEX)
+        val senderId = if (author.contentEquals(chatInfo.mediatorPubkey) || author.contentEquals(oldMediatorPubkey)) {
             // System message from mediator - use special senderId
             -1L
         } else {
