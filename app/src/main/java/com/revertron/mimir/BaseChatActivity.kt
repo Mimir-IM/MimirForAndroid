@@ -1604,6 +1604,8 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             val sendButton = findViewById<AppCompatImageButton>(R.id.send_button)
             sendButton.setColorFilter(Color.RED)
 
+            findViewById<View>(R.id.recording_overlay).visibility = View.VISIBLE
+
             // Safety timeout at 60s
             recordingHandler.postDelayed({ stopVoiceRecording() }, 60000L)
         } catch (e: Exception) {
@@ -1623,6 +1625,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
 
         val sendButton = findViewById<AppCompatImageButton>(R.id.send_button)
         sendButton.clearColorFilter()
+        findViewById<View>(R.id.recording_overlay).visibility = View.GONE
 
         try {
             mediaRecorder?.stop()
@@ -1691,6 +1694,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             voiceRecordFile = null
             val sendButton = findViewById<AppCompatImageButton>(R.id.send_button)
             sendButton.clearColorFilter()
+            findViewById<View>(R.id.recording_overlay).visibility = View.GONE
         }
         saveDraft()
     }
