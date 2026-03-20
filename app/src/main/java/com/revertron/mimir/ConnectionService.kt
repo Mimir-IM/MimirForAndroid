@@ -1500,6 +1500,16 @@ class ConnectionService : Service(),
     override fun onMemberOnlineStatusChanged(
         chatId: Long, memberPubkey: ByteArray, isOnline: Boolean, timestamp: Long
     ) {
+        // Ignore stale "offline" pushes for ourselves — we know we're online
+        // while subscribed.  The mediator may deliver a queued offline event
+        // from a previous session right after we reconnect.
+        val myPubkey = peerNode?.publicKey()
+        if (!isOnline && myPubkey != null && memberPubkey.contentEquals(myPubkey)
+            && subscribedChats.contains(chatId)) {
+            Log.d(TAG, "Ignoring stale offline push for ourselves in chat $chatId")
+            return
+        }
+
         val chatIdL = chatId
         val storage = (application as App).storage
         val lastSeen = if (isOnline) 0L else timestamp
@@ -1517,9 +1527,14 @@ class ConnectionService : Service(),
         Log.w(TAG, "onDisconnected from mediator ${Hex.toHexString(mediatorPubkey).take(8)}")
         App.app.mediatorConnected = false
         val storage = (application as App).storage
+        val myPubkey = peerNode?.publicKey()
         val chats = storage.getGroupChatList()
         for (chat in chats.filter { it.mediatorPubkey.contentEquals(mediatorPubkey) }) {
             subscribedChats.remove(chat.chatId)
+            // Mark ourselves offline in DB so the UI reflects the real state
+            if (myPubkey != null) {
+                storage.updateGroupMemberOnlineStatus(chat.chatId, myPubkey, false, System.currentTimeMillis() / 1000)
+            }
             broadcastGroupChatStatus(chat.chatId, storage, "DISCONNECTED")
         }
         LocalBroadcastManager.getInstance(this).sendBroadcast(
@@ -1960,6 +1975,7 @@ class ConnectionService : Service(),
         val chatInfo = storage.getGroupChat(chatId) ?: return
         try {
             mediatorNode!!.changeMemberStatus(chatInfo.mediatorPubkey, chatId, userPubkey, 0u)
+            storage.deleteGroupMember(chatId, userPubkey)
             LocalBroadcastManager.getInstance(this).sendBroadcast(
                 Intent("ACTION_MEDIATOR_USER_BANNED").apply {
                     putExtra("chat_id", chatId)
@@ -1977,6 +1993,7 @@ class ConnectionService : Service(),
         val chatInfo = storage.getGroupChat(chatId) ?: return
         try {
             mediatorNode!!.changeMemberStatus(chatInfo.mediatorPubkey, chatId, userPubkey, newPermissions.toUByte())
+            storage.updateGroupMemberStatus(chatId, userPubkey, newPermissions, true)
             LocalBroadcastManager.getInstance(this).sendBroadcast(
                 Intent("ACTION_MEDIATOR_ROLE_CHANGED").apply {
                     putExtra("chat_id", chatId)

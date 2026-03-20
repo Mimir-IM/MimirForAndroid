@@ -147,7 +147,8 @@ class GroupChatActivity : BaseChatActivity() {
                         Log.e(TAG, "Invalid status received: $statusName", e)
                     }
                 }
-                "ACTION_MEMBERS_SYNCED" -> refreshMemberStatus()
+                "ACTION_MEMBERS_SYNCED" -> mainHandler.post { updateMemberCount() }
+                "ACTION_MEMBER_ONLINE_STATUS" -> mainHandler.post { updateMemberCount() }
             }
         }
     }
@@ -473,6 +474,7 @@ class GroupChatActivity : BaseChatActivity() {
         val statusFilter = IntentFilter().apply {
             addAction("ACTION_GROUP_CHAT_STATUS")
             addAction("ACTION_MEMBERS_SYNCED")
+            addAction("ACTION_MEMBER_ONLINE_STATUS")
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(groupChatStatusReceiver, statusFilter)
 
@@ -886,19 +888,7 @@ class GroupChatActivity : BaseChatActivity() {
     }
 
     private fun refreshMemberStatus() {
-        Thread {
-            try {
-                val members = App.app.mediatorNode?.getMembers(mediatorAddress!!, groupChat.chatId)
-                    ?: return@Thread
-                for (member in members) {
-                    getStorage().updateGroupMemberStatus(groupChat.chatId, member.pubkey, member.permissions.toInt(), member.online)
-                }
-                runOnUiThread { updateMemberCount() }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to fetch member status", e)
-                showConnectionStatus(MediatorManager.GroupChatStatus.DISCONNECTED)
-            }
-        }.start()
+        updateMemberCount()
     }
 
     override fun onGroupChatChanged(chatId: Long): Boolean {

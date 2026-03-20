@@ -110,6 +110,13 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
                     val intentChatId = intent.getLongExtra("chat_id", 0)
                     if (intentChatId == chatId) refreshMemberStatus()
                 }
+                "ACTION_MEMBER_ONLINE_STATUS" -> {
+                    val intentChatId = intent.getLongExtra("chat_id", 0)
+                    if (intentChatId == chatId) {
+                        loadMembers()
+                        updateOnlineCount()
+                    }
+                }
             }
         }
     }
@@ -342,24 +349,8 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
     }
 
     private fun refreshMemberStatus() {
-        Thread {
-            try {
-                val members = App.app.mediatorNode?.getMembers(mediatorAddress, chatId)
-                    ?: return@Thread
-                for (member in members) {
-                    getStorage().updateGroupMemberStatus(chatId, member.pubkey, member.permissions.toInt(), member.online)
-                    if (!member.online && member.lastSeen > 0L) {
-                        getStorage().updateGroupMemberOnlineStatus(chatId, member.pubkey, false, member.lastSeen.toLong())
-                    }
-                }
-                runOnUiThread {
-                    loadMembers()
-                    updateOnlineCount()
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to fetch member status", e)
-            }
-        }.start()
+        loadMembers()
+        updateOnlineCount()
     }
 
     private fun updateOnlineCount() {
@@ -501,6 +492,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
             addAction("ACTION_MEDIATOR_ROLE_CHANGED")
             addAction("ACTION_MEDIATOR_ERROR")
             addAction("ACTION_MEMBERS_SYNCED")
+            addAction("ACTION_MEMBER_ONLINE_STATUS")
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(mediatorReceiver, filter)
 
