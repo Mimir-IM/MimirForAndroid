@@ -739,6 +739,7 @@ class ConnectionService : Service(),
         )
 
         if (isOnline) {
+            mediatorNode?.checkConnections()
             preferences().edit {
                 putLong("trackerPingTime", getUtcTime())
                 apply()
@@ -1464,7 +1465,7 @@ class ConnectionService : Service(),
                     try {
                         processMemberInfo(chatId, info.pubkey, info.encryptedInfo!!, chatInfo.sharedKey, storage)
                     } catch (e: Exception) {
-                        Log.d(TAG, "Could not decrypt member info for ${info.pubkey.take(4)}: ${e.message}")
+                        Log.d(TAG, "Could not decrypt member info for ${Hex.toHexString(info.pubkey).take(8)} in chat $chatId: ${e.message}")
                         storage.updateGroupMemberInfo(chatId, info.pubkey, null, null, null)
                     }
                 } else {

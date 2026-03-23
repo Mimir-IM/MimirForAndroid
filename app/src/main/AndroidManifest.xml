@@ -90,7 +90,7 @@
                 <action android:name="android.intent.action.SEND" />
                 <!-- for now <action android:name="android.intent.action.SEND_MULTIPLE" />-->
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="image/*" />
+                <data android:mimeType="*/*" />
             </intent-filter>
             <!-- meta-data is required for API 16–30 support -->
             <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".MainActivity" />

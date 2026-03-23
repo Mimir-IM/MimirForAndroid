@@ -127,10 +127,14 @@ class ChatActivity : BaseChatActivity() {
             statusImage?.visibility = View.GONE
         }
 
-        // Handle shared image if any
-        val image = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
-        if (image != null) {
-            getImageFromUri(image)
+        // Handle shared content if any
+        val sharedUri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+        if (sharedUri != null) {
+            val mimeType = contentResolver.getType(sharedUri)
+            when {
+                mimeType?.startsWith("image/") == true -> getImageFromUri(sharedUri)
+                else -> getFileFromUri(sharedUri)
+            }
         }
 
         // Setup message list
