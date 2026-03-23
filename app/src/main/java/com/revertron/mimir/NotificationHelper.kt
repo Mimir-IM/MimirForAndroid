@@ -724,7 +724,7 @@ class NotificationHelper(private val context: Context) : StorageListener {
         val pendingIntent = TaskStackBuilder.create(context).run {
             addNextIntentWithParentStack(intent)
             editIntentAt(0)?.putExtra("no_service", true)
-            getPendingIntent(0, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            getPendingIntent(getMessageNotificationId(contactId), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         }
 
         val (uri, _) = createMessageAudioAttributes(context)
