@@ -216,15 +216,23 @@ class ConnectionService : Service(),
                         val pubkey = storage.getMyPubKey()
                         Log.i(TAG, "Got account ${accountInfo.name} with pubkey ${Hex.toHexString(pubkey)}")
 
-                        val seed = (accountInfo.keyPair.private as Ed25519PrivateKeyParameters).encoded
+                        val privateKey = (accountInfo.keyPair.private as Ed25519PrivateKeyParameters).encoded
                         val peerProvider = PeerProvider(this)
                         val yggPeers = peerProvider.getPeers()
                         val trackers = listOf("$TRACKER_HEX1:$TRACKER_PORT", "$TRACKER_HEX2:$TRACKER_PORT")
 
+                        var ipKeyHex = preferences.getString("ipKey", null)
+                        val ipKey = if (ipKeyHex != null) {
+                            Log.d(TAG, "Loaded ipKey: $ipKeyHex")
+                            Hex.decode(ipKeyHex)
+                        } else {
+                            null
+                        }
+
                         Thread {
                             sleep(250)
                             try {
-                                val node = PeerNode(seed, yggPeers, PEER_PORT, trackers, this, infoProvider)
+                                val node = PeerNode(privateKey, ipKey, yggPeers, PEER_PORT, trackers, this, infoProvider)
                                 peerNode = node
                                 App.app.peerNode = node
 
@@ -235,6 +243,14 @@ class ConnectionService : Service(),
                                 val fNode = FilesNode(node, FILES_PORT, filesEventListener)
                                 filesNode = fNode
                                 App.app.filesNode = fNode
+
+                                if (ipKey == null) {
+                                    val ipKeyHex = Hex.toHexString(node.ephemeralKey())
+                                    preferences.edit() {
+                                        this.putString("ipKey", ipKeyHex)
+                                        this.apply()
+                                    }
+                                }
 
                                 node.announceToTrackers()
 
