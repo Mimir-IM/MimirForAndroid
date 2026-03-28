@@ -30,7 +30,8 @@ class SendContentActivity : BaseActivity(), View.OnClickListener, StorageListene
         const val TAG = "SendContentActivity"
     }
 
-    lateinit var sharedUri: Uri
+    var sharedUri: Uri? = null
+    var sharedText: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,6 +54,14 @@ class SendContentActivity : BaseActivity(), View.OnClickListener, StorageListene
                 val uri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
                 if (uri != null) {
                     sharedUri = uri
+                } else {
+                    val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+                    if (text != null) {
+                        sharedText = text
+                    } else {
+                        finish()
+                        return
+                    }
                 }
             }
 
@@ -123,7 +132,7 @@ class SendContentActivity : BaseActivity(), View.OnClickListener, StorageListene
                 intent.putExtra("contactId", SqlStorage.SAVED_MESSAGES_CONTACT_ID)
                 intent.putExtra("name", item.name)
                 intent.putExtra("savedMessages", true)
-                intent.putExtra(Intent.EXTRA_STREAM, sharedUri)
+                addSharedContent(intent)
                 startActivity(intent, animFromRight.toBundle())
                 finish()
             }
@@ -133,7 +142,7 @@ class SendContentActivity : BaseActivity(), View.OnClickListener, StorageListene
                 val intent = Intent(this, ChatActivity::class.java)
                 intent.putExtra("pubkey", item.pubkey)
                 intent.putExtra("name", item.name)
-                intent.putExtra(Intent.EXTRA_STREAM, sharedUri)
+                addSharedContent(intent)
                 startActivity(intent, animFromRight.toBundle())
                 finish()
             }
@@ -145,10 +154,19 @@ class SendContentActivity : BaseActivity(), View.OnClickListener, StorageListene
                 intent.putExtra(GroupChatActivity.EXTRA_CHAT_DESCRIPTION, item.description)
                 intent.putExtra(GroupChatActivity.EXTRA_IS_OWNER, item.isOwner)
                 intent.putExtra(GroupChatActivity.EXTRA_MEDIATOR_ADDRESS, item.mediatorAddress)
-                intent.putExtra(Intent.EXTRA_STREAM, sharedUri)
+                addSharedContent(intent)
                 startActivity(intent, animFromRight.toBundle())
                 finish()
             }
+        }
+    }
+
+    private fun addSharedContent(intent: Intent) {
+        if (sharedUri != null) {
+            intent.putExtra(Intent.EXTRA_STREAM, sharedUri)
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } else if (sharedText != null) {
+            intent.putExtra(Intent.EXTRA_TEXT, sharedText)
         }
     }
 

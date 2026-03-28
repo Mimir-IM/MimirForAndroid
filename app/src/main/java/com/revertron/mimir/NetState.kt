@@ -49,7 +49,7 @@ class NetState(val context: Context) : ConnectivityManager.NetworkCallback() {
         if (preferences.getBoolean("enabled", true)) {
             Thread {
                 // The message often arrives before the connection is fully established
-                Thread.sleep(1000)
+                //Thread.sleep(1000)
                 val intent = Intent(context, ConnectionService::class.java)
                 intent.putExtra("command", "online")
                 try {
@@ -70,7 +70,7 @@ class NetState(val context: Context) : ConnectivityManager.NetworkCallback() {
         connected = false
 
         Thread {
-            Thread.sleep(1000)
+            //Thread.sleep(1000)
             if (!haveNetwork(context)) {
                 val intent = Intent(context, ConnectionService::class.java)
                 intent.putExtra("command", "offline")

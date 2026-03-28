@@ -321,6 +321,7 @@
     <string name="no_orphaned_media">Потерянные медиафайлы не найдены</string>
     <string name="error_deleting_orphaned_media">Ошибка удаления потерянных медиафайлов: %s</string>
     <string name="menu_save">Сохранить</string>
+    <string name="file_deleted">Файл удалён</string>
     <string name="file_not_found_in_storage">Файл не найден в хранилище.</string>
     <string name="crash_report_title">Отчёт об ошибке</string>
     <string name="crash_report_description">Приложение упало.</string>
@@ -377,4 +378,19 @@
     <string name="voice_message_quality_desc">Битрейт для записи голоса</string>
     <string name="voice_quality_32">Низкий (32 kbps)</string>
     <string name="voice_quality_64">Средний (64 kbps)</string>
+    <string name="menu_delete_file">Удалить файл</string>
+    <string name="delete_file_dialog_title">Удалить файл</string>
+    <string name="delete_file_dialog_text">Вы уверены, что хотите удалить файл из локальной памяти?</string>
+    <string name="file_server_pubkey">Файловый сервер</string>
+    <string name="file_server_pubkey_desc">Публичный ключ сервера для передачи файлов.</string>
+    <string name="file_server_pubkey_dialog_title">Ключ файлового сервера</string>
+    <string name="file_server_pubkey_hint">Публичный ключ в Hex-формате</string>
+    <string name="manage_files">Управление файлами</string>
+    <string name="manage_files_desc">Просмотр и удаление полученных файлов</string>
+    <string name="no_files">Нет сохранённых файлов</string>
+    <string name="delete_file_confirm">Удалить \"%s\"? Это нельзя отменить.</string>
+    <string name="delete_files_confirm">Удалить %d файлов? Это нельзя отменить.</string>
+    <string name="sort_by_name">Сортировать по имени</string>
+    <string name="sort_by_size">Сортировать по размеру</string>
+    <string name="sort_by_date">Сортировать по дате</string>
 </resources>

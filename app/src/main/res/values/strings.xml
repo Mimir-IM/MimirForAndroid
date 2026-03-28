@@ -390,7 +390,7 @@
     <string name="downloading_file">Downloading…</string>
 
     <string name="file_server_pubkey">File server</string>
-    <string name="file_server_pubkey_desc">Public key of the file server for group chat file uploads.</string>
+    <string name="file_server_pubkey_desc">Public key of the server for file transfers.</string>
     <string name="file_server_pubkey_dialog_title">File server public key</string>
     <string name="file_server_pubkey_hint">Hex-encoded public key</string>
 

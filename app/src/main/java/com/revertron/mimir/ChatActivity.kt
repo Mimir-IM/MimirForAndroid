@@ -16,6 +16,7 @@ import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.content.ContextCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
@@ -134,6 +135,13 @@ class ChatActivity : BaseChatActivity() {
             when {
                 mimeType?.startsWith("image/") == true -> getImageFromUri(sharedUri)
                 else -> getFileFromUri(sharedUri)
+            }
+        } else {
+            val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
+            if (sharedText != null) {
+                val editText = findViewById<AppCompatEditText>(R.id.message_edit)
+                editText.setText(sharedText)
+                editText.setSelection(sharedText.length)
             }
         }
 

@@ -253,10 +253,6 @@ class ConnectionService : Service(),
                                 }
 
                                 node.announceToTrackers()
-
-                                if (haveNetwork(this)) {
-                                    connectAndSubscribeToAllChats(storage)
-                                }
                             } catch (e: Exception) {
                                 Log.e(TAG, "Failed to start PeerNode: ${e.message}", e)
                             }
@@ -1565,7 +1561,7 @@ class ConnectionService : Service(),
 
     private fun connectAndSubscribeToAllChats(storage: SqlStorage) {
         try {
-            sleep(3000)
+            sleep(5000)
             val knownMediators = storage.getKnownMediators().toMutableList()
             val defaultMediator = Hex.decode(DEFAULT_MEDIATOR_HEX)
             if (!knownMediators.any { it.contentEquals(defaultMediator) }) {

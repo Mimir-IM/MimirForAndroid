@@ -25,6 +25,8 @@
     <color name="bg_message_incoming_simple">@color/white</color>
     <color name="bg_message_outgoing_simple">@color/message_outgoing_normal</color>
 
+    <color name="progress_bar_color">@color/semi_gray</color>
+
     <color name="transparent">#00000000</color>
 
     <color name="outgoing_link_color">@color/black</color>

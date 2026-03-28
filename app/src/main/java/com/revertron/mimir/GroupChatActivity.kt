@@ -15,6 +15,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
+import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
@@ -254,6 +255,13 @@ class GroupChatActivity : BaseChatActivity() {
         val sharedUri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
         if (sharedUri != null) {
             handleSharedMedia(sharedUri)
+        } else {
+            val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
+            if (sharedText != null) {
+                val editText = findViewById<AppCompatEditText>(R.id.message_edit)
+                editText.setText(sharedText)
+                editText.setSelection(sharedText.length)
+            }
         }
 
         // Handle forward mode if present
