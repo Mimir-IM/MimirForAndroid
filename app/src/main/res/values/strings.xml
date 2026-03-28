@@ -133,6 +133,8 @@
     <string name="use_default_peers">Use default peers</string>
     <string name="custom_peers">Custom Peers</string>
     <string name="add_peer">Add peer</string>
+    <string name="edit_peer">Edit peer</string>
+    <string name="save">Save</string>
     <string name="status_connecting">Connecting…</string>
     <string name="status_ringing">Ringing…</string>
     <string name="status_error_connecting">Error connecting :(</string>

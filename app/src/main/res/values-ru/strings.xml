@@ -120,6 +120,8 @@
     <string name="use_default_peers">Узлы по умолчанию</string>
     <string name="custom_peers">Свои узлы</string>
     <string name="add_peer">Добавить узел</string>
+    <string name="edit_peer">Изменить узел</string>
+    <string name="save">Сохранить</string>
     <string name="status_connecting">Подключение…</string>
     <string name="status_ringing">Вызов…</string>
     <string name="status_error_connecting">Ошибка подключения :(</string>
