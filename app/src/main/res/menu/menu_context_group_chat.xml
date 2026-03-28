@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/mute_group" android:icon="@drawable/ic_volume_off" android:title="@string/mute_group" />
+    <item android:id="@+id/clear_history" android:icon="@drawable/ic_clean_chat_outline" android:title="@string/clear_history" />
+    <item android:id="@+id/leave_group" android:icon="@drawable/ic_delete" android:title="@string/leave_group" />
+    <item android:id="@+id/delete_group" android:icon="@drawable/ic_delete" android:title="@string/delete_group" />
+</menu>

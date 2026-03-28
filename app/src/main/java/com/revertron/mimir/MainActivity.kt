@@ -70,6 +70,14 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         }
     }
 
+    private val mediatorReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                "ACTION_MEDIATOR_LEFT_CHAT" -> refreshContacts()
+            }
+        }
+    }
+
     var avatarDrawable: Drawable? = null
     lateinit var myPubKey: ByteArray
 
@@ -117,12 +125,17 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             connectivityReceiver,
             IntentFilter("ACTION_CONNECTIVITY_CHANGED")
         )
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+            mediatorReceiver,
+            IntentFilter("ACTION_MEDIATOR_LEFT_CHAT")
+        )
     }
 
     override fun onPause() {
         super.onPause()
         handler.removeCallbacks(refreshTask)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(connectivityReceiver)
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(mediatorReceiver)
     }
 
     override fun onDestroy() {
@@ -242,8 +255,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                 showContactPopupMenu(contact, v)
             }
             is ChatListItem.GroupChatItem -> {
-                // TODO: Show group chat popup menu (leave group, mute, etc.)
-                Toast.makeText(this, "Group chat options - TODO", Toast.LENGTH_SHORT).show()
+                showGroupChatPopupMenu(item, v)
             }
         }
         return true
@@ -454,6 +466,127 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             }
         }
         popup.show()
+    }
+
+    private fun showGroupChatPopupMenu(groupChat: ChatListItem.GroupChatItem, v: View) {
+        val popup = PopupMenu(this, v, Gravity.TOP or Gravity.END)
+        popup.inflate(R.menu.menu_context_group_chat)
+        popup.setForceShowIcon(true)
+
+        // Visibility rules matching GroupChatActivity.onCreateOptionsMenu
+        if (groupChat.readOnly) {
+            popup.menu.findItem(R.id.mute_group)?.isVisible = false
+            popup.menu.findItem(R.id.leave_group)?.isVisible = false
+            popup.menu.findItem(R.id.delete_group)?.isVisible = true
+        } else if (!groupChat.isOwner) {
+            popup.menu.findItem(R.id.delete_group)?.isVisible = false
+        } else {
+            popup.menu.findItem(R.id.leave_group)?.isVisible = false
+        }
+
+        // Dynamic mute/unmute title
+        val currentlyMuted = getStorage().getGroupChat(groupChat.chatId)?.muted ?: false
+        popup.menu.findItem(R.id.mute_group)?.title = if (currentlyMuted) {
+            getString(R.string.unmute_group)
+        } else {
+            getString(R.string.mute_group)
+        }
+
+        popup.setOnMenuItemClickListener {
+            when (it.itemId) {
+                R.id.mute_group -> {
+                    toggleGroupMute(groupChat)
+                    true
+                }
+                R.id.clear_history -> {
+                    showClearGroupHistoryConfirmDialog(groupChat)
+                    true
+                }
+                R.id.leave_group -> {
+                    showLeaveGroupConfirmDialog(groupChat)
+                    true
+                }
+                R.id.delete_group -> {
+                    showDeleteGroupConfirmDialog(groupChat)
+                    true
+                }
+                else -> false
+            }
+        }
+        popup.show()
+    }
+
+    private fun toggleGroupMute(groupChat: ChatListItem.GroupChatItem) {
+        val currentlyMuted = getStorage().getGroupChat(groupChat.chatId)?.muted ?: false
+        val newMuted = !currentlyMuted
+        if (getStorage().setGroupChatMuted(groupChat.chatId, newMuted)) {
+            val message = if (newMuted) getString(R.string.mute_group) else getString(R.string.unmute_group)
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showClearGroupHistoryConfirmDialog(groupChat: ChatListItem.GroupChatItem) {
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        AlertDialog.Builder(wrapper)
+            .setTitle(getString(R.string.clear_history))
+            .setMessage(getString(R.string.clear_history_confirm_text))
+            .setIcon(R.drawable.ic_clean_chat_outline)
+            .setPositiveButton(getString(R.string.clear)) { _, _ ->
+                Thread {
+                    try {
+                        val attachmentFiles = getStorage().clearGroupChatHistory(groupChat.chatId)
+                        val filesDir = java.io.File(filesDir, "files")
+                        val cacheDir = java.io.File(cacheDir, "files")
+                        for (fileName in attachmentFiles) {
+                            java.io.File(filesDir, fileName).delete()
+                            java.io.File(cacheDir, fileName).delete()
+                        }
+                        runOnUiThread {
+                            refreshContacts()
+                            Toast.makeText(this, getString(R.string.history_cleared), Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error clearing group history", e)
+                    }
+                }.start()
+            }
+            .setNegativeButton(getString(R.string.cancel), null)
+            .show()
+    }
+
+    private fun showLeaveGroupConfirmDialog(groupChat: ChatListItem.GroupChatItem) {
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        AlertDialog.Builder(wrapper)
+            .setTitle(R.string.leave_group)
+            .setMessage(R.string.confirm_leave_group)
+            .setPositiveButton(R.string.leave) { _, _ ->
+                val intent = Intent(this, ConnectionService::class.java)
+                intent.putExtra("command", "mediator_leave")
+                intent.putExtra("chat_id", groupChat.chatId)
+                startService(intent)
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showDeleteGroupConfirmDialog(groupChat: ChatListItem.GroupChatItem) {
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        AlertDialog.Builder(wrapper)
+            .setTitle(R.string.delete_group)
+            .setMessage(R.string.confirm_delete_group)
+            .setPositiveButton(R.string.menu_delete) { _, _ ->
+                if (groupChat.readOnly) {
+                    getStorage().deleteGroupChat(groupChat.chatId)
+                    refreshContacts()
+                } else {
+                    val intent = Intent(this, ConnectionService::class.java)
+                    intent.putExtra("command", "mediator_delete")
+                    intent.putExtra("chat_id", groupChat.chatId)
+                    startService(intent)
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     override fun onMessageDelivered(id: Long, delivered: Boolean) {
