@@ -678,7 +678,7 @@ class MessageAdapter(
                     if (replyToMessage.incoming) contactName else myName
                 }
 
-                val replyText = replyToMessage.getText(holder.itemView.context)
+                val replyText = replyToMessage.getText(holder.itemView.context).replace('\n', ' ')
 
                 holder.replyToName.text = authorName
                 holder.replyToText.text = replyText

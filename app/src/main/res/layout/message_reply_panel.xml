@@ -10,7 +10,6 @@
     android:paddingBottom="4dp"
     app:layout_constraintWidth_max="300dp"
     app:layout_constraintLeft_toLeftOf="parent"
-    app:layout_constraintRight_toRightOf="parent"
     app:layout_constraintTop_toBottomOf="@id/name"
     tools:showIn="@layout/message_incoming_layout">
 

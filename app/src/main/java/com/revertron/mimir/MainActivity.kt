@@ -119,6 +119,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         } else {
             refreshContacts()
         }
+        invalidateOptionsMenu()
         showSnackBars()
         handler.post(refreshTask)
         LocalBroadcastManager.getInstance(this).registerReceiver(
