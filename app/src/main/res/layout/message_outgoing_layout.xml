@@ -17,7 +17,7 @@
         android:background="@drawable/message_background_outgoing"
         android:paddingStart="8dp"
         android:paddingTop="6dp"
-        android:paddingEnd="12dp"
+        android:paddingEnd="16dp"
         android:paddingBottom="6dp">
 
         <androidx.appcompat.widget.AppCompatTextView

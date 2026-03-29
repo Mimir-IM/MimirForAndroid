@@ -1,6 +1,6 @@
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <item android:right="4dp">
+    <item android:right="8dp">
         <shape android:shape="rectangle">
             <corners
                 android:bottomLeftRadius="4dp"
@@ -14,15 +14,15 @@
     <item
         android:bottom="0dp"
         android:gravity="bottom|right"
-        android:right="4dp">
+        android:right="0dp">
         <rotate
-            android:fromDegrees="45"
-            android:pivotX="0%"
+            android:fromDegrees="-45"
+            android:pivotX="100%"
             android:pivotY="100%">
             <shape android:shape="rectangle">
                 <size
-                    android:width="12dp"
-                    android:height="12dp" />
+                    android:width="16dp"
+                    android:height="16dp" />
                 <solid android:color="@color/bg_message_outgoing" />
             </shape>
         </rotate>
