@@ -8,7 +8,11 @@ import android.content.res.AssetFileDescriptor
 import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Typeface
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.TrafficStats
@@ -407,6 +411,74 @@ fun loadRoundedBitmap(context: Context, buffer: ByteArray, size: Int = 32, corne
         cornerRadius = TypedValue.applyDimension(COMPLEX_UNIT_DIP, corners.toFloat(), resources.displayMetrics)
     }
     return drawable
+}
+
+/**
+ * Loads a contact avatar as a plain Bitmap suitable for notifications.
+ * Returns null if the file doesn't exist or can't be decoded.
+ */
+fun loadNotificationBitmap(context: Context, fileName: String?, sizeDp: Int = 48): Bitmap? {
+    if (fileName.isNullOrEmpty()) return null
+    val f = if (fileName.startsWith("/data/")) {
+        File(fileName)
+    } else {
+        File(File(context.filesDir, "avatars"), fileName)
+    }
+    if (!f.exists()) return null
+    return try {
+        val px = TypedValue.applyDimension(COMPLEX_UNIT_DIP, sizeDp.toFloat(), context.resources.displayMetrics).toInt()
+        val raw = BitmapFactory.decodeFile(f.absolutePath) ?: return null
+        raw.scale(px, px)
+    } catch (e: Exception) {
+        Log.e("Utils", "loadNotificationBitmap: $e")
+        null
+    }
+}
+
+/**
+ * Loads a group member avatar as a plain Bitmap suitable for notifications.
+ * Group member avatars are stored in avatars_{chatId}/ directory.
+ */
+fun loadGroupMemberNotificationBitmap(context: Context, chatId: Long, fileName: String?, sizeDp: Int = 48): Bitmap? {
+    if (fileName.isNullOrEmpty()) return null
+    val f = File(File(context.filesDir, "avatars_$chatId"), fileName)
+    if (!f.exists()) return null
+    return try {
+        val px = TypedValue.applyDimension(COMPLEX_UNIT_DIP, sizeDp.toFloat(), context.resources.displayMetrics).toInt()
+        val raw = BitmapFactory.decodeFile(f.absolutePath) ?: return null
+        raw.scale(px, px)
+    } catch (e: Exception) {
+        Log.e("Utils", "loadGroupMemberNotificationBitmap: $e")
+        null
+    }
+}
+
+/**
+ * Creates a placeholder avatar bitmap with a colored background and the first letter of the name.
+ * Used when a contact has no avatar image.
+ */
+fun createPlaceholderAvatar(context: Context, name: String, pubkey: ByteArray, sizeDp: Int = 48): Bitmap {
+    val px = TypedValue.applyDimension(COMPLEX_UNIT_DIP, sizeDp.toFloat(), context.resources.displayMetrics).toInt()
+    val bitmap = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+
+    val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = getAvatarColor(pubkey)
+        style = Paint.Style.FILL
+    }
+    canvas.drawOval(RectF(0f, 0f, px.toFloat(), px.toFloat()), bgPaint)
+
+    val letter = name.firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "?"
+    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFFFFFFF.toInt()
+        textSize = px * 0.45f
+        typeface = Typeface.DEFAULT_BOLD
+        textAlign = Paint.Align.CENTER
+    }
+    val textY = px / 2f - (textPaint.descent() + textPaint.ascent()) / 2f
+    canvas.drawText(letter, px / 2f, textY, textPaint)
+
+    return bitmap
 }
 
 /* -------------------------------------------------------------- */

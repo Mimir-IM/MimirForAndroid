@@ -2325,6 +2325,14 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
         return null
     }
 
+    fun getContactAvatarFileName(id: Long): String? {
+        val db = this.readableDatabase
+        val cursor = db.query("contacts", arrayOf("avatar"), "id = ?", arrayOf(id.toString()), null, null, null)
+        val result = if (cursor.moveToNext()) cursor.getStringOrNull(0) else null
+        cursor.close()
+        return result
+    }
+
     fun getContactList(): List<Contact> {
         val list = mutableListOf<Contact>()
         val db = this.readableDatabase
@@ -2537,6 +2545,9 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
 
     fun removeContactAndChat(id: Long) {
         val db = writableDatabase
+        // Get pubkey BEFORE deletion (needed for notification channel cleanup)
+        val pubkey = getContactPubkey(id)
+
         db.beginTransaction()
         try {
             // 1. Get contact avatar filename BEFORE deletion
@@ -2572,6 +2583,9 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
 
             // 4. Delete files (AFTER transaction succeeds)
             deleteContactChatFiles(avatarPath, attachmentFiles)
+
+            // 5. Notify listeners (for notification channel cleanup, etc.)
+            listeners.forEach { it.onContactRemoved(id, pubkey) }
         } finally {
             db.endTransaction()
         }
@@ -3380,6 +3394,11 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
             // 7. Delete files (AFTER transaction succeeds)
             deleteGroupChatFiles(chatId, chatAvatarPath, inviteAvatarPaths, attachmentFiles)
 
+            // 8. Notify listeners (for notification channel cleanup, etc.)
+            if (result) {
+                listeners.forEach { it.onGroupChatRemoved(chatId) }
+            }
+
             return result
         } finally {
             db.endTransaction()
@@ -3976,6 +3995,31 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
     }
 
     /**
+     * Gets member avatar filename and pubkey by member ID.
+     * Returns Pair(avatarFileName, pubkey) or null if not found.
+     */
+    fun getGroupMemberAvatarAndPubkey(chatId: Long, memberId: Long): Pair<String?, ByteArray?>? {
+        val membersTable = "members_$chatId"
+        return try {
+            val cursor = readableDatabase.query(
+                membersTable, arrayOf("avatar", "pubkey"), "id = ?",
+                arrayOf(memberId.toString()), null, null, null
+            )
+            if (cursor.moveToNext()) {
+                val avatar = cursor.getStringOrNull(0)
+                val pubkeyHex = cursor.getStringOrNull(1)
+                cursor.close()
+                Pair(avatar, pubkeyHex?.let { Hex.decode(it) })
+            } else {
+                cursor.close()
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
      * Gets member info from the members_{chatId} table.
      */
     fun getGroupMemberInfo(chatId: Long, pubkey: ByteArray): GroupMemberInfo? {
@@ -4463,7 +4507,7 @@ data class Peer(val address: String, val clientId: Int, val priority: Int, val e
 
 interface StorageListener {
     fun onContactAdded(id: Long) {}
-    fun onContactRemoved(id: Long) {}
+    fun onContactRemoved(id: Long, pubkey: ByteArray? = null) {}
     fun onContactChanged(id: Long) {}
 
     fun onMessageSent(id: Long, contactId: Long, type: Int, replyTo: Long) {}
@@ -4478,6 +4522,7 @@ interface StorageListener {
     fun onGroupMessageRead(chatId: Long, id: Long) {}
     fun onAllGroupMessagesRead(chatId: Long) {}
     fun onGroupChatChanged(chatId: Long): Boolean { return false }
+    fun onGroupChatRemoved(chatId: Long) {}
     fun onGroupInviteReceived(inviteId: Long, chatId: Long, fromPubkey: ByteArray) {}
     fun onContactRequestReceived(requestId: Long) {}
 }

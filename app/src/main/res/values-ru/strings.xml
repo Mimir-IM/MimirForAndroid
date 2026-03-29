@@ -39,6 +39,8 @@
     <string name="copied_to_clipboard">Скопировано в буфер обмена</string>
     <string name="saved">Сохранено</string>
     <string name="menu_reply">Ответить</string>
+    <string name="mark_as_read">Прочитано</string>
+    <string name="you">Вы</string>
     <string name="menu_copy">Скопировать</string>
     <string name="menu_forward">Переслать</string>
     <string name="menu_delete">Удалить</string>

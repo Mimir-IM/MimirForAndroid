@@ -172,7 +172,7 @@ class ContactSelectorActivity : BaseActivity(), View.OnClickListener, StorageLis
         runOnUiThread { refreshContacts() }
     }
 
-    override fun onContactRemoved(id: Long) {
+    override fun onContactRemoved(id: Long, pubkey: ByteArray?) {
         runOnUiThread { refreshContacts() }
     }
 

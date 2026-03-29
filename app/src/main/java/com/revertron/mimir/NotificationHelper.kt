@@ -9,6 +9,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.media.AudioAttributes
 import android.media.AudioManager.STREAM_NOTIFICATION
 import android.media.RingtoneManager
@@ -18,7 +19,10 @@ import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.Person
+import androidx.core.app.RemoteInput
 import androidx.core.app.TaskStackBuilder
+import androidx.core.graphics.drawable.IconCompat
 import com.revertron.mimir.storage.StorageListener
 import org.bouncycastle.util.encoders.Hex
 import androidx.core.net.toUri
@@ -91,7 +95,13 @@ class NotificationHelper(private val context: Context) : StorageListener {
 
         // Message caching limits
         private const val MAX_MESSAGE_PREVIEW_LENGTH = 50
-        private const val MAX_CACHED_MESSAGE_LENGTH = 30
+        private const val MAX_CACHED_MESSAGES = 8
+
+        // Reply action extras
+        const val EXTRA_REPLY = "extra_reply_text"
+
+        // Mark-read request code offset to avoid collision with reply PendingIntents
+        private const val MARK_READ_REQUEST_CODE_OFFSET = 0x20000
 
         // ============================================================================
         // FOREGROUND SERVICE NOTIFICATIONS
@@ -695,26 +705,51 @@ class NotificationHelper(private val context: Context) : StorageListener {
     // INSTANCE MEMBERS
     // ============================================================================
 
+    private data class CachedMessage(
+        val sender: Person,
+        val text: String,
+        val timestamp: Long
+    )
+
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    private val messageCache = HashMap<Long, String>()
-    private val groupMessageCache = HashMap<Long, String>()
+    private val messageCache = HashMap<Long, ArrayList<CachedMessage>>()
+    private val groupMessageCache = HashMap<Long, ArrayList<CachedMessage>>()
 
     // ============================================================================
     // MESSAGE NOTIFICATIONS (Instance Methods)
     // ============================================================================
 
+    private fun getOrCreateContactPerson(contactId: Long, name: String, pubkey: ByteArray): Person {
+        val avatarFileName = App.app.storage.getContactAvatarFileName(contactId)
+        val bitmap = loadNotificationBitmap(context, avatarFileName)
+            ?: createPlaceholderAvatar(context, name, pubkey)
+        return Person.Builder()
+            .setName(name)
+            .setKey(Hex.toHexString(pubkey))
+            .setIcon(IconCompat.createWithBitmap(bitmap))
+            .build()
+    }
+
+    private fun getSelfPerson(): Person {
+        val accountInfo = App.app.storage.getAccountInfo(1, 0L)
+        val selfName = accountInfo?.name ?: context.getString(R.string.you)
+        val selfPubkey = App.app.storage.getMyPubKey()
+        val selfBitmap = loadNotificationBitmap(context, accountInfo?.avatar)
+            ?: createPlaceholderAvatar(context, selfName, selfPubkey)
+        return Person.Builder()
+            .setName(selfName)
+            .setKey(Hex.toHexString(selfPubkey))
+            .setIcon(IconCompat.createWithBitmap(selfBitmap))
+            .build()
+    }
+
     /**
-     * Creates notification for a received message.
-     * Creates per-contact notification channels on first use.
-     *
-     * @param contactId Contact database ID
-     * @param name Contact name
-     * @param pubkey Contact public key
-     * @param message Message preview text
-     * @return Configured notification
+     * Creates notification for a received message using MessagingStyle.
+     * Includes reply and mark-as-read actions.
      */
-    private fun createMessageNotification(contactId: Long, name: String, pubkey: ByteArray, message: String): Notification {
+    private fun createMessageNotification(contactId: Long, name: String, pubkey: ByteArray, messages: List<CachedMessage>): Notification {
         createMessageChannels(pubkey, name)
+        val notificationId = getMessageNotificationId(contactId)
 
         val intent = Intent(context, ChatActivity::class.java).apply {
             putExtra("pubkey", pubkey)
@@ -724,23 +759,43 @@ class NotificationHelper(private val context: Context) : StorageListener {
         val pendingIntent = TaskStackBuilder.create(context).run {
             addNextIntentWithParentStack(intent)
             editIntentAt(0)?.putExtra("no_service", true)
-            getPendingIntent(getMessageNotificationId(contactId), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            getPendingIntent(notificationId, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         }
 
         val (uri, _) = createMessageAudioAttributes(context)
         val channelId = getUserChannelId(pubkey)
 
+        // Build MessagingStyle
+        val selfPerson = getSelfPerson()
+        val messagingStyle = NotificationCompat.MessagingStyle(selfPerson)
+        for (msg in messages) {
+            messagingStyle.addMessage(NotificationCompat.MessagingStyle.Message(msg.text, msg.timestamp, msg.sender))
+        }
+
+        // Large icon: contact avatar (rounded-rect)
+        val avatarFileName = App.app.storage.getContactAvatarFileName(contactId)
+        val largeIcon = loadNotificationBitmap(context, avatarFileName)
+            ?: createPlaceholderAvatar(context, name, pubkey)
+
+        // Reply action
+        val replyAction = buildReplyAction(notificationId, pubkey, contactId, isGroup = false)
+
+        // Mark as read action
+        val markReadAction = buildMarkReadAction(notificationId, contactId, isGroup = false)
+
         return NotificationCompat.Builder(context, channelId)
             .setShowWhen(true)
-            .setContentTitle(name)
-            .setContentText(message)
             .setSmallIcon(R.drawable.ic_mannaz_notification)
+            .setLargeIcon(largeIcon)
             .setContentIntent(pendingIntent)
+            .setStyle(messagingStyle)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setDefaults(Notification.DEFAULT_LIGHTS or Notification.DEFAULT_VIBRATE)
             .setAutoCancel(true)
             .setSound(uri)
             .setGroup(channelId)
+            .addAction(replyAction)
+            .addAction(markReadAction)
             .build()
     }
 
@@ -783,8 +838,12 @@ class NotificationHelper(private val context: Context) : StorageListener {
         // No action needed
     }
 
-    override fun onContactRemoved(id: Long) {
-        // No action needed
+    override fun onContactRemoved(id: Long, pubkey: ByteArray?) {
+        cancelMessageNotification(context, id)
+        synchronized(messageCache) { messageCache.remove(id) }
+        if (pubkey != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            notificationManager.deleteNotificationChannel(getUserChannelId(pubkey))
+        }
     }
 
     override fun onContactChanged(id: Long) {
@@ -823,12 +882,7 @@ class NotificationHelper(private val context: Context) : StorageListener {
 
     /**
      * Called when a new message is received.
-     * Creates and displays notification with message preview.
-     * Caches message text for subsequent messages from same contact.
-     *
-     * @param id Message database ID
-     * @param contactId Contact database ID
-     * @return True to allow other listeners to process, false to stop propagation
+     * Creates and displays notification with MessagingStyle message history.
      */
     override fun onMessageReceived(id: Long, contactId: Long, type: Int, replyTo: Long): Boolean {
         val message = App.app.storage.getMessage(id)
@@ -844,45 +898,29 @@ class NotificationHelper(private val context: Context) : StorageListener {
             return false
         }
 
-        // Build message text with caching for multiple messages
-        val messageText = synchronized(messageCache) {
-            var text = message.getText(context)
-
-            // Truncate long messages
-            text = if (text.length > MAX_MESSAGE_PREVIEW_LENGTH) {
-                text.take(MAX_MESSAGE_PREVIEW_LENGTH)
-            } else {
-                text
-            }
-
-            // Append to cached messages or create new cache entry
-            if (messageCache.containsKey(contactId)) {
-                val cachedText = messageCache.remove(contactId)!!
-
-                // Prevent cache from growing too large
-                if (cachedText.length < MAX_CACHED_MESSAGE_LENGTH) {
-                    val combinedText = "$cachedText\n$text"
-                    messageCache[contactId] = combinedText
-                    combinedText
-                } else {
-                    messageCache[contactId] = cachedText
-                    cachedText
-                }
-            } else {
-                messageCache[contactId] = text
-                text
-            }
-        }
-
         val name = App.app.storage.getContactName(contactId).ifEmpty {
             context.getString(R.string.unknown_nickname)
         }
-        val pubkey = App.app.storage.getContactPubkey(contactId)
+        val pubkey = App.app.storage.getContactPubkey(contactId) ?: return false
 
-        if (pubkey != null) {
-            val notification = createMessageNotification(contactId, name, pubkey, messageText)
-            notificationManager.notify(getMessageNotificationId(contactId), notification)
+        val senderPerson = getOrCreateContactPerson(contactId, name, pubkey)
+
+        var text = message.getText(context)
+        if (text.length > MAX_MESSAGE_PREVIEW_LENGTH) {
+            text = text.take(MAX_MESSAGE_PREVIEW_LENGTH)
         }
+
+        val cachedMessages = synchronized(messageCache) {
+            val list = messageCache.getOrPut(contactId) { ArrayList() }
+            list.add(CachedMessage(senderPerson, text, message.time))
+            if (list.size > MAX_CACHED_MESSAGES) {
+                list.removeAt(0)
+            }
+            ArrayList(list)
+        }
+
+        val notification = createMessageNotification(contactId, name, pubkey, cachedMessages)
+        notificationManager.notify(getMessageNotificationId(contactId), notification)
 
         return true
     }
@@ -892,16 +930,12 @@ class NotificationHelper(private val context: Context) : StorageListener {
     // ============================================================================
 
     /**
-     * Creates notification for a received group chat message.
-     * Creates per-group notification channels on first use.
-     *
-     * @param chatId Group chat ID
-     * @param chatName Group chat name
-     * @param message Message preview text
-     * @return Configured notification
+     * Creates notification for a received group chat message using MessagingStyle.
+     * Includes reply and mark-as-read actions.
      */
-    private fun createGroupMessageNotification(chatId: Long, chatName: String, message: String): Notification {
+    private fun createGroupMessageNotification(chatId: Long, chatName: String, groupAvatarPath: String?, messages: List<CachedMessage>): Notification {
         createGroupMessageChannels(chatId, chatName)
+        val notificationId = getGroupChatNotificationId(chatId)
 
         val mediatorPubkey = MediatorManager.getDefaultMediatorPubkey()
 
@@ -914,23 +948,44 @@ class NotificationHelper(private val context: Context) : StorageListener {
         val pendingIntent = TaskStackBuilder.create(context).run {
             addNextIntentWithParentStack(intent)
             editIntentAt(0)?.putExtra("no_service", true)
-            getPendingIntent(chatId.toInt(), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            getPendingIntent(notificationId, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         }
 
         val (uri, _) = createMessageAudioAttributes(context)
         val channelId = getGroupChannelId(chatId)
 
+        // Build MessagingStyle for group conversation
+        val selfPerson = getSelfPerson()
+        val messagingStyle = NotificationCompat.MessagingStyle(selfPerson)
+            .setConversationTitle(chatName)
+            .setGroupConversation(true)
+        for (msg in messages) {
+            messagingStyle.addMessage(NotificationCompat.MessagingStyle.Message(msg.text, msg.timestamp, msg.sender))
+        }
+
+        // Large icon: group avatar
+        val largeIcon = loadNotificationBitmap(context, groupAvatarPath)
+            ?: createPlaceholderAvatar(context, chatName, chatId.toString().toByteArray())
+
+        // Reply action
+        val replyAction = buildReplyAction(notificationId, chatId = chatId, chatName = chatName, isGroup = true)
+
+        // Mark as read action
+        val markReadAction = buildMarkReadAction(notificationId, chatId, isGroup = true)
+
         return NotificationCompat.Builder(context, channelId)
             .setShowWhen(true)
-            .setContentTitle(chatName)
-            .setContentText(message)
             .setSmallIcon(R.drawable.ic_mannaz_notification)
+            .setLargeIcon(largeIcon)
             .setContentIntent(pendingIntent)
+            .setStyle(messagingStyle)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setDefaults(Notification.DEFAULT_LIGHTS or Notification.DEFAULT_VIBRATE)
             .setAutoCancel(true)
             .setSound(uri)
             .setGroup(channelId)
+            .addAction(replyAction)
+            .addAction(markReadAction)
             .build()
     }
 
@@ -987,15 +1042,17 @@ class NotificationHelper(private val context: Context) : StorageListener {
         }
     }
 
+    override fun onGroupChatRemoved(chatId: Long) {
+        cancelGroupChatNotification(context, chatId)
+        synchronized(groupMessageCache) { groupMessageCache.remove(chatId) }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            notificationManager.deleteNotificationChannel(getGroupChannelId(chatId))
+        }
+    }
+
     /**
      * Called when a new group message is received.
-     * Creates and displays notification with message preview.
-     * Caches message text for subsequent messages from same group.
-     *
-     * @param chatId Group chat ID
-     * @param id Message database ID
-     * @param contactId Contact database ID of sender (-1 if unknown)
-     * @return True to allow other listeners to process, false to stop propagation
+     * Creates and displays notification with MessagingStyle message history.
      */
     override fun onGroupMessageReceived(chatId: Long, id: Long, contactId: Long, type: Int, replyTo: Long): Boolean {
         val message = App.app.storage.getGroupMessage(chatId, id)
@@ -1018,50 +1075,134 @@ class NotificationHelper(private val context: Context) : StorageListener {
             return false
         }
 
-        // Get sender name
-        val senderName = if (contactId > 0) {
-            val nickname = App.app.storage.getGroupMemberNickname(chatId, contactId)
-            nickname ?: context.getString(R.string.unknown_nickname)
-        } else {
-            context.getString(R.string.unknown_nickname)
+        // Build sender Person with avatar
+        val senderPerson = buildGroupSenderPerson(chatId, contactId)
+
+        var text = message.getText(context, App.app.storage, chatId)
+        if (text.length > MAX_MESSAGE_PREVIEW_LENGTH) {
+            text = text.take(MAX_MESSAGE_PREVIEW_LENGTH)
         }
 
-        // Build message text with caching for multiple messages
-        val messageText = synchronized(groupMessageCache) {
-            var text = message.getText(context, App.app.storage, chatId)
-
-            // Truncate long messages
-            text = if (text.length > MAX_MESSAGE_PREVIEW_LENGTH) {
-                text.take(MAX_MESSAGE_PREVIEW_LENGTH)
-            } else {
-                text
+        val cachedMessages = synchronized(groupMessageCache) {
+            val list = groupMessageCache.getOrPut(chatId) { ArrayList() }
+            list.add(CachedMessage(senderPerson, text, message.time))
+            if (list.size > MAX_CACHED_MESSAGES) {
+                list.removeAt(0)
             }
-
-            // Format with sender name for group context
-            val formattedText = "$senderName: $text"
-
-            // Append to cached messages or create new cache entry
-            if (groupMessageCache.containsKey(chatId)) {
-                val cachedText = groupMessageCache.remove(chatId)!!
-
-                // Prevent cache from growing too large
-                if (cachedText.length < MAX_CACHED_MESSAGE_LENGTH) {
-                    val combinedText = "$cachedText\n$formattedText"
-                    groupMessageCache[chatId] = combinedText
-                    combinedText
-                } else {
-                    groupMessageCache[chatId] = cachedText
-                    cachedText
-                }
-            } else {
-                groupMessageCache[chatId] = formattedText
-                formattedText
-            }
+            ArrayList(list)
         }
 
-        val notification = createGroupMessageNotification(chatId, groupChat.name, messageText)
+        val notification = createGroupMessageNotification(chatId, groupChat.name, groupChat.avatarPath, cachedMessages)
         notificationManager.notify(getGroupChatNotificationId(chatId), notification)
 
         return true
     }
+
+    private fun buildGroupSenderPerson(chatId: Long, memberId: Long): Person {
+        val senderName: String
+        var avatarBitmap: Bitmap? = null
+        var pubkey: ByteArray? = null
+
+        if (memberId > 0) {
+            senderName = App.app.storage.getGroupMemberNickname(chatId, memberId)
+                ?: context.getString(R.string.unknown_nickname)
+            val memberData = App.app.storage.getGroupMemberAvatarAndPubkey(chatId, memberId)
+            if (memberData != null) {
+                pubkey = memberData.second
+                avatarBitmap = loadGroupMemberNotificationBitmap(context, chatId, memberData.first)
+            }
+        } else {
+            senderName = context.getString(R.string.unknown_nickname)
+        }
+
+        if (avatarBitmap == null) {
+            val seed = pubkey ?: memberId.toString().toByteArray()
+            avatarBitmap = createPlaceholderAvatar(context, senderName, seed)
+        }
+
+        return Person.Builder()
+            .setName(senderName)
+            .setKey("group_${chatId}_$memberId")
+            .setIcon(IconCompat.createWithBitmap(avatarBitmap))
+            .build()
+    }
+
+    // ============================================================================
+    // NOTIFICATION ACTIONS (Reply & Mark Read)
+    // ============================================================================
+
+    /**
+     * Builds a reply action for direct message notifications.
+     */
+    private fun buildReplyAction(requestCode: Int, pubkey: ByteArray, contactId: Long, isGroup: Boolean): NotificationCompat.Action {
+        val remoteInput = RemoteInput.Builder(EXTRA_REPLY)
+            .setLabel(context.getString(R.string.menu_reply))
+            .build()
+
+        val replyIntent = Intent(context, NotificationReplyReceiver::class.java).apply {
+            putExtra("pubkey", pubkey)
+            putExtra("contact_id", contactId)
+            putExtra("is_group", isGroup)
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context, requestCode, replyIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+        )
+
+        return NotificationCompat.Action.Builder(
+            R.drawable.ic_mannaz_notification,
+            context.getString(R.string.menu_reply),
+            pendingIntent
+        ).addRemoteInput(remoteInput).build()
+    }
+
+    /**
+     * Builds a reply action for group chat notifications.
+     */
+    private fun buildReplyAction(requestCode: Int, chatId: Long, chatName: String, isGroup: Boolean): NotificationCompat.Action {
+        val remoteInput = RemoteInput.Builder(EXTRA_REPLY)
+            .setLabel(context.getString(R.string.menu_reply))
+            .build()
+
+        val replyIntent = Intent(context, NotificationReplyReceiver::class.java).apply {
+            putExtra("chat_id", chatId)
+            putExtra("chat_name", chatName)
+            putExtra("is_group", isGroup)
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context, requestCode, replyIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+        )
+
+        return NotificationCompat.Action.Builder(
+            R.drawable.ic_mannaz_notification,
+            context.getString(R.string.menu_reply),
+            pendingIntent
+        ).addRemoteInput(remoteInput).build()
+    }
+
+    /**
+     * Builds a mark-as-read action for notifications.
+     */
+    private fun buildMarkReadAction(notificationId: Int, id: Long, isGroup: Boolean): NotificationCompat.Action {
+        val intent = Intent(context, NotificationMarkReadReceiver::class.java).apply {
+            if (isGroup) {
+                putExtra("chat_id", id)
+            } else {
+                putExtra("contact_id", id)
+            }
+            putExtra("is_group", isGroup)
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context, notificationId + MARK_READ_REQUEST_CODE_OFFSET, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Action.Builder(
+            0,
+            context.getString(R.string.mark_as_read),
+            pendingIntent
+        ).build()
+    }
+
 }
