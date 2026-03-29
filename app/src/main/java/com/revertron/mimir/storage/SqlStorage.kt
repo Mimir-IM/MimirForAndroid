@@ -104,11 +104,12 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                     when (type) {
                         1 -> {
                             val json = JSONObject(String(data))
-                            val text = json.getString("text")
-                            if (text.isEmpty()) {
-                                json.optString("originalName", json.optString("name"))
-                            } else {
+                            val text = json.optString("text", "")
+                            if (text.isNotEmpty()) {
                                 text
+                            } else {
+                                val name = json.optString("originalName", json.optString("name", ""))
+                                name.ifEmpty { context.getString(R.string.draft_image) }
                             }
                         }
                         2 -> {
@@ -119,12 +120,12 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                         3 -> {
                             // File attachment - show original filename with optional message text
                             val json = JSONObject(String(data))
-                            val filename = json.optString("originalName", json.optString("name"))
-                            val text = json.optString("text", filename)
-                            if (text.isEmpty()) {
-                                filename
-                            } else {
+                            val filename = json.optString("originalName", json.optString("name", ""))
+                            val text = json.optString("text", "")
+                            if (text.isNotEmpty()) {
                                 text
+                            } else {
+                                filename.ifEmpty { context.getString(R.string.draft_attachment) }
                             }
                         }
                         else -> {
@@ -153,11 +154,12 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                     when (type) {
                         1 -> {
                             val json = JSONObject(String(data))
-                            val text = json.getString("text")
-                            if (text.isEmpty()) {
-                                json.optString("originalName", json.optString("name"))
-                            } else {
+                            val text = json.optString("text", "")
+                            if (text.isNotEmpty()) {
                                 text
+                            } else {
+                                val name = json.optString("originalName", json.optString("name", ""))
+                                name.ifEmpty { context.getString(R.string.draft_image) }
                             }
                         }
                         2 -> {
@@ -168,12 +170,12 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
                         3 -> {
                             // File attachment - show original filename with optional message text
                             val json = JSONObject(String(data))
-                            val filename = json.optString("originalName", json.optString("name"))
-                            val text = json.optString("text", filename)
-                            if (text.isEmpty()) {
-                                filename
-                            } else {
+                            val filename = json.optString("originalName", json.optString("name", ""))
+                            val text = json.optString("text", "")
+                            if (text.isNotEmpty()) {
                                 text
+                            } else {
+                                filename.ifEmpty { context.getString(R.string.draft_attachment) }
                             }
                         }
                         1000 -> {
