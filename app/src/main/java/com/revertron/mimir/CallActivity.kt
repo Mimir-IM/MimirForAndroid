@@ -44,6 +44,7 @@ class CallActivity: BaseActivity() {
     private var originalOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     private var muted = false
     private var active = false
+    private var outgoing = false
     private var onSpeaker = false
     private var callEnded = false
     private lateinit var audioManager: AudioManager
@@ -126,7 +127,7 @@ class CallActivity: BaseActivity() {
 
         pubkey = intent.getByteArrayExtra("pubkey").apply { if (this == null) finish() }!!
         val name = intent.getStringExtra("name").apply { if (this == null) finish() }!!
-        var outgoing = intent.getBooleanExtra("outgoing", false)
+        outgoing = intent.getBooleanExtra("outgoing", false)
         active = intent.getBooleanExtra("active", false)
         val action = intent.action
 
@@ -390,7 +391,13 @@ class CallActivity: BaseActivity() {
     }
 
     private fun callReact(answer: Boolean) {
-        val action = if (answer) { "call_answer" } else { "call_decline" }
+        val action = if (answer) {
+            "call_answer"
+        } else if (outgoing) {
+            "call_hangup"  // Caller canceling outgoing call
+        } else {
+            "call_decline" // Callee rejecting incoming call
+        }
         val intent = Intent(this, ConnectionService::class.java)
             .putExtra("command", action)
             .putExtra("pubkey", pubkey)

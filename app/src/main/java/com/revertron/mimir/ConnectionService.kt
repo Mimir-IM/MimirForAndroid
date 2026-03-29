@@ -372,10 +372,14 @@ class ConnectionService : Service(),
             }
 
             "call_hangup" -> {
-                Log.i(TAG, "Hanging up call")
+                // Resolve the pubkey of the contact we need to notify.
+                // activeCallPubkey is only set after the callee answers (IN_CALL),
+                // so for pre-answer hangup we fall back to outgoingCallPubkey (caller)
+                // or callingPubkey (callee declining via hangup).
+                val pk = activeCallPubkey ?: outgoingCallPubkey ?: callingPubkey
+                Log.i(TAG, "Hanging up call, resolved=${pk != null}")
                 outgoingCallPubkey = null  // user cancelled — no more retries
                 cancelCallNotifications(this, incoming = false, ongoing = true)
-                val pk = activeCallPubkey
                 if (pk != null) {
                     try {
                         peerNode?.hangupCall(pk)
