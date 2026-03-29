@@ -592,6 +592,11 @@ class ConnectionService : Service(),
                 handler.postDelayed(100) { updateTick(true) }
             }
 
+            "restart_update_tick" -> {
+                updateAfter = System.currentTimeMillis()
+                handler.postDelayed(100) { updateTick() }
+            }
+
             "mediator_create_chat" -> {
                 val name = intent.getStringExtra("name")
                 val description = intent.getStringExtra("description") ?: ""
@@ -2163,10 +2168,9 @@ class ConnectionService : Service(),
                 val delay = if (checkUpdates(windowContext, forced)) 3600 * 1000L else 600 * 1000L
                 updateAfter = System.currentTimeMillis() + delay
                 handler.postDelayed(delay) { updateTick() }
-            } else {
-                updateAfter = System.currentTimeMillis() + 600 * 1000L
-                handler.postDelayed(600 * 1000L) { updateTick() }
             }
+            // When updates are disabled, don't reschedule. The loop restarts
+            // from "online" event or "check_updates" command if the user re-enables.
         }
     }
 }

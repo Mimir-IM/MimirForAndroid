@@ -56,6 +56,12 @@ class SettingsActivity : BaseActivity(), SettingsAdapter.Listener {
                     putBoolean(SettingsData.KEY_AUTO_UPDATES, isChecked)
                     commit()
                 }
+                if (isChecked) {
+                    // Restart the update tick loop that was stopped when disabled
+                    val intent = Intent(this, ConnectionService::class.java)
+                    intent.putExtra("command", "restart_update_tick")
+                    startService(intent)
+                }
             }
         }
     }

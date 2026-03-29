@@ -127,9 +127,11 @@ fun checkUpdates(context: Context, forced: Boolean = false): Boolean {
         }
         return true
     } catch (e: Exception) {
-        val message: String = e.localizedMessage ?: e.message!!
-        val text = context.getString(R.string.error_checking_updates, message)
-        Toast.makeText(context, text, Toast.LENGTH_LONG).show()
+        if (forced) {
+            val message: String = e.localizedMessage ?: e.message!!
+            val text = context.getString(R.string.error_checking_updates, message)
+            Toast.makeText(context, text, Toast.LENGTH_LONG).show()
+        }
         e.printStackTrace()
         return false
     }
