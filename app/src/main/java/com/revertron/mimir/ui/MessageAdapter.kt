@@ -50,6 +50,7 @@ class MessageAdapter(
     private val chatId: Long,
     private val groupChat: Boolean,
     private val contactName: String,
+    private val myName: String,
     private val onClick: View.OnClickListener,
     private val onReplyClick: View.OnClickListener,
     private val onPictureClick: View.OnClickListener,
@@ -666,12 +667,15 @@ class MessageAdapter(
 
                 val unknown = holder.message.context.getString(R.string.unknown_nickname)
 
-                // For group chats, show the actual author's name
                 val authorName = if (groupChat) {
-                    val user = storage.getMemberInfo(replyToMessage.contact, chatId, 48, 6)
-                    user?.first ?: unknown
+                    if (replyToMessage.incoming) {
+                        val user = storage.getMemberInfo(replyToMessage.contact, chatId, 48, 6)
+                        user?.first ?: unknown
+                    } else {
+                        myName
+                    }
                 } else {
-                    contactName
+                    if (replyToMessage.incoming) contactName else myName
                 }
 
                 val replyText = replyToMessage.getText(holder.itemView.context)

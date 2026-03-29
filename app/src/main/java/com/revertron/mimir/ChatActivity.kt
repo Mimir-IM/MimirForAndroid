@@ -199,6 +199,7 @@ class ChatActivity : BaseChatActivity() {
             contact.id,
             groupChat = false,
             contact.name,
+            myName,
             this,
             onClickOnReply(),
             onClickOnPicture(),
@@ -224,7 +225,8 @@ class ChatActivity : BaseChatActivity() {
     override fun getMessageForReply(messageId: Long): Pair<String, String>? {
         val message = getStorage().getMessage(messageId, true)
         return if (message != null) {
-            Pair(contact.name, message.getText(this))
+            val authorName = if (message.incoming) contact.name else myName
+            Pair(authorName, message.getText(this))
         } else {
             null
         }

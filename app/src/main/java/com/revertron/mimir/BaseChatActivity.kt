@@ -142,6 +142,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     private var isReactionFabShowing = false
 
     // State
+    protected var myName: String = ""
     protected var isChatVisible: Boolean = false
     protected var lastSoundTime = 0L
 
@@ -181,6 +182,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         setupAttachmentUI()
         setupMessageInput()
 
+        myName = getStorage().getAccountInfo(1, 0L)?.name ?: ""
         getStorage().listeners.add(this)
         loadEmojiUsageCounts()
     }

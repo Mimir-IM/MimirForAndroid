@@ -288,6 +288,7 @@ class GroupChatActivity : BaseChatActivity() {
             groupChat.chatId,
             groupChat = true, // Enable group-chat mode to show sender names
             groupChat.name,
+            myName,
             this,
             onClickOnReply(),
             onClickOnPicture(),
@@ -318,9 +319,12 @@ class GroupChatActivity : BaseChatActivity() {
 
     override fun getMessageForReply(messageId: Long): Pair<String, String>? {
         val message = getStorage().getGroupMessage(groupChat.chatId, messageId, true) ?: return null
-        // Get the author's name from the message
-        val user = getStorage().getMemberInfo(message.contact, groupChat.chatId, 48, 6)
-        val authorName = user?.first ?: getString(R.string.unknown_nickname)
+        val authorName = if (message.incoming) {
+            val user = getStorage().getMemberInfo(message.contact, groupChat.chatId, 48, 6)
+            user?.first ?: getString(R.string.unknown_nickname)
+        } else {
+            myName
+        }
         return Pair(authorName, message.getText(this))
     }
 
