@@ -739,7 +739,7 @@ class ConnectionService : Service(),
 
         App.app.online = false
         App.app.trackerAnnounced = false
-        App.app.mediatorConnected = false
+        App.app.mediatorStatus = App.MediatorStatus.Disconnected
 
         updaterThread.quitSafely()
         super.onDestroy()
@@ -769,13 +769,6 @@ class ConnectionService : Service(),
             Thread { connectAndSubscribeToAllChats(storage) }.start()
         } else {
             App.app.trackerAnnounced = false
-            // Do NOT clear mediatorConnected here. The mediator connection may
-            // survive a brief Yggdrasil peer switch (the socket stays alive).
-            // When Yggdrasil is offline the mediator dot is already shown red by
-            // updateStatusTitle() regardless of mediatorConnected, so clearing it
-            // here only causes a stale "red" after connectivity is restored.
-            // The real onDisconnected callback from MediatorEventListener handles
-            // setting mediatorConnected = false when the connection actually drops.
         }
     }
 
@@ -1259,9 +1252,14 @@ class ConnectionService : Service(),
 
     // ── MediatorEventListener ─────────────────────────────────────────────────
 
+    override fun onConnecting(mediatorPubkey: ByteArray) {
+        Log.i(TAG, "onConnecting to mediator ${Hex.toHexString(mediatorPubkey).take(8)}")
+        App.app.mediatorStatus = App.MediatorStatus.Connecting
+    }
+
     override fun onConnected(mediatorPubkey: ByteArray) {
         Log.i(TAG, "onConnected to mediator ${Hex.toHexString(mediatorPubkey).take(8)}")
-        App.app.mediatorConnected = true
+        App.app.mediatorStatus = App.MediatorStatus.Connected
         val storage = (application as App).storage
         Thread {
             sleep(1000)
@@ -1547,7 +1545,7 @@ class ConnectionService : Service(),
 
     override fun onDisconnected(mediatorPubkey: ByteArray) {
         Log.w(TAG, "onDisconnected from mediator ${Hex.toHexString(mediatorPubkey).take(8)}")
-        App.app.mediatorConnected = false
+        App.app.mediatorStatus = App.MediatorStatus.Disconnected
         val storage = (application as App).storage
         val myPubkey = peerNode?.publicKey()
         val chats = storage.getGroupChatList()
@@ -1570,7 +1568,7 @@ class ConnectionService : Service(),
 
     private fun connectAndSubscribeToAllChats(storage: SqlStorage) {
         try {
-            sleep(5000)
+            sleep(2000)
             val knownMediators = storage.getKnownMediators().toMutableList()
             val defaultMediator = Hex.decode(DEFAULT_MEDIATOR_HEX)
             if (!knownMediators.any { it.contentEquals(defaultMediator) }) {

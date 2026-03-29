@@ -382,6 +382,10 @@ class ChatActivity : BaseChatActivity() {
                 toggleMuteContact()
                 return true
             }
+            R.id.remove_contact -> {
+                showRemoveContactConfirmDialog()
+                return true
+            }
             else -> {
                 if (item.itemId != android.R.id.home) {
                     Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
@@ -402,6 +406,9 @@ class ChatActivity : BaseChatActivity() {
             }
             R.id.mute_contact -> {
                 toggleMuteContact()
+            }
+            R.id.remove_contact -> {
+                showRemoveContactConfirmDialog()
             }
             else -> {
                 Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
@@ -465,6 +472,33 @@ class ChatActivity : BaseChatActivity() {
     }
 
     // Clear history functionality
+
+    private fun showRemoveContactConfirmDialog() {
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        val builder = AlertDialog.Builder(wrapper)
+        builder.setTitle(getString(R.string.remove_contact))
+        builder.setMessage(getString(R.string.remove_contact_confirm))
+        builder.setIcon(R.drawable.ic_contact_remove)
+        builder.setPositiveButton(getString(R.string.menu_delete)) { _, _ ->
+            removeContact()
+        }
+        builder.setNegativeButton(getString(R.string.cancel)) { dialog, _ ->
+            dialog.cancel()
+        }
+        builder.show()
+    }
+
+    private fun removeContact() {
+        Thread {
+            try {
+                getStorage().removeContactAndChat(contact.id)
+                Log.i(TAG, "Removed contact ${contact.id}")
+                runOnUiThread { finish() }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to remove contact", e)
+            }
+        }.start()
+    }
 
     private fun showClearHistoryConfirmDialog() {
         val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)

@@ -51,6 +51,7 @@
     <string name="empty_name">Вам надо указать имя!</string>
     <string name="wrong_public_key">Неверный публичный ключ</string>
     <string name="remove_contact">Удалить контакт и чат</string>
+    <string name="remove_contact_confirm">Контакт, все сообщения и история чата будут безвозвратно удалены. Продолжить?</string>
     <string name="rename">Переименовать</string>
     <string name="rename_contact">Переименовать контакт</string>
     <string name="copy_contact_id">Скопировать ID контакта</string>

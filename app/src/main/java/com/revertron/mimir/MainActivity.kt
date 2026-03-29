@@ -304,7 +304,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
     private fun updateStatusTitle() {
         val ygg = App.app.online
         val tracker = App.app.trackerAnnounced
-        val mediator = App.app.mediatorConnected
+        val mediatorStatus = App.app.mediatorStatus
 
         val colorRed = Color.parseColor("#F44336")
         val colorYellow = Color.parseColor("#FFC107")
@@ -329,7 +329,12 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         // Mediator dot
         start = builder.length
         builder.append(dot)
-        builder.setSpan(ForegroundColorSpan(if (!ygg) colorRed else if (mediator) colorGreen else colorRed), start, start + dot.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        val mediatorColor = if (!ygg) colorRed else when (mediatorStatus) {
+            App.MediatorStatus.Connected -> colorGreen
+            App.MediatorStatus.Connecting -> colorYellow
+            App.MediatorStatus.Disconnected -> colorRed
+        }
+        builder.setSpan(ForegroundColorSpan(mediatorColor), start, start + dot.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
 
         supportActionBar?.title = builder
         supportActionBar?.subtitle = null

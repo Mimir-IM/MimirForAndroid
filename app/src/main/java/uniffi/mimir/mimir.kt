@@ -45,8 +45,10 @@ open class RustBuffer : Structure() {
     // When dealing with these fields, make sure to call `toULong()`.
     @JvmField
     var capacity: Long = 0
+
     @JvmField
     var len: Long = 0
+
     @JvmField
     var data: Pointer? = null
 
@@ -99,6 +101,7 @@ open class RustBuffer : Structure() {
 internal open class ForeignBytes : Structure() {
     @JvmField
     var len: Int = 0
+
     @JvmField
     var data: Pointer? = null
 
@@ -195,6 +198,7 @@ internal const val UNIFFI_CALL_UNEXPECTED_ERROR = 2.toByte()
 internal open class UniffiRustCallStatus : Structure() {
     @JvmField
     var code: Byte = 0
+
     @JvmField
     var error_buf: RustBuffer.ByValue = RustBuffer.ByValue()
 
@@ -709,34 +713,38 @@ internal interface UniffiCallbackInterfaceMediatorEventListenerMethod0 : Callbac
 }
 
 internal interface UniffiCallbackInterfaceMediatorEventListenerMethod1 : Callback {
-    fun callback(uniffiHandle: Long, mediatorPubkey: RustBuffer.ByValue, chatId: Long, lastMessageId: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+    fun callback(uniffiHandle: Long, mediatorPubkey: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
 }
 
 internal interface UniffiCallbackInterfaceMediatorEventListenerMethod2 : Callback {
-    fun callback(uniffiHandle: Long, chatId: Long, messageId: Long, guid: Long, timestamp: Long, author: RustBuffer.ByValue, `data`: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+    fun callback(uniffiHandle: Long, mediatorPubkey: RustBuffer.ByValue, chatId: Long, lastMessageId: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
 }
 
 internal interface UniffiCallbackInterfaceMediatorEventListenerMethod3 : Callback {
-    fun callback(uniffiHandle: Long, chatId: Long, messageId: Long, guid: Long, timestamp: Long, body: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+    fun callback(uniffiHandle: Long, chatId: Long, messageId: Long, guid: Long, timestamp: Long, author: RustBuffer.ByValue, `data`: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
 }
 
 internal interface UniffiCallbackInterfaceMediatorEventListenerMethod4 : Callback {
-    fun callback(uniffiHandle: Long, inviteId: Long, chatId: Long, fromPubkey: RustBuffer.ByValue, timestamp: Long, chatName: RustBuffer.ByValue, chatDesc: RustBuffer.ByValue, chatAvatar: RustBuffer.ByValue, encryptedData: RustBuffer.ByValue, mediatorPubkey: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+    fun callback(uniffiHandle: Long, chatId: Long, messageId: Long, guid: Long, timestamp: Long, body: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
 }
 
 internal interface UniffiCallbackInterfaceMediatorEventListenerMethod5 : Callback {
-    fun callback(uniffiHandle: Long, chatId: Long, lastUpdate: Long, uniffiOutReturn: RustBuffer, uniffiCallStatus: UniffiRustCallStatus)
+    fun callback(uniffiHandle: Long, inviteId: Long, chatId: Long, fromPubkey: RustBuffer.ByValue, timestamp: Long, chatName: RustBuffer.ByValue, chatDesc: RustBuffer.ByValue, chatAvatar: RustBuffer.ByValue, encryptedData: RustBuffer.ByValue, mediatorPubkey: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
 }
 
 internal interface UniffiCallbackInterfaceMediatorEventListenerMethod6 : Callback {
-    fun callback(uniffiHandle: Long, chatId: Long, memberPubkey: RustBuffer.ByValue, encryptedInfo: RustBuffer.ByValue, timestamp: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+    fun callback(uniffiHandle: Long, chatId: Long, lastUpdate: Long, uniffiOutReturn: RustBuffer, uniffiCallStatus: UniffiRustCallStatus)
 }
 
 internal interface UniffiCallbackInterfaceMediatorEventListenerMethod7 : Callback {
-    fun callback(uniffiHandle: Long, chatId: Long, memberPubkey: RustBuffer.ByValue, isOnline: Byte, timestamp: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+    fun callback(uniffiHandle: Long, chatId: Long, memberPubkey: RustBuffer.ByValue, encryptedInfo: RustBuffer.ByValue, timestamp: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
 }
 
 internal interface UniffiCallbackInterfaceMediatorEventListenerMethod8 : Callback {
+    fun callback(uniffiHandle: Long, chatId: Long, memberPubkey: RustBuffer.ByValue, isOnline: Byte, timestamp: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+}
+
+internal interface UniffiCallbackInterfaceMediatorEventListenerMethod9 : Callback {
     fun callback(uniffiHandle: Long, mediatorPubkey: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
 }
 
@@ -865,38 +873,41 @@ internal open class UniffiVTableCallbackInterfaceInfoProvider(
 
 }
 
-@Structure.FieldOrder("uniffiFree", "uniffiClone", "onConnected", "onSubscribed", "onPushMessage", "onSystemMessage", "onPushInvite", "onMemberInfoRequest", "onMemberInfoUpdate", "onMemberOnlineStatusChanged", "onDisconnected")
+@Structure.FieldOrder("uniffiFree", "uniffiClone", "onConnecting", "onConnected", "onSubscribed", "onPushMessage", "onSystemMessage", "onPushInvite", "onMemberInfoRequest", "onMemberInfoUpdate", "onMemberOnlineStatusChanged", "onDisconnected")
 internal open class UniffiVTableCallbackInterfaceMediatorEventListener(
     @JvmField internal var uniffiFree: UniffiCallbackInterfaceFree? = null,
     @JvmField internal var uniffiClone: UniffiCallbackInterfaceClone? = null,
-    @JvmField internal var onConnected: UniffiCallbackInterfaceMediatorEventListenerMethod0? = null,
-    @JvmField internal var onSubscribed: UniffiCallbackInterfaceMediatorEventListenerMethod1? = null,
-    @JvmField internal var onPushMessage: UniffiCallbackInterfaceMediatorEventListenerMethod2? = null,
-    @JvmField internal var onSystemMessage: UniffiCallbackInterfaceMediatorEventListenerMethod3? = null,
-    @JvmField internal var onPushInvite: UniffiCallbackInterfaceMediatorEventListenerMethod4? = null,
-    @JvmField internal var onMemberInfoRequest: UniffiCallbackInterfaceMediatorEventListenerMethod5? = null,
-    @JvmField internal var onMemberInfoUpdate: UniffiCallbackInterfaceMediatorEventListenerMethod6? = null,
-    @JvmField internal var onMemberOnlineStatusChanged: UniffiCallbackInterfaceMediatorEventListenerMethod7? = null,
-    @JvmField internal var onDisconnected: UniffiCallbackInterfaceMediatorEventListenerMethod8? = null,
+    @JvmField internal var onConnecting: UniffiCallbackInterfaceMediatorEventListenerMethod0? = null,
+    @JvmField internal var onConnected: UniffiCallbackInterfaceMediatorEventListenerMethod1? = null,
+    @JvmField internal var onSubscribed: UniffiCallbackInterfaceMediatorEventListenerMethod2? = null,
+    @JvmField internal var onPushMessage: UniffiCallbackInterfaceMediatorEventListenerMethod3? = null,
+    @JvmField internal var onSystemMessage: UniffiCallbackInterfaceMediatorEventListenerMethod4? = null,
+    @JvmField internal var onPushInvite: UniffiCallbackInterfaceMediatorEventListenerMethod5? = null,
+    @JvmField internal var onMemberInfoRequest: UniffiCallbackInterfaceMediatorEventListenerMethod6? = null,
+    @JvmField internal var onMemberInfoUpdate: UniffiCallbackInterfaceMediatorEventListenerMethod7? = null,
+    @JvmField internal var onMemberOnlineStatusChanged: UniffiCallbackInterfaceMediatorEventListenerMethod8? = null,
+    @JvmField internal var onDisconnected: UniffiCallbackInterfaceMediatorEventListenerMethod9? = null,
 ) : Structure() {
     class UniffiByValue(
         uniffiFree: UniffiCallbackInterfaceFree? = null,
         uniffiClone: UniffiCallbackInterfaceClone? = null,
-        onConnected: UniffiCallbackInterfaceMediatorEventListenerMethod0? = null,
-        onSubscribed: UniffiCallbackInterfaceMediatorEventListenerMethod1? = null,
-        onPushMessage: UniffiCallbackInterfaceMediatorEventListenerMethod2? = null,
-        onSystemMessage: UniffiCallbackInterfaceMediatorEventListenerMethod3? = null,
-        onPushInvite: UniffiCallbackInterfaceMediatorEventListenerMethod4? = null,
-        onMemberInfoRequest: UniffiCallbackInterfaceMediatorEventListenerMethod5? = null,
-        onMemberInfoUpdate: UniffiCallbackInterfaceMediatorEventListenerMethod6? = null,
-        onMemberOnlineStatusChanged: UniffiCallbackInterfaceMediatorEventListenerMethod7? = null,
-        onDisconnected: UniffiCallbackInterfaceMediatorEventListenerMethod8? = null,
-    ) : UniffiVTableCallbackInterfaceMediatorEventListener(uniffiFree, uniffiClone, onConnected, onSubscribed, onPushMessage, onSystemMessage, onPushInvite, onMemberInfoRequest, onMemberInfoUpdate, onMemberOnlineStatusChanged, onDisconnected),
+        onConnecting: UniffiCallbackInterfaceMediatorEventListenerMethod0? = null,
+        onConnected: UniffiCallbackInterfaceMediatorEventListenerMethod1? = null,
+        onSubscribed: UniffiCallbackInterfaceMediatorEventListenerMethod2? = null,
+        onPushMessage: UniffiCallbackInterfaceMediatorEventListenerMethod3? = null,
+        onSystemMessage: UniffiCallbackInterfaceMediatorEventListenerMethod4? = null,
+        onPushInvite: UniffiCallbackInterfaceMediatorEventListenerMethod5? = null,
+        onMemberInfoRequest: UniffiCallbackInterfaceMediatorEventListenerMethod6? = null,
+        onMemberInfoUpdate: UniffiCallbackInterfaceMediatorEventListenerMethod7? = null,
+        onMemberOnlineStatusChanged: UniffiCallbackInterfaceMediatorEventListenerMethod8? = null,
+        onDisconnected: UniffiCallbackInterfaceMediatorEventListenerMethod9? = null,
+    ) : UniffiVTableCallbackInterfaceMediatorEventListener(uniffiFree, uniffiClone, onConnecting, onConnected, onSubscribed, onPushMessage, onSystemMessage, onPushInvite, onMemberInfoRequest, onMemberInfoUpdate, onMemberOnlineStatusChanged, onDisconnected),
         ByValue
 
     internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceMediatorEventListener) {
         uniffiFree = other.uniffiFree
         uniffiClone = other.uniffiClone
+        onConnecting = other.onConnecting
         onConnected = other.onConnected
         onSubscribed = other.onSubscribed
         onPushMessage = other.onPushMessage
@@ -1189,6 +1200,9 @@ internal object IntegrityCheckingUniffiLib {
     ): Short
 
     external fun uniffi_mimir_checksum_method_infoprovider_get_contact_flags(
+    ): Short
+
+    external fun uniffi_mimir_checksum_method_mediatoreventlistener_on_connecting(
     ): Short
 
     external fun uniffi_mimir_checksum_method_mediatoreventlistener_on_connected(
@@ -1962,6 +1976,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_mimir_checksum_method_infoprovider_get_contact_flags() != 16833.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mediatoreventlistener_on_connecting() != 29396.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_mimir_checksum_method_mediatoreventlistener_on_connected() != 45987.toShort()) {
@@ -4937,6 +4954,11 @@ public object FfiConverterTypeInfoProvider : FfiConverterCallbackInterface<InfoP
 public interface MediatorEventListener {
 
     /**
+     * About to dial and authenticate with a mediator.
+     */
+    fun onConnecting(mediatorPubkey: ByteArray)
+
+    /**
      * Authenticated connection established to this mediator.
      */
     fun onConnected(mediatorPubkey: ByteArray)
@@ -4994,7 +5016,20 @@ public interface MediatorEventListener {
 
 // Put the implementation in an object so we don't pollute the top-level namespace
 internal object uniffiCallbackInterfaceMediatorEventListener {
-    internal object onConnected : UniffiCallbackInterfaceMediatorEventListenerMethod0 {
+    internal object onConnecting : UniffiCallbackInterfaceMediatorEventListenerMethod0 {
+        override fun callback(uniffiHandle: Long, mediatorPubkey: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
+            val uniffiObj = FfiConverterTypeMediatorEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.onConnecting(
+                    FfiConverterByteArray.lift(mediatorPubkey),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+
+    internal object onConnected : UniffiCallbackInterfaceMediatorEventListenerMethod1 {
         override fun callback(uniffiHandle: Long, mediatorPubkey: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
             val uniffiObj = FfiConverterTypeMediatorEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -5007,7 +5042,7 @@ internal object uniffiCallbackInterfaceMediatorEventListener {
         }
     }
 
-    internal object onSubscribed : UniffiCallbackInterfaceMediatorEventListenerMethod1 {
+    internal object onSubscribed : UniffiCallbackInterfaceMediatorEventListenerMethod2 {
         override fun callback(uniffiHandle: Long, mediatorPubkey: RustBuffer.ByValue, chatId: Long, lastMessageId: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
             val uniffiObj = FfiConverterTypeMediatorEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -5022,7 +5057,7 @@ internal object uniffiCallbackInterfaceMediatorEventListener {
         }
     }
 
-    internal object onPushMessage : UniffiCallbackInterfaceMediatorEventListenerMethod2 {
+    internal object onPushMessage : UniffiCallbackInterfaceMediatorEventListenerMethod3 {
         override fun callback(uniffiHandle: Long, chatId: Long, messageId: Long, guid: Long, timestamp: Long, author: RustBuffer.ByValue, `data`: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
             val uniffiObj = FfiConverterTypeMediatorEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -5040,7 +5075,7 @@ internal object uniffiCallbackInterfaceMediatorEventListener {
         }
     }
 
-    internal object onSystemMessage : UniffiCallbackInterfaceMediatorEventListenerMethod3 {
+    internal object onSystemMessage : UniffiCallbackInterfaceMediatorEventListenerMethod4 {
         override fun callback(uniffiHandle: Long, chatId: Long, messageId: Long, guid: Long, timestamp: Long, body: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
             val uniffiObj = FfiConverterTypeMediatorEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -5057,7 +5092,7 @@ internal object uniffiCallbackInterfaceMediatorEventListener {
         }
     }
 
-    internal object onPushInvite : UniffiCallbackInterfaceMediatorEventListenerMethod4 {
+    internal object onPushInvite : UniffiCallbackInterfaceMediatorEventListenerMethod5 {
         override fun callback(uniffiHandle: Long, inviteId: Long, chatId: Long, fromPubkey: RustBuffer.ByValue, timestamp: Long, chatName: RustBuffer.ByValue, chatDesc: RustBuffer.ByValue, chatAvatar: RustBuffer.ByValue, encryptedData: RustBuffer.ByValue, mediatorPubkey: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
             val uniffiObj = FfiConverterTypeMediatorEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -5078,7 +5113,7 @@ internal object uniffiCallbackInterfaceMediatorEventListener {
         }
     }
 
-    internal object onMemberInfoRequest : UniffiCallbackInterfaceMediatorEventListenerMethod5 {
+    internal object onMemberInfoRequest : UniffiCallbackInterfaceMediatorEventListenerMethod6 {
         override fun callback(uniffiHandle: Long, chatId: Long, lastUpdate: Long, uniffiOutReturn: RustBuffer, uniffiCallStatus: UniffiRustCallStatus) {
             val uniffiObj = FfiConverterTypeMediatorEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -5092,7 +5127,7 @@ internal object uniffiCallbackInterfaceMediatorEventListener {
         }
     }
 
-    internal object onMemberInfoUpdate : UniffiCallbackInterfaceMediatorEventListenerMethod6 {
+    internal object onMemberInfoUpdate : UniffiCallbackInterfaceMediatorEventListenerMethod7 {
         override fun callback(uniffiHandle: Long, chatId: Long, memberPubkey: RustBuffer.ByValue, encryptedInfo: RustBuffer.ByValue, timestamp: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
             val uniffiObj = FfiConverterTypeMediatorEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -5108,7 +5143,7 @@ internal object uniffiCallbackInterfaceMediatorEventListener {
         }
     }
 
-    internal object onMemberOnlineStatusChanged : UniffiCallbackInterfaceMediatorEventListenerMethod7 {
+    internal object onMemberOnlineStatusChanged : UniffiCallbackInterfaceMediatorEventListenerMethod8 {
         override fun callback(uniffiHandle: Long, chatId: Long, memberPubkey: RustBuffer.ByValue, isOnline: Byte, timestamp: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
             val uniffiObj = FfiConverterTypeMediatorEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -5124,7 +5159,7 @@ internal object uniffiCallbackInterfaceMediatorEventListener {
         }
     }
 
-    internal object onDisconnected : UniffiCallbackInterfaceMediatorEventListenerMethod8 {
+    internal object onDisconnected : UniffiCallbackInterfaceMediatorEventListenerMethod9 {
         override fun callback(uniffiHandle: Long, mediatorPubkey: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
             val uniffiObj = FfiConverterTypeMediatorEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -5152,6 +5187,7 @@ internal object uniffiCallbackInterfaceMediatorEventListener {
     internal var vtable = UniffiVTableCallbackInterfaceMediatorEventListener.UniffiByValue(
         uniffiFree,
         uniffiClone,
+        onConnecting,
         onConnected,
         onSubscribed,
         onPushMessage,

@@ -52,6 +52,7 @@
     <string name="empty_name">You need to enter some name!</string>
     <string name="wrong_public_key">Wrong public key</string>
     <string name="remove_contact">Delete contact and chat</string>
+    <string name="remove_contact_confirm">This will permanently delete the contact, all messages, and the chat history. Continue?</string>
     <string name="rename">Rename</string>
     <string name="rename_contact">Rename contact</string>
     <string name="copy_contact_id">Copy contact ID</string>

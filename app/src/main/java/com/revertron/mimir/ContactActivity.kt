@@ -74,9 +74,14 @@ class ContactActivity: BaseActivity() {
         }
 
         // Mute button
+        val contactId = getStorage().getContactId(pubkey)
+        updateMuteButton(contactId)
         findViewById<View>(R.id.btn_mute).setOnClickListener {
-            // TODO: Implement mute functionality
-            Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
+            val isMuted = getStorage().isContactMuted(contactId)
+            getStorage().setContactMuted(contactId, !isMuted)
+            updateMuteButton(contactId)
+            val message = if (!isMuted) getString(R.string.mute) else getString(R.string.unmute)
+            Toast.makeText(this, "$message: $name", Toast.LENGTH_SHORT).show()
         }
 
         // Block button
@@ -136,6 +141,16 @@ class ContactActivity: BaseActivity() {
         }
 
         return super.onOptionsItemSelected(item)
+    }
+
+    private fun updateMuteButton(contactId: Long) {
+        val isMuted = getStorage().isContactMuted(contactId)
+        findViewById<AppCompatImageView>(R.id.mute_icon).setImageResource(
+            if (isMuted) R.drawable.ic_volume_medium else R.drawable.ic_volume_off
+        )
+        findViewById<AppCompatTextView>(R.id.mute_text).setText(
+            if (isMuted) R.string.unmute else R.string.mute
+        )
     }
 
     override fun finish() {

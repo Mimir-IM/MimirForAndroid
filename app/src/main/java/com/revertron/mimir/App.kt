@@ -25,9 +25,11 @@ class App: Application() {
     var peerNode: uniffi.mimir.PeerNode? = null
     var mediatorNode: uniffi.mimir.MediatorNode? = null
     var filesNode: uniffi.mimir.FilesNode? = null
+    enum class MediatorStatus { Disconnected, Connecting, Connected }
+
     var online: Boolean = false
     @Volatile var trackerAnnounced: Boolean = false
-    @Volatile var mediatorConnected: Boolean = false
+    @Volatile var mediatorStatus: MediatorStatus = MediatorStatus.Disconnected
     lateinit var storage: SqlStorage
     lateinit var callback: NetState
 
