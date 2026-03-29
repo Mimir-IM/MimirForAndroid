@@ -76,7 +76,7 @@ class ConnectionService : Service(),
             storage.updateContactAvatar(id, info.avatar)
         }
         override fun getFilesDir(): String = "${this@ConnectionService.filesDir.absolutePath}/files"
-        override fun getPeerFlags(pubkey: ByteArray): Int {
+        override fun getContactFlags(pubkey: ByteArray): Int {
             val storage = (application as App).storage
             val isContact = storage.getContactId(pubkey) > 0
             if (isContact) return 1
@@ -303,7 +303,7 @@ class ConnectionService : Service(),
             "connect" -> {
                 val pubkey = intent.getByteArrayExtra("pubkey")
                 pubkey?.let {
-                    try { peerNode?.connectToPeer(it) } catch (e: Exception) {
+                    try { peerNode?.connectToContact(it) } catch (e: Exception) {
                         Log.w(TAG, "connect failed: ${e.message}")
                     }
                 }
@@ -316,7 +316,7 @@ class ConnectionService : Service(),
                     Thread {
                         try {
                             // Connect first if needed, then send request
-                            peerNode?.connectToPeer(it)
+                            peerNode?.connectToContact(it)
                             sleep(2000) // give connection time to establish
                             peerNode?.sendContactRequest(it, message)
                         } catch (e: Exception) {
@@ -336,7 +336,7 @@ class ConnectionService : Service(),
                         // Peer not connected yet — connect first.
                         // startCall() will be retried in onPeerConnected().
                         Log.d(TAG, "startCall: peer not connected, connecting: ${e.message}")
-                        try { peerNode?.connectToPeer(it) } catch (e2: Exception) {
+                        try { peerNode?.connectToContact(it) } catch (e2: Exception) {
                             Log.w(TAG, "connectToPeer failed: ${e2.message}")
                         }
                     }
@@ -448,7 +448,7 @@ class ConnectionService : Service(),
                             } catch (e: Exception) {
                                 // Peer not connected yet — connect; sendPendingP2PMessages will send it
                                 Log.d(TAG, "Not connected, connecting to send msg $id: ${e.message}")
-                                try { peerNode?.connectToPeer(pubkey) } catch (e2: Exception) {
+                                try { peerNode?.connectToContact(pubkey) } catch (e2: Exception) {
                                     Log.w(TAG, "connectToPeer failed: ${e2.message}")
                                 }
                                 // Kick off the periodic retry loop (no-op if already running).
@@ -542,7 +542,7 @@ class ConnectionService : Service(),
                                     } catch (e: Exception) {
                                         Log.w(TAG, "requestFile failed: ${e.message}")
                                         activeFileDownloads.remove(name)
-                                        try { peerNode?.connectToPeer(pubkey) } catch (_: Exception) {}
+                                        try { peerNode?.connectToContact(pubkey) } catch (_: Exception) {}
                                     }
                                 }.start()
                             }
@@ -774,7 +774,7 @@ class ConnectionService : Service(),
         }
     }
 
-    override fun onPeerConnected(pubkey: ByteArray, address: String) {
+    override fun onContactConnected(pubkey: ByteArray, address: String) {
         val contact = Hex.toHexString(pubkey)
         Log.i(TAG, "onPeerConnected: $contact")
 
@@ -805,7 +805,7 @@ class ConnectionService : Service(),
         Thread { sendPendingP2PMessages(pubkey, storage) }.start()
     }
 
-    override fun onPeerDisconnected(pubkey: ByteArray, address: String, deadPeer: Boolean) {
+    override fun onContactDisconnected(pubkey: ByteArray, address: String, deadPeer: Boolean) {
         val contact = Hex.toHexString(pubkey)
         Log.i(TAG, "onPeerDisconnected: $contact, dead=$deadPeer")
         val status = if (deadPeer) PeerStatus.ErrorConnecting else PeerStatus.NotConnected
@@ -1599,7 +1599,7 @@ class ConnectionService : Service(),
         Log.i(TAG, "Retrying connections for ${contacts.size} contacts with unsent messages")
         for (pubkey in contacts) {
             if (peerStatuses[Hex.toHexString(pubkey)] != PeerStatus.Connected) {
-                try { peerNode?.connectToPeer(pubkey) } catch (e: Exception) {
+                try { peerNode?.connectToContact(pubkey) } catch (e: Exception) {
                     Log.w(TAG, "connectToPeer for unsent msg failed: ${e.message}")
                 }
             }
