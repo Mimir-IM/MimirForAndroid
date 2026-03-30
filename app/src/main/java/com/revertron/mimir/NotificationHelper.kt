@@ -94,7 +94,7 @@ class NotificationHelper(private val context: Context) : StorageListener {
         private const val CHANNEL_GROUP_GROUPS = "groups"
 
         // Message caching limits
-        private const val MAX_MESSAGE_PREVIEW_LENGTH = 50
+        private const val MAX_MESSAGE_PREVIEW_LENGTH = 500
         private const val MAX_CACHED_MESSAGES = 8
 
         // Reply action extras
