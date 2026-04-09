@@ -233,7 +233,8 @@ class ConnectionService : Service(),
                         Thread {
                             sleep(250)
                             try {
-                                val node = PeerNode(privateKey, ipKey, yggPeers, PEER_PORT, trackers, this, infoProvider)
+                                val multicast = preferences.getBoolean("local_peer_discovery", false)
+                                val node = PeerNode(privateKey, ipKey, yggPeers, PEER_PORT, trackers, multicast, this, infoProvider)
                                 peerNode = node
                                 App.app.peerNode = node
 

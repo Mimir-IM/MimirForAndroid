@@ -13,7 +13,10 @@ import android.view.View
 import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.appcompat.widget.AppCompatEditText
+import androidx.appcompat.widget.SwitchCompat
 import androidx.appcompat.widget.Toolbar
+import androidx.preference.PreferenceManager
+import com.google.android.material.snackbar.Snackbar
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -37,6 +40,17 @@ class PeersActivity : BaseActivity() {
         toolbar.setNavigationOnClickListener { onBackPressed() }
 
         peerProvider = PeerProvider(this)
+
+        val preferences = PreferenceManager.getDefaultSharedPreferences(this)
+        val switchMulticast: SwitchCompat = findViewById(R.id.switch_multicast)
+        switchMulticast.isChecked = preferences.getBoolean("local_peer_discovery", false)
+        switchMulticast.setOnCheckedChangeListener { _, isChecked ->
+            preferences.edit().putBoolean("local_peer_discovery", isChecked).apply()
+            Snackbar.make(findViewById(android.R.id.content), R.string.restart_required, Snackbar.LENGTH_LONG).show()
+        }
+        findViewById<View>(R.id.multicast_row).setOnClickListener {
+            switchMulticast.toggle()
+        }
 
         val recycler: RecyclerView = findViewById(R.id.recycler)
         recycler.addItemDecoration(DividerItemDecoration(baseContext, RecyclerView.VERTICAL))

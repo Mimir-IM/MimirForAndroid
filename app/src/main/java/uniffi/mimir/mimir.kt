@@ -1425,7 +1425,7 @@ internal object UniffiLib {
     ): Unit
 
     external fun uniffi_mimir_fn_constructor_peernode_new(
-        signingKey: RustBuffer.ByValue, ephemeralKey: RustBuffer.ByValue, yggPeers: RustBuffer.ByValue, peerPort: Short, trackers: RustBuffer.ByValue, eventListener: Long, infoProvider: Long, uniffi_out_err: UniffiRustCallStatus,
+        signingKey: RustBuffer.ByValue, ephemeralKey: RustBuffer.ByValue, yggPeers: RustBuffer.ByValue, peerPort: Short, trackers: RustBuffer.ByValue, multicast: Byte, eventListener: Long, infoProvider: Long, uniffi_out_err: UniffiRustCallStatus,
     ): Long
 
     external fun uniffi_mimir_fn_method_peernode_add_peer(
@@ -1948,7 +1948,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_mimir_checksum_constructor_mediatornode_new() != 6653.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_constructor_peernode_new() != 46411.toShort()) {
+    if (lib.uniffi_mimir_checksum_constructor_peernode_new() != 12828.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_mimir_checksum_method_fileseventlistener_on_upload_progress() != 59179.toShort()) {
@@ -3781,13 +3781,13 @@ open class PeerNode : Disposable, AutoCloseable, PeerNodeInterface {
      * `event_listener` – Receives connection and message events.
      * `info_provider`  – Supplies and stores contact profile info.
      */
-    constructor(signingKey: ByteArray, ephemeralKey: ByteArray?, yggPeers: List<String>, peerPort: UShort, trackers: List<String>, eventListener: PeerEventListener, infoProvider: InfoProvider) :
+    constructor(signingKey: ByteArray, ephemeralKey: ByteArray?, yggPeers: List<String>, peerPort: UShort, trackers: List<String>, multicast: Boolean, eventListener: PeerEventListener, infoProvider: InfoProvider) :
             this(
                 UniffiWithHandle,
                 uniffiRustCallWithError(MimirException) { _status ->
                     UniffiLib.uniffi_mimir_fn_constructor_peernode_new(
 
-                        FfiConverterByteArray.lower(signingKey), FfiConverterOptionalByteArray.lower(ephemeralKey), FfiConverterSequenceString.lower(yggPeers), FfiConverterUShort.lower(peerPort), FfiConverterSequenceString.lower(trackers), FfiConverterTypePeerEventListener.lower(eventListener), FfiConverterTypeInfoProvider.lower(infoProvider), _status
+                        FfiConverterByteArray.lower(signingKey), FfiConverterOptionalByteArray.lower(ephemeralKey), FfiConverterSequenceString.lower(yggPeers), FfiConverterUShort.lower(peerPort), FfiConverterSequenceString.lower(trackers), FfiConverterBoolean.lower(multicast), FfiConverterTypePeerEventListener.lower(eventListener), FfiConverterTypeInfoProvider.lower(infoProvider), _status
                     )
                 }
             )
