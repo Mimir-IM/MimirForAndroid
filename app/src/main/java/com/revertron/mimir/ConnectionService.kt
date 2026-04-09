@@ -555,13 +555,9 @@ class ConnectionService : Service(),
                 peerNode?.retryPeersNow()
                 peerNode?.setNetworkOnline(true)
 
-                Thread {
-                    sleep(3000)
-                    peerNode?.announceToTrackers()
-                    if (updateAfter == 0L) {
-                        handler.postDelayed(1000) { updateTick() }
-                    }
-                }.start()
+                if (updateAfter == 0L) {
+                    handler.postDelayed(10000) { updateTick() }
+                }
             }
 
             "offline" -> {
@@ -761,6 +757,7 @@ class ConnectionService : Service(),
 
         if (isOnline) {
             mediatorNode?.checkConnections()
+            peerNode?.announceToTrackers()
             preferences().edit {
                 putLong("trackerPingTime", getUtcTime())
                 apply()
