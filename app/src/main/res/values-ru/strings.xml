@@ -120,6 +120,7 @@
     <string name="error_checking_updates">Ошибка проверки обновлений: %s</string>
     <string name="download_failed">Ошибка скачивания</string>
     <string name="configure_peers">Настройка узлов</string>
+    <string name="restart_required">Перезапустите Мимир для вступления изменений в силу</string>
     <string name="use_default_peers">Узлы по умолчанию</string>
     <string name="custom_peers">Свои узлы</string>
     <string name="add_peer">Добавить узел</string>
@@ -398,4 +399,5 @@
     <string name="sort_by_name">Сортировать по имени</string>
     <string name="sort_by_size">Сортировать по размеру</string>
     <string name="sort_by_date">Сортировать по дате</string>
+    <string name="local_peer_discovery">Поиск локальных узлов</string>
 </resources>
