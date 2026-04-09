@@ -45,10 +45,8 @@ open class RustBuffer : Structure() {
     // When dealing with these fields, make sure to call `toULong()`.
     @JvmField
     var capacity: Long = 0
-
     @JvmField
     var len: Long = 0
-
     @JvmField
     var data: Pointer? = null
 
@@ -101,7 +99,6 @@ open class RustBuffer : Structure() {
 internal open class ForeignBytes : Structure() {
     @JvmField
     var len: Int = 0
-
     @JvmField
     var data: Pointer? = null
 
@@ -116,7 +113,7 @@ internal open class ForeignBytes : Structure() {
  *
  * @suppress
  */
-public interface FfiConverter<KotlinType, FfiType> {
+interface FfiConverter<KotlinType, FfiType> {
     // Convert an FFI type to a Kotlin type
     fun lift(value: FfiType): KotlinType
 
@@ -183,7 +180,7 @@ public interface FfiConverter<KotlinType, FfiType> {
  *
  * @suppress
  */
-public interface FfiConverterRustBuffer<KotlinType> : FfiConverter<KotlinType, RustBuffer.ByValue> {
+interface FfiConverterRustBuffer<KotlinType> : FfiConverter<KotlinType, RustBuffer.ByValue> {
     override fun lift(value: RustBuffer.ByValue) = liftFromRustBuffer(value)
     override fun lower(value: KotlinType) = lowerIntoRustBuffer(value)
 }
@@ -198,7 +195,6 @@ internal const val UNIFFI_CALL_UNEXPECTED_ERROR = 2.toByte()
 internal open class UniffiRustCallStatus : Structure() {
     @JvmField
     var code: Byte = 0
-
     @JvmField
     var error_buf: RustBuffer.ByValue = RustBuffer.ByValue()
 
@@ -1157,6 +1153,9 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_mimir_checksum_method_peernode_stop(
     ): Short
 
+    external fun uniffi_mimir_checksum_method_peernode_update_network_interfaces(
+    ): Short
+
     external fun uniffi_mimir_checksum_method_peernode_wait_for_peer_info(
     ): Short
 
@@ -1515,6 +1514,10 @@ internal object UniffiLib {
 
     external fun uniffi_mimir_fn_method_peernode_stop(
         ptr: Long, uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+
+    external fun uniffi_mimir_fn_method_peernode_update_network_interfaces(
+        ptr: Long, interfaces: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
     ): Unit
 
     external fun uniffi_mimir_fn_method_peernode_wait_for_peer_info(
@@ -1933,6 +1936,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_mimir_checksum_method_peernode_stop() != 57126.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_mimir_checksum_method_peernode_update_network_interfaces() != 42611.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_mimir_checksum_method_peernode_wait_for_peer_info() != 561.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -2055,7 +2061,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
 /**
  * @suppress
  */
-public fun uniffiEnsureInitialized() {
+fun uniffiEnsureInitialized() {
     IntegrityCheckingUniffiLib
     // UniffiLib() initialized as objects are used, but we still need to explicitly
     // reference it so initialization across crates works as expected.
@@ -2157,7 +2163,7 @@ internal const val UNIFFI_CALLBACK_UNEXPECTED_ERROR = 2
 /**
  * @suppress
  */
-public abstract class FfiConverterCallbackInterface<CallbackInterface : Any> : FfiConverter<CallbackInterface, Long> {
+abstract class FfiConverterCallbackInterface<CallbackInterface : Any> : FfiConverter<CallbackInterface, Long> {
     internal val handleMap = UniffiHandleMap<CallbackInterface>()
 
     internal fun drop(handle: Long) {
@@ -2247,7 +2253,7 @@ private class JavaLangRefCleanable(
 /**
  * @suppress
  */
-public object FfiConverterUByte : FfiConverter<UByte, Byte> {
+object FfiConverterUByte : FfiConverter<UByte, Byte> {
     override fun lift(value: Byte): UByte {
         return value.toUByte()
     }
@@ -2270,7 +2276,7 @@ public object FfiConverterUByte : FfiConverter<UByte, Byte> {
 /**
  * @suppress
  */
-public object FfiConverterUShort : FfiConverter<UShort, Short> {
+object FfiConverterUShort : FfiConverter<UShort, Short> {
     override fun lift(value: Short): UShort {
         return value.toUShort()
     }
@@ -2293,7 +2299,7 @@ public object FfiConverterUShort : FfiConverter<UShort, Short> {
 /**
  * @suppress
  */
-public object FfiConverterUInt : FfiConverter<UInt, Int> {
+object FfiConverterUInt : FfiConverter<UInt, Int> {
     override fun lift(value: Int): UInt {
         return value.toUInt()
     }
@@ -2316,7 +2322,7 @@ public object FfiConverterUInt : FfiConverter<UInt, Int> {
 /**
  * @suppress
  */
-public object FfiConverterInt : FfiConverter<Int, Int> {
+object FfiConverterInt : FfiConverter<Int, Int> {
     override fun lift(value: Int): Int {
         return value
     }
@@ -2339,7 +2345,7 @@ public object FfiConverterInt : FfiConverter<Int, Int> {
 /**
  * @suppress
  */
-public object FfiConverterULong : FfiConverter<ULong, Long> {
+object FfiConverterULong : FfiConverter<ULong, Long> {
     override fun lift(value: Long): ULong {
         return value.toULong()
     }
@@ -2362,7 +2368,7 @@ public object FfiConverterULong : FfiConverter<ULong, Long> {
 /**
  * @suppress
  */
-public object FfiConverterLong : FfiConverter<Long, Long> {
+object FfiConverterLong : FfiConverter<Long, Long> {
     override fun lift(value: Long): Long {
         return value
     }
@@ -2385,7 +2391,7 @@ public object FfiConverterLong : FfiConverter<Long, Long> {
 /**
  * @suppress
  */
-public object FfiConverterBoolean : FfiConverter<Boolean, Byte> {
+object FfiConverterBoolean : FfiConverter<Boolean, Byte> {
     override fun lift(value: Byte): Boolean {
         return value.toInt() != 0
     }
@@ -2408,7 +2414,7 @@ public object FfiConverterBoolean : FfiConverter<Boolean, Byte> {
 /**
  * @suppress
  */
-public object FfiConverterString : FfiConverter<String, RustBuffer.ByValue> {
+object FfiConverterString : FfiConverter<String, RustBuffer.ByValue> {
     // Note: we don't inherit from FfiConverterRustBuffer, because we use a
     // special encoding when lowering/lifting.  We can use `RustBuffer.len` to
     // store our length and avoid writing it out to the buffer.
@@ -2465,7 +2471,7 @@ public object FfiConverterString : FfiConverter<String, RustBuffer.ByValue> {
 /**
  * @suppress
  */
-public object FfiConverterByteArray : FfiConverterRustBuffer<ByteArray> {
+object FfiConverterByteArray : FfiConverterRustBuffer<ByteArray> {
     override fun read(buf: ByteBuffer): ByteArray {
         val len = buf.getInt()
         val byteArr = ByteArray(len)
@@ -2585,7 +2591,7 @@ public object FfiConverterByteArray : FfiConverterRustBuffer<ByteArray> {
  * Shares the Yggdrasil identity from an existing `PeerNode`.
  * All methods are thread-safe.
  */
-public interface FilesNodeInterface {
+interface FilesNodeInterface {
 
     /**
      * Download a file from the server and decrypt it to `dest_path`.
@@ -2830,7 +2836,7 @@ open class FilesNode : Disposable, AutoCloseable, FilesNodeInterface {
 /**
  * @suppress
  */
-public object FfiConverterTypeFilesNode : FfiConverter<FilesNode, Long> {
+object FfiConverterTypeFilesNode : FfiConverter<FilesNode, Long> {
     override fun lower(value: FilesNode): Long {
         return value.uniffiCloneHandle()
     }
@@ -2952,7 +2958,7 @@ public object FfiConverterTypeFilesNode : FfiConverter<FilesNode, Long> {
  * Shares the Yggdrasil identity from an existing `PeerNode`.
  * All methods are thread-safe.
  */
-public interface MediatorNodeInterface {
+interface MediatorNodeInterface {
 
     fun addUser(mediatorPubkey: ByteArray, chatId: Long, userPubkey: ByteArray)
 
@@ -3459,7 +3465,7 @@ open class MediatorNode : Disposable, AutoCloseable, MediatorNodeInterface {
 /**
  * @suppress
  */
-public object FfiConverterTypeMediatorNode : FfiConverter<MediatorNode, Long> {
+object FfiConverterTypeMediatorNode : FfiConverter<MediatorNode, Long> {
     override fun lower(value: MediatorNode): Long {
         return value.uniffiCloneHandle()
     }
@@ -3584,7 +3590,7 @@ public object FfiConverterTypeMediatorNode : FfiConverter<MediatorNode, Long> {
  *
  * All methods are thread-safe.
  */
-public interface PeerNodeInterface {
+interface PeerNodeInterface {
 
     /**
      * Add new peer to connect
@@ -3715,6 +3721,13 @@ public interface PeerNodeInterface {
      * Stop the node and close all connections.
      */
     fun stop()
+
+    /**
+     * Provide network interface info from Android ConnectivityManager.
+     * Enables multicast peer discovery on Android where getifaddrs() is restricted.
+     * Call with an empty list to clear external interfaces.
+     */
+    fun updateNetworkInterfaces(interfaces: List<AndroidNetworkInterface>)
 
     /**
      * Block until the active Yggdrasil peer info changes, then return it.
@@ -4204,6 +4217,22 @@ open class PeerNode : Disposable, AutoCloseable, PeerNodeInterface {
 
 
     /**
+     * Provide network interface info from Android ConnectivityManager.
+     * Enables multicast peer discovery on Android where getifaddrs() is restricted.
+     * Call with an empty list to clear external interfaces.
+     */
+    override fun updateNetworkInterfaces(interfaces: List<AndroidNetworkInterface>) =
+        callWithHandle {
+            uniffiRustCall() { _status ->
+                UniffiLib.uniffi_mimir_fn_method_peernode_update_network_interfaces(
+                    it,
+                    FfiConverterSequenceTypeAndroidNetworkInterface.lower(interfaces), _status
+                )
+            }
+        }
+
+
+    /**
      * Block until the active Yggdrasil peer info changes, then return it.
      * Returns the current state if no change occurs within timeout_ms milliseconds.
      * Designed for a long-poll loop to keep the notification bar up to date.
@@ -4233,7 +4262,7 @@ open class PeerNode : Disposable, AutoCloseable, PeerNodeInterface {
 /**
  * @suppress
  */
-public object FfiConverterTypePeerNode : FfiConverter<PeerNode, Long> {
+object FfiConverterTypePeerNode : FfiConverter<PeerNode, Long> {
     override fun lower(value: PeerNode): Long {
         return value.uniffiCloneHandle()
     }
@@ -4250,6 +4279,47 @@ public object FfiConverterTypePeerNode : FfiConverter<PeerNode, Long> {
 
     override fun write(value: PeerNode, buf: ByteBuffer) {
         buf.putLong(lower(value))
+    }
+}
+
+
+/**
+ * Network interface info from Android ConnectivityManager.
+ * Used for multicast peer discovery on platforms where getifaddrs() is restricted.
+ */
+data class AndroidNetworkInterface(
+    var name: String,
+    var index: UInt,
+    var addrs: List<String>
+
+) {
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+object FfiConverterTypeAndroidNetworkInterface : FfiConverterRustBuffer<AndroidNetworkInterface> {
+    override fun read(buf: ByteBuffer): AndroidNetworkInterface {
+        return AndroidNetworkInterface(
+            FfiConverterString.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AndroidNetworkInterface) = (
+            FfiConverterString.allocationSize(value.name) +
+                    FfiConverterUInt.allocationSize(value.index) +
+                    FfiConverterSequenceString.allocationSize(value.addrs)
+            )
+
+    override fun write(value: AndroidNetworkInterface, buf: ByteBuffer) {
+        FfiConverterString.write(value.name, buf)
+        FfiConverterUInt.write(value.index, buf)
+        FfiConverterSequenceString.write(value.addrs, buf)
     }
 }
 
@@ -4272,7 +4342,7 @@ data class ContactInfo(
 /**
  * @suppress
  */
-public object FfiConverterTypeContactInfo : FfiConverterRustBuffer<ContactInfo> {
+object FfiConverterTypeContactInfo : FfiConverterRustBuffer<ContactInfo> {
     override fun read(buf: ByteBuffer): ContactInfo {
         return ContactInfo(
             FfiConverterString.read(buf),
@@ -4314,7 +4384,7 @@ data class FileInfo(
 /**
  * @suppress
  */
-public object FfiConverterTypeFileInfo : FfiConverterRustBuffer<FileInfo> {
+object FfiConverterTypeFileInfo : FfiConverterRustBuffer<FileInfo> {
     override fun read(buf: ByteBuffer): FileInfo {
         return FileInfo(
             FfiConverterULong.read(buf),
@@ -4352,7 +4422,7 @@ data class GroupMember(
 /**
  * @suppress
  */
-public object FfiConverterTypeGroupMember : FfiConverterRustBuffer<GroupMember> {
+object FfiConverterTypeGroupMember : FfiConverterRustBuffer<GroupMember> {
     override fun read(buf: ByteBuffer): GroupMember {
         return GroupMember(
             FfiConverterByteArray.read(buf),
@@ -4395,7 +4465,7 @@ data class GroupMemberInfo(
 /**
  * @suppress
  */
-public object FfiConverterTypeGroupMemberInfo : FfiConverterRustBuffer<GroupMemberInfo> {
+object FfiConverterTypeGroupMemberInfo : FfiConverterRustBuffer<GroupMemberInfo> {
     override fun read(buf: ByteBuffer): GroupMemberInfo {
         return GroupMemberInfo(
             FfiConverterByteArray.read(buf),
@@ -4437,7 +4507,7 @@ data class GroupMessage(
 /**
  * @suppress
  */
-public object FfiConverterTypeGroupMessage : FfiConverterRustBuffer<GroupMessage> {
+object FfiConverterTypeGroupMessage : FfiConverterRustBuffer<GroupMessage> {
     override fun read(buf: ByteBuffer): GroupMessage {
         return GroupMessage(
             FfiConverterLong.read(buf),
@@ -4484,7 +4554,7 @@ data class MemberInfoData(
 /**
  * @suppress
  */
-public object FfiConverterTypeMemberInfoData : FfiConverterRustBuffer<MemberInfoData> {
+object FfiConverterTypeMemberInfoData : FfiConverterRustBuffer<MemberInfoData> {
     override fun read(buf: ByteBuffer): MemberInfoData {
         return MemberInfoData(
             FfiConverterByteArray.read(buf),
@@ -4522,7 +4592,7 @@ data class YggPeerInfo(
 /**
  * @suppress
  */
-public object FfiConverterTypeYggPeerInfo : FfiConverterRustBuffer<YggPeerInfo> {
+object FfiConverterTypeYggPeerInfo : FfiConverterRustBuffer<YggPeerInfo> {
     override fun read(buf: ByteBuffer): YggPeerInfo {
         return YggPeerInfo(
             FfiConverterOptionalString.read(buf),
@@ -4561,7 +4631,7 @@ enum class CallStatus {
 /**
  * @suppress
  */
-public object FfiConverterTypeCallStatus : FfiConverterRustBuffer<CallStatus> {
+object FfiConverterTypeCallStatus : FfiConverterRustBuffer<CallStatus> {
     override fun read(buf: ByteBuffer) = try {
         CallStatus.values()[buf.getInt() - 1]
     } catch (e: IndexOutOfBoundsException) {
@@ -4597,7 +4667,7 @@ sealed class MimirException(message: String) : Exception(message) {
 /**
  * @suppress
  */
-public object FfiConverterTypeMimirError : FfiConverterRustBuffer<MimirException> {
+object FfiConverterTypeMimirError : FfiConverterRustBuffer<MimirException> {
     override fun read(buf: ByteBuffer): MimirException {
 
         return when (buf.getInt()) {
@@ -4651,7 +4721,7 @@ public object FfiConverterTypeMimirError : FfiConverterRustBuffer<MimirException
  * Receives file server upload/download events.
  * All callbacks are invoked from Rust async tasks — must return quickly.
  */
-public interface FilesEventListener {
+interface FilesEventListener {
 
     fun onUploadProgress(fileHash: ByteArray, messageGuid: Long, bytesSent: ULong, totalBytes: ULong)
 
@@ -4797,14 +4867,14 @@ internal object uniffiCallbackInterfaceFilesEventListener {
  *
  * @suppress
  */
-public object FfiConverterTypeFilesEventListener : FfiConverterCallbackInterface<FilesEventListener>()
+object FfiConverterTypeFilesEventListener : FfiConverterCallbackInterface<FilesEventListener>()
 
 
 /**
  * Provides local user info and stores contact info received from contacts.
  * All methods are called from Rust connection tasks — must not block long.
  */
-public interface InfoProvider {
+interface InfoProvider {
 
     /**
      * Return our current contact info if it was updated after `since_time`,
@@ -4941,7 +5011,7 @@ internal object uniffiCallbackInterfaceInfoProvider {
  *
  * @suppress
  */
-public object FfiConverterTypeInfoProvider : FfiConverterCallbackInterface<InfoProvider>()
+object FfiConverterTypeInfoProvider : FfiConverterCallbackInterface<InfoProvider>()
 
 
 /**
@@ -4951,7 +5021,7 @@ public object FfiConverterTypeInfoProvider : FfiConverterCallbackInterface<InfoP
  * Note: encryption of message blobs is handled by the caller (Kotlin/Swift).
  * Rust passes encrypted bytes through unchanged.
  */
-public interface MediatorEventListener {
+interface MediatorEventListener {
 
     /**
      * About to dial and authenticate with a mediator.
@@ -5211,14 +5281,14 @@ internal object uniffiCallbackInterfaceMediatorEventListener {
  *
  * @suppress
  */
-public object FfiConverterTypeMediatorEventListener : FfiConverterCallbackInterface<MediatorEventListener>()
+object FfiConverterTypeMediatorEventListener : FfiConverterCallbackInterface<MediatorEventListener>()
 
 
 /**
  * Receives P2P networking events. All callbacks are invoked from Rust
  * connection tasks and must return quickly.
  */
-public interface PeerEventListener {
+interface PeerEventListener {
 
     /**
      * Yggdrasil overlay network came online (first peer) or went offline (last peer).
@@ -5570,13 +5640,13 @@ internal object uniffiCallbackInterfacePeerEventListener {
  *
  * @suppress
  */
-public object FfiConverterTypePeerEventListener : FfiConverterCallbackInterface<PeerEventListener>()
+object FfiConverterTypePeerEventListener : FfiConverterCallbackInterface<PeerEventListener>()
 
 
 /**
  * @suppress
  */
-public object FfiConverterOptionalString : FfiConverterRustBuffer<String?> {
+object FfiConverterOptionalString : FfiConverterRustBuffer<String?> {
     override fun read(buf: ByteBuffer): String? {
         if (buf.get().toInt() == 0) {
             return null
@@ -5606,7 +5676,7 @@ public object FfiConverterOptionalString : FfiConverterRustBuffer<String?> {
 /**
  * @suppress
  */
-public object FfiConverterOptionalByteArray : FfiConverterRustBuffer<ByteArray?> {
+object FfiConverterOptionalByteArray : FfiConverterRustBuffer<ByteArray?> {
     override fun read(buf: ByteBuffer): ByteArray? {
         if (buf.get().toInt() == 0) {
             return null
@@ -5636,7 +5706,7 @@ public object FfiConverterOptionalByteArray : FfiConverterRustBuffer<ByteArray?>
 /**
  * @suppress
  */
-public object FfiConverterOptionalTypeContactInfo : FfiConverterRustBuffer<ContactInfo?> {
+object FfiConverterOptionalTypeContactInfo : FfiConverterRustBuffer<ContactInfo?> {
     override fun read(buf: ByteBuffer): ContactInfo? {
         if (buf.get().toInt() == 0) {
             return null
@@ -5666,7 +5736,7 @@ public object FfiConverterOptionalTypeContactInfo : FfiConverterRustBuffer<Conta
 /**
  * @suppress
  */
-public object FfiConverterOptionalTypeMemberInfoData : FfiConverterRustBuffer<MemberInfoData?> {
+object FfiConverterOptionalTypeMemberInfoData : FfiConverterRustBuffer<MemberInfoData?> {
     override fun read(buf: ByteBuffer): MemberInfoData? {
         if (buf.get().toInt() == 0) {
             return null
@@ -5696,7 +5766,7 @@ public object FfiConverterOptionalTypeMemberInfoData : FfiConverterRustBuffer<Me
 /**
  * @suppress
  */
-public object FfiConverterSequenceString : FfiConverterRustBuffer<List<String>> {
+object FfiConverterSequenceString : FfiConverterRustBuffer<List<String>> {
     override fun read(buf: ByteBuffer): List<String> {
         val len = buf.getInt()
         return List<String>(len) {
@@ -5722,7 +5792,33 @@ public object FfiConverterSequenceString : FfiConverterRustBuffer<List<String>> 
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeGroupMember : FfiConverterRustBuffer<List<GroupMember>> {
+object FfiConverterSequenceTypeAndroidNetworkInterface : FfiConverterRustBuffer<List<AndroidNetworkInterface>> {
+    override fun read(buf: ByteBuffer): List<AndroidNetworkInterface> {
+        val len = buf.getInt()
+        return List<AndroidNetworkInterface>(len) {
+            FfiConverterTypeAndroidNetworkInterface.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<AndroidNetworkInterface>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeAndroidNetworkInterface.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<AndroidNetworkInterface>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeAndroidNetworkInterface.write(it, buf)
+        }
+    }
+}
+
+
+/**
+ * @suppress
+ */
+object FfiConverterSequenceTypeGroupMember : FfiConverterRustBuffer<List<GroupMember>> {
     override fun read(buf: ByteBuffer): List<GroupMember> {
         val len = buf.getInt()
         return List<GroupMember>(len) {
@@ -5748,7 +5844,7 @@ public object FfiConverterSequenceTypeGroupMember : FfiConverterRustBuffer<List<
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeGroupMemberInfo : FfiConverterRustBuffer<List<GroupMemberInfo>> {
+object FfiConverterSequenceTypeGroupMemberInfo : FfiConverterRustBuffer<List<GroupMemberInfo>> {
     override fun read(buf: ByteBuffer): List<GroupMemberInfo> {
         val len = buf.getInt()
         return List<GroupMemberInfo>(len) {
@@ -5774,7 +5870,7 @@ public object FfiConverterSequenceTypeGroupMemberInfo : FfiConverterRustBuffer<L
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeGroupMessage : FfiConverterRustBuffer<List<GroupMessage>> {
+object FfiConverterSequenceTypeGroupMessage : FfiConverterRustBuffer<List<GroupMessage>> {
     override fun read(buf: ByteBuffer): List<GroupMessage> {
         val len = buf.getInt()
         return List<GroupMessage>(len) {

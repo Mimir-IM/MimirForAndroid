@@ -30,6 +30,7 @@ import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.ui.SettingsData
 import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
 import org.bouncycastle.util.encoders.Hex
+import uniffi.mimir.AndroidNetworkInterface
 import uniffi.mimir.CallStatus
 import uniffi.mimir.ContactInfo
 import uniffi.mimir.MemberInfoData
@@ -558,6 +559,19 @@ class ConnectionService : Service(),
                 if (updateAfter == 0L) {
                     handler.postDelayed(10000) { updateTick() }
                 }
+            }
+
+            "interfaces" -> {
+                val raw = intent.getStringArrayExtra("interfaces") ?: emptyArray()
+                val interfaces = raw.map { entry ->
+                    val parts = entry.split(",", limit = 3)
+                    AndroidNetworkInterface(
+                        name = parts[0],
+                        index = parts[1].toUInt(),
+                        addrs = if (parts.size > 2 && parts[2].isNotEmpty()) parts[2].split("|") else emptyList()
+                    )
+                }
+                peerNode?.updateNetworkInterfaces(interfaces)
             }
 
             "offline" -> {

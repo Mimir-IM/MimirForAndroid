@@ -3,12 +3,16 @@ package com.revertron.mimir
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
+import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Build
 import android.util.Log
 import androidx.preference.PreferenceManager
+import uniffi.mimir.AndroidNetworkInterface
+import java.net.Inet6Address
+import java.net.NetworkInterface
 import java.util.concurrent.atomic.AtomicLong
 
 
@@ -63,6 +67,21 @@ class NetState(val context: Context) : ConnectivityManager.NetworkCallback() {
         }
     }
 
+    override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
+        val interfaces = getInterfaces(linkProperties)
+        val serialized = interfaces.map { "${it.name},${it.index},${it.addrs.joinToString("|")}" }.toTypedArray()
+        val intent = Intent(context, ConnectionService::class.java)
+        intent.putExtra("command", "interfaces")
+        intent.putExtra("interfaces", serialized)
+        try {
+            context.startService(intent)
+        } catch (e: IllegalStateException) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            }
+        }
+    }
+
     override fun onLost(network: Network) {
         super.onLost(network)
         Log.d(TAG, "onLost")
@@ -103,5 +122,23 @@ class NetState(val context: Context) : ConnectivityManager.NetworkCallback() {
 
     fun networkChanged() {
         networkChangedTime.set(System.currentTimeMillis())
+    }
+
+    fun getInterfaces(linkProps: LinkProperties): List<AndroidNetworkInterface> {
+        val name = linkProps.interfaceName ?: return emptyList()
+        val iface = NetworkInterface.getByName(name) ?: return emptyList()
+        val addrs = linkProps.linkAddresses
+            .map { it.address }
+            .filterIsInstance<Inet6Address>()
+            .filter { it.isLinkLocalAddress }
+            .mapNotNull { it.hostAddress }
+
+        return listOf(
+            AndroidNetworkInterface(
+                name = name,
+                index = iface.index.toUInt(),
+                addrs = addrs
+            )
+        )
     }
 }
