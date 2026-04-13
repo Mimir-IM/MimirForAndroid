@@ -42,7 +42,6 @@
 
 -keepattributes SourceFile,LineNumberTable
 -keep class com.revertron.mimir.** { *; }
--keep class com.revertron.mimir_ng.** { *; }
 -keep class net.jpountz.xxhash.** { *; }
 -keep class com.sun.jna.** { *; }
 -keep class uniffi.** { *; }

@@ -195,7 +195,7 @@
     <string name="invited_by">Приглашение от: %s</string>
     <string name="enter_chat">Войти в чат</string>
     <string name="invite_accepted">Приглашение принято! Входим в чат…</string>
-    <string name="joining_group">Входим в группу…</string>
+    <string name="joining_group">Синхронизируем сообщения и входим в группу…</string>
     <string name="invite_rejected">Приглашение отклонено</string>
     <string name="error_accepting_invite">Ошибка принятия приглашения: %s</string>
     <string name="invalid_invite">Ошибка в данных приглашения</string>

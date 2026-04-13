@@ -3559,7 +3559,7 @@ class SqlStorage(val context: Context): SQLiteOpenHelper(context, DATABASE_NAME,
 
             // Only show notification if not processed by any listener (i.e., chat not open)
             // Don't show notifications for system messages
-            if (!processed && senderId != -1L && type != MSG_TYPE_REACTION) {
+            if (!processed && senderId != -1L && type != MSG_TYPE_REACTION && !fromSync) {
                 notificationManager.onGroupMessageReceived(chatId, id, senderId, type, replyTo)
             }
         }

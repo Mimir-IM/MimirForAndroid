@@ -219,7 +219,7 @@
     <string name="invited_by">Invited by: %s</string>
     <string name="enter_chat">Enter Chat</string>
     <string name="invite_accepted">Invite accepted! Joining chat…</string>
-    <string name="joining_group">Joining group…</string>
+    <string name="joining_group">Syncing messages and joining group…</string>
     <string name="invite_rejected">Invite rejected</string>
     <string name="error_accepting_invite">Error accepting invite: %s</string>
     <string name="invalid_invite">Invalid invite data</string>
