@@ -21,9 +21,6 @@ import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.appcompat.widget.Toolbar
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import com.revertron.mimir.net.MediatorManager
-import uniffi.mimir.decryptSharedKey as mimirDecryptSharedKey
-import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
 import org.bouncycastle.util.encoders.Hex
 
 class GroupInviteActivity : BaseActivity() {
@@ -151,7 +148,7 @@ class GroupInviteActivity : BaseActivity() {
         }
 
         // Set from info - try to get contact name, fall back to hex string
-        val contactName = getStorage().getContactNameByPubkey(fromPubkey)
+        val contactName = getStorage().getContactByPubkey(fromPubkey)?.name ?: ""
         val senderDisplay = contactName.ifEmpty {
             Hex.toHexString(fromPubkey).take(16)
         }
@@ -183,71 +180,19 @@ class GroupInviteActivity : BaseActivity() {
     private fun acceptInvite() {
         enableButtons(false)
 
-        Thread {
-            try {
-                val storage = getStorage()
-                val accountInfo = storage.getAccountInfo(1, 0L)
-                if (accountInfo == null) {
-                    runOnUiThread {
-                        Toast.makeText(this, R.string.no_account_found, Toast.LENGTH_SHORT).show()
-                        enableButtons(true)
-                    }
-                    return@Thread
-                }
+        // Decryption of the shared key, persisting the chat, responding to the
+        // mediator and subscribing all happen in Rust (MimirApp.acceptGroupInvite,
+        // reached via the ConnectionService command below). We only handle UI.
+        NotificationHelper.cancelGroupInviteNotification(this, inviteId)
 
-                // Decrypt shared key
-                val privkeyParams = accountInfo.keyPair.private as Ed25519PrivateKeyParameters
-                val privkey = privkeyParams.encoded
-                val sharedKey = mimirDecryptSharedKey(encryptedData, privkey)
+        val intent = Intent(this, ConnectionService::class.java).apply {
+            putExtra("command", "mediator_accept_invite")
+            putExtra("invite_id", inviteId)
+            putExtra("chat_id", chatId)
+        }
+        startService(intent)
 
-                Log.i(TAG, "Decrypted shared key for chat $chatId")
-
-                val mediatorPubkey = this.mediatorPubkey ?: MediatorManager.getDefaultMediatorPubkey()
-
-                // Determine owner pubkey from invite (for now, use the sender as a placeholder)
-                // TODO: The mediator should send the actual owner pubkey in the invite
-                val ownerPubkey = fromPubkey
-
-                // Save chat to database FIRST (optimistic approach)
-                // This ensures the user can enter the group even if mediator is slow
-                storage.saveGroupChat(
-                    chatId,
-                    chatName,
-                    chatDescription,
-                    chatAvatarPath, // Use the file path from the invite
-                    mediatorPubkey,
-                    ownerPubkey,
-                    sharedKey
-                )
-                Log.i(TAG, "Saved chat $chatId to database")
-
-                // Cancel the notification for this invite
-                NotificationHelper.cancelGroupInviteNotification(this, inviteId)
-
-                // Delegate invite acceptance and subscription to ConnectionService
-                // This handles retries in case of slow network/timeouts
-                val intent = Intent(this, ConnectionService::class.java).apply {
-                    putExtra("command", "mediator_accept_invite")
-                    putExtra("invite_id", inviteId)
-                    putExtra("chat_id", chatId)
-                }
-                startService(intent)
-
-                runOnUiThread {
-                    showProgressDialog(R.string.joining_group)
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error accepting invite", e)
-                runOnUiThread {
-                    Toast.makeText(
-                        this,
-                        getString(R.string.error_accepting_invite, e.message),
-                        Toast.LENGTH_LONG
-                    ).show()
-                    enableButtons(true)
-                }
-            }
-        }.start()
+        showProgressDialog(R.string.joining_group)
     }
 
     private fun rejectInvite() {
@@ -258,7 +203,7 @@ class GroupInviteActivity : BaseActivity() {
                 val storage = getStorage()
 
                 // Delete locally
-                storage.deleteGroupInvite(inviteId)
+                storage.deleteInvite(inviteId)
 
                 // Cancel the notification for this invite
                 NotificationHelper.cancelGroupInviteNotification(this, inviteId)

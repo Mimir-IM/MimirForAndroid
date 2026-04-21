@@ -20,7 +20,6 @@ import androidx.appcompat.widget.Toolbar
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.ui.SettingsAdapter
 import java.io.File
 import java.io.FileInputStream
@@ -34,8 +33,15 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
 
     companion object {
         private const val TAG = "BackupActivity"
+        /** On-disk SQLite filename managed by MimirStorage. */
+        private const val DATABASE_NAME = "mimir.db"
+        /** Subdirectory of filesDir that holds the Rust-owned DB + sidecars. */
+        private const val DATABASE_DIR = "mimir"
         private const val BACKUP_FILE_PREFIX = "mimir_backup_"
     }
+
+    /** Absolute File handle for the current MimirStorage database. */
+    private fun mimirDbFile(): File = File(File(filesDir, DATABASE_DIR), DATABASE_NAME)
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var progressDialog: AlertDialog? = null
@@ -168,31 +174,27 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
         showProgressDialog(R.string.backup_exporting)
 
         // Capture paths on main thread before background work
-        val dbFile = getDatabasePath(SqlStorage.DATABASE_NAME)
         val avatarsDir = File(filesDir, "avatars")
         val mediaFilesDir = File(filesDir, "files")
         val appFilesDir = filesDir
         val prefsDir = File(applicationInfo.dataDir, "shared_prefs")
+        val snapshotFile = File(cacheDir, "backup_snapshot.db")
 
         Thread {
             var success = false
             var errorMessage: String? = null
 
             try {
-                // Checkpoint the WAL to ensure all data is written to the main database file
-                try {
-                    App.app.storage.writableDatabase.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { cursor ->
-                        cursor.moveToFirst()
-                        Log.i(TAG, "WAL checkpoint completed")
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "WAL checkpoint failed, continuing with export", e)
-                }
+                // Produce an atomic snapshot of the DB via VACUUM INTO. This is
+                // safe while the app keeps running (it walks the DB under a
+                // read lock and writes a fresh .db with no WAL sidecar).
+                snapshotFile.delete() // VACUUM INTO refuses to overwrite.
+                App.app.mimirStorage?.backupTo(snapshotFile.absolutePath)
+                    ?: throw Exception("MimirStorage not available")
 
                 ZipOutputStream(outputStream).use { zipOut ->
-                    // Export database
-                    if (dbFile.exists()) {
-                        addFileToZip(zipOut, dbFile, SqlStorage.DATABASE_NAME)
+                    if (snapshotFile.exists()) {
+                        addFileToZip(zipOut, snapshotFile, DATABASE_NAME)
                     }
 
                     // Export avatars directory
@@ -225,6 +227,8 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
             } catch (e: Exception) {
                 Log.e(TAG, "Error exporting backup", e)
                 errorMessage = e.message
+            } finally {
+                snapshotFile.delete()
             }
 
             // Post results back to main thread
@@ -266,7 +270,7 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
         showProgressDialog(R.string.backup_importing)
 
         // Capture paths on main thread before background work
-        val dbPath = getDatabasePath(SqlStorage.DATABASE_NAME)
+        val dbPath = mimirDbFile()
         val appFilesDir = filesDir
         val appDataDir = applicationInfo.dataDir
 
@@ -288,17 +292,28 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
                     throw Exception("Cannot open backup file")
                 }
 
-                // Stop ConnectionService before import to release database connections
-                Log.i(TAG, "Stopping ConnectionService before import")
+                // Cut every network connection synchronously BEFORE touching
+                // the service lifecycle. close_all_connections() blocks until
+                // the yggdrasil node is closed and includes a small drain
+                // window, so after this no packet can reach a handler that
+                // would write to the DB we're about to replace.
+                Log.i(TAG, "Closing all network connections before import")
+                App.app.mimirApp?.closeAllConnections()
+
+                // Stop the service too, so it doesn't restart anything.
                 mainHandler.post {
                     stopService(Intent(this, ConnectionService::class.java))
                 }
-                // Give service time to stop
-                Thread.sleep(500)
+                Thread.sleep(200)
 
-                // Close the application's database connection (not a new instance!)
+                // Close the MimirStorage handle so the file on disk is released
+                // before we overwrite it. We also null it out: the process is
+                // about to be killed and restarted, but if the user dismisses
+                // the restart dialog, any touch of the dangling handle would
+                // corrupt the restored DB. Better to NPE loudly.
                 Log.i(TAG, "Closing application database connection")
-                App.app.storage.close()
+                App.app.mimirStorage?.close()
+                App.app.mimirStorage = null
 
                 // Delete existing files before importing
                 deleteExistingData()
@@ -319,7 +334,8 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
                         } else {
                             // Extract file
                             val targetFile = when {
-                                entryName == SqlStorage.DATABASE_NAME -> {
+                                entryName == DATABASE_NAME -> {
+                                    dbPath.parentFile?.mkdirs()
                                     dbPath
                                 }
                                 entryName.startsWith("avatars/") ||
@@ -412,12 +428,12 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
                     foundEntries.add(entryName)
 
                     // Check for required database file
-                    if (entryName == SqlStorage.DATABASE_NAME) {
+                    if (entryName == DATABASE_NAME) {
                         hasDatabaseFile = true
                     }
 
                     // Validate that all entries match expected patterns
-                    val isValidEntry = entryName == SqlStorage.DATABASE_NAME ||
+                    val isValidEntry = entryName == DATABASE_NAME ||
                             entryName.startsWith("avatars/") ||
                             entryName.startsWith("files/") ||
                             entryName.startsWith("avatars_") ||
@@ -453,14 +469,12 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
 
     private fun deleteExistingData() {
         try {
-            // Delete database file
-            val dbFile = getDatabasePath(SqlStorage.DATABASE_NAME)
+            // Delete database file + its WAL/SHM sidecars (MimirStorage-owned).
+            val dbFile = mimirDbFile()
             if (dbFile.exists()) {
                 val deleted = dbFile.delete()
                 Log.i(TAG, "Database file deleted: $deleted")
             }
-
-            // Delete SQLite WAL and SHM files (Write-Ahead Log)
             val walFile = File(dbFile.absolutePath + "-wal")
             if (walFile.exists()) {
                 val deleted = walFile.delete()

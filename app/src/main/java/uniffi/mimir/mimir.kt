@@ -43,17 +43,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 open class RustBuffer : Structure() {
     // Note: `capacity` and `len` are actually `ULong` values, but JVM only supports signed values.
     // When dealing with these fields, make sure to call `toULong()`.
-    @JvmField
-    var capacity: Long = 0
-    @JvmField
-    var len: Long = 0
-    @JvmField
-    var data: Pointer? = null
+    @JvmField var capacity: Long = 0
+    @JvmField var len: Long = 0
+    @JvmField var data: Pointer? = null
 
-    class ByValue : RustBuffer(), Structure.ByValue
-    class ByReference : RustBuffer(), Structure.ByReference
+    class ByValue: RustBuffer(), Structure.ByValue
+    class ByReference: RustBuffer(), Structure.ByReference
 
-    internal fun setValue(other: RustBuffer) {
+   internal fun setValue(other: RustBuffer) {
         capacity = other.capacity
         len = other.len
         data = other.data
@@ -64,20 +61,20 @@ open class RustBuffer : Structure() {
             // Note: need to convert the size to a `Long` value to make this work with JVM.
             UniffiLib.ffi_mimir_rustbuffer_alloc(size.toLong(), status)
         }.also {
-            if (it.data == null) {
-                throw RuntimeException("RustBuffer.alloc() returned null data pointer (size=${size})")
-            }
+            if(it.data == null) {
+               throw RuntimeException("RustBuffer.alloc() returned null data pointer (size=${size})")
+           }
         }
 
-        internal fun create(capacity: ULong, len: ULong, data: Pointer?): ByValue {
-            var buf = ByValue()
+        internal fun create(capacity: ULong, len: ULong, data: Pointer?): RustBuffer.ByValue {
+            var buf = RustBuffer.ByValue()
             buf.capacity = capacity.toLong()
             buf.len = len.toLong()
             buf.data = data
             return buf
         }
 
-        internal fun free(buf: ByValue) = uniffiRustCall() { status ->
+        internal fun free(buf: RustBuffer.ByValue) = uniffiRustCall() { status ->
             UniffiLib.ffi_mimir_rustbuffer_free(buf, status)
         }
     }
@@ -97,14 +94,11 @@ open class RustBuffer : Structure() {
 
 @Structure.FieldOrder("len", "data")
 internal open class ForeignBytes : Structure() {
-    @JvmField
-    var len: Int = 0
-    @JvmField
-    var data: Pointer? = null
+    @JvmField var len: Int = 0
+    @JvmField var data: Pointer? = null
 
     class ByValue : ForeignBytes(), Structure.ByValue
 }
-
 /**
  * The FfiConverter interface handles converter types to and from the FFI
  *
@@ -113,7 +107,7 @@ internal open class ForeignBytes : Structure() {
  *
  * @suppress
  */
-interface FfiConverter<KotlinType, FfiType> {
+public interface FfiConverter<KotlinType, FfiType> {
     // Convert an FFI type to a Kotlin type
     fun lift(value: FfiType): KotlinType
 
@@ -164,11 +158,11 @@ interface FfiConverter<KotlinType, FfiType> {
     fun liftFromRustBuffer(rbuf: RustBuffer.ByValue): KotlinType {
         val byteBuf = rbuf.asByteBuffer()!!
         try {
-            val item = read(byteBuf)
-            if (byteBuf.hasRemaining()) {
-                throw RuntimeException("junk remaining in buffer after lifting, something is very wrong!!")
-            }
-            return item
+           val item = read(byteBuf)
+           if (byteBuf.hasRemaining()) {
+               throw RuntimeException("junk remaining in buffer after lifting, something is very wrong!!")
+           }
+           return item
         } finally {
             RustBuffer.free(rbuf)
         }
@@ -180,7 +174,7 @@ interface FfiConverter<KotlinType, FfiType> {
  *
  * @suppress
  */
-interface FfiConverterRustBuffer<KotlinType> : FfiConverter<KotlinType, RustBuffer.ByValue> {
+public interface FfiConverterRustBuffer<KotlinType>: FfiConverter<KotlinType, RustBuffer.ByValue> {
     override fun lift(value: RustBuffer.ByValue) = liftFromRustBuffer(value)
     override fun lower(value: KotlinType) = lowerIntoRustBuffer(value)
 }
@@ -193,12 +187,10 @@ internal const val UNIFFI_CALL_UNEXPECTED_ERROR = 2.toByte()
 
 @Structure.FieldOrder("code", "error_buf")
 internal open class UniffiRustCallStatus : Structure() {
-    @JvmField
-    var code: Byte = 0
-    @JvmField
-    var error_buf: RustBuffer.ByValue = RustBuffer.ByValue()
+    @JvmField var code: Byte = 0
+    @JvmField var error_buf: RustBuffer.ByValue = RustBuffer.ByValue()
 
-    class ByValue : UniffiRustCallStatus(), Structure.ByValue
+    class ByValue: UniffiRustCallStatus(), Structure.ByValue
 
     fun isSuccess(): Boolean {
         return code == UNIFFI_CALL_SUCCESS
@@ -213,8 +205,8 @@ internal open class UniffiRustCallStatus : Structure() {
     }
 
     companion object {
-        fun create(code: Byte, errorBuf: RustBuffer.ByValue): ByValue {
-            val callStatus = ByValue()
+        fun create(code: Byte, errorBuf: RustBuffer.ByValue): UniffiRustCallStatus.ByValue {
+            val callStatus = UniffiRustCallStatus.ByValue()
             callStatus.code = code
             callStatus.error_buf = errorBuf
             return callStatus
@@ -222,7 +214,7 @@ internal open class UniffiRustCallStatus : Structure() {
     }
 }
 
-class InternalException(message: String) : Exception(message)
+class InternalException(message: String) : kotlin.Exception(message)
 
 /**
  * Each top-level error class has a companion object that can lift the error from the call status's rust buffer
@@ -238,7 +230,7 @@ interface UniffiRustCallStatusErrorHandler<E> {
 // synchronize itself
 
 // Call a rust function that returns a Result<>.  Pass in the Error class companion that corresponds to the Err
-private inline fun <U, E : Exception> uniffiRustCallWithError(errorHandler: UniffiRustCallStatusErrorHandler<E>, callback: (UniffiRustCallStatus) -> U): U {
+private inline fun <U, E: kotlin.Exception> uniffiRustCallWithError(errorHandler: UniffiRustCallStatusErrorHandler<E>, callback: (UniffiRustCallStatus) -> U): U {
     var status = UniffiRustCallStatus()
     val return_value = callback(status)
     uniffiCheckCallStatus(errorHandler, status)
@@ -246,7 +238,7 @@ private inline fun <U, E : Exception> uniffiRustCallWithError(errorHandler: Unif
 }
 
 // Check UniffiRustCallStatus and throw an error if the call wasn't successful
-private fun <E : Exception> uniffiCheckCallStatus(errorHandler: UniffiRustCallStatusErrorHandler<E>, status: UniffiRustCallStatus) {
+private fun<E: kotlin.Exception> uniffiCheckCallStatus(errorHandler: UniffiRustCallStatusErrorHandler<E>, status: UniffiRustCallStatus) {
     if (status.isSuccess()) {
         return
     } else if (status.isError()) {
@@ -270,7 +262,7 @@ private fun <E : Exception> uniffiCheckCallStatus(errorHandler: UniffiRustCallSt
  *
  * @suppress
  */
-object UniffiNullRustCallStatusErrorHandler : UniffiRustCallStatusErrorHandler<InternalException> {
+object UniffiNullRustCallStatusErrorHandler: UniffiRustCallStatusErrorHandler<InternalException> {
     override fun lift(error_buf: RustBuffer.ByValue): InternalException {
         RustBuffer.free(error_buf)
         return InternalException("Unexpected CALL_ERROR")
@@ -282,25 +274,21 @@ private inline fun <U> uniffiRustCall(callback: (UniffiRustCallStatus) -> U): U 
     return uniffiRustCallWithError(UniffiNullRustCallStatusErrorHandler, callback)
 }
 
-internal inline fun <T> uniffiTraitInterfaceCall(
+internal inline fun<T> uniffiTraitInterfaceCall(
     callStatus: UniffiRustCallStatus,
     makeCall: () -> T,
     writeReturn: (T) -> Unit,
 ) {
     try {
         writeReturn(makeCall())
-    } catch (e: Exception) {
-        val err = try {
-            e.stackTraceToString()
-        } catch (_: Throwable) {
-            ""
-        }
+    } catch(e: kotlin.Exception) {
+        val err = try { e.stackTraceToString() } catch(_: Throwable) { "" }
         callStatus.code = UNIFFI_CALL_UNEXPECTED_ERROR
         callStatus.error_buf = FfiConverterString.lower(err)
     }
 }
 
-internal inline fun <T, reified E : Throwable> uniffiTraitInterfaceCallWithError(
+internal inline fun<T, reified E: Throwable> uniffiTraitInterfaceCallWithError(
     callStatus: UniffiRustCallStatus,
     makeCall: () -> T,
     writeReturn: (T) -> Unit,
@@ -308,23 +296,18 @@ internal inline fun <T, reified E : Throwable> uniffiTraitInterfaceCallWithError
 ) {
     try {
         writeReturn(makeCall())
-    } catch (e: Exception) {
+    } catch(e: kotlin.Exception) {
         if (e is E) {
             callStatus.code = UNIFFI_CALL_ERROR
             callStatus.error_buf = lowerError(e)
         } else {
-            val err = try {
-                e.stackTraceToString()
-            } catch (_: Throwable) {
-                ""
-            }
+            val err = try { e.stackTraceToString() } catch(_: Throwable) { "" }
             callStatus.code = UNIFFI_CALL_UNEXPECTED_ERROR
             callStatus.error_buf = FfiConverterString.lower(err)
         }
     }
 }
-
-// Initial value and increment amount for handles.
+// Initial value and increment amount for handles. 
 // These ensure that Kotlin-generated handles always have the lowest bit set
 private const val UNIFFI_HANDLEMAP_INITIAL = 1.toLong()
 private const val UNIFFI_HANDLEMAP_DELTA = 2.toLong()
@@ -332,11 +315,10 @@ private const val UNIFFI_HANDLEMAP_DELTA = 2.toLong()
 // Map handles to objects
 //
 // This is used pass an opaque 64-bit handle representing a foreign object to the Rust code.
-internal class UniffiHandleMap<T : Any> {
+internal class UniffiHandleMap<T: Any> {
     private val map = ConcurrentHashMap<Long, T>()
-
-    // Start
-    private val counter = AtomicLong(UNIFFI_HANDLEMAP_INITIAL)
+    // Start 
+    private val counter = java.util.concurrent.atomic.AtomicLong(UNIFFI_HANDLEMAP_INITIAL)
 
     val size: Int
         get() = map.size
@@ -377,602 +359,405 @@ private fun findLibraryName(componentName: String): String {
 }
 
 // Define FFI callback types
-internal interface UniffiRustFutureContinuationCallback : Callback {
-    fun callback(`data`: Long, pollResult: Byte)
+internal interface UniffiRustFutureContinuationCallback : com.sun.jna.Callback {
+    fun callback(`data`: Long,`pollResult`: Byte,)
 }
-
-internal interface UniffiForeignFutureDroppedCallback : Callback {
-    fun callback(handle: Long)
+internal interface UniffiForeignFutureDroppedCallback : com.sun.jna.Callback {
+    fun callback(`handle`: Long,)
 }
-
-internal interface UniffiCallbackInterfaceFree : Callback {
-    fun callback(handle: Long)
+internal interface UniffiCallbackInterfaceFree : com.sun.jna.Callback {
+    fun callback(`handle`: Long,)
 }
-
-internal interface UniffiCallbackInterfaceClone : Callback {
-    fun callback(handle: Long)
-            : Long
+internal interface UniffiCallbackInterfaceClone : com.sun.jna.Callback {
+    fun callback(`handle`: Long,)
+    : Long
 }
-
 @Structure.FieldOrder("handle", "free")
 internal open class UniffiForeignFutureDroppedCallbackStruct(
-    @JvmField internal var handle: Long = 0.toLong(),
-    @JvmField internal var free: UniffiForeignFutureDroppedCallback? = null,
+    @JvmField internal var `handle`: Long = 0.toLong(),
+    @JvmField internal var `free`: UniffiForeignFutureDroppedCallback? = null,
 ) : Structure() {
     class UniffiByValue(
-        handle: Long = 0.toLong(),
-        free: UniffiForeignFutureDroppedCallback? = null,
-    ) : UniffiForeignFutureDroppedCallbackStruct(handle, free), ByValue
+        `handle`: Long = 0.toLong(),
+        `free`: UniffiForeignFutureDroppedCallback? = null,
+    ): UniffiForeignFutureDroppedCallbackStruct(`handle`,`free`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureDroppedCallbackStruct) {
-        handle = other.handle
-        free = other.free
+   internal fun uniffiSetValue(other: UniffiForeignFutureDroppedCallbackStruct) {
+        `handle` = other.`handle`
+        `free` = other.`free`
     }
 
 }
-
 @Structure.FieldOrder("returnValue", "callStatus")
 internal open class UniffiForeignFutureResultU8(
-    @JvmField internal var returnValue: Byte = 0.toByte(),
-    @JvmField internal var callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    @JvmField internal var `returnValue`: Byte = 0.toByte(),
+    @JvmField internal var `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
 ) : Structure() {
     class UniffiByValue(
-        returnValue: Byte = 0.toByte(),
-        callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultU8(returnValue, callStatus), ByValue
+        `returnValue`: Byte = 0.toByte(),
+        `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    ): UniffiForeignFutureResultU8(`returnValue`,`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultU8) {
-        returnValue = other.returnValue
-        callStatus = other.callStatus
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultU8) {
+        `returnValue` = other.`returnValue`
+        `callStatus` = other.`callStatus`
     }
 
 }
-
-internal interface UniffiForeignFutureCompleteU8 : Callback {
-    fun callback(callbackData: Long, result: UniffiForeignFutureResultU8.UniffiByValue)
+internal interface UniffiForeignFutureCompleteU8 : com.sun.jna.Callback {
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultU8.UniffiByValue,)
 }
-
 @Structure.FieldOrder("returnValue", "callStatus")
 internal open class UniffiForeignFutureResultI8(
-    @JvmField internal var returnValue: Byte = 0.toByte(),
-    @JvmField internal var callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    @JvmField internal var `returnValue`: Byte = 0.toByte(),
+    @JvmField internal var `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
 ) : Structure() {
     class UniffiByValue(
-        returnValue: Byte = 0.toByte(),
-        callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultI8(returnValue, callStatus), ByValue
+        `returnValue`: Byte = 0.toByte(),
+        `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    ): UniffiForeignFutureResultI8(`returnValue`,`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultI8) {
-        returnValue = other.returnValue
-        callStatus = other.callStatus
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultI8) {
+        `returnValue` = other.`returnValue`
+        `callStatus` = other.`callStatus`
     }
 
 }
-
-internal interface UniffiForeignFutureCompleteI8 : Callback {
-    fun callback(callbackData: Long, result: UniffiForeignFutureResultI8.UniffiByValue)
+internal interface UniffiForeignFutureCompleteI8 : com.sun.jna.Callback {
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultI8.UniffiByValue,)
 }
-
 @Structure.FieldOrder("returnValue", "callStatus")
 internal open class UniffiForeignFutureResultU16(
-    @JvmField internal var returnValue: Short = 0.toShort(),
-    @JvmField internal var callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    @JvmField internal var `returnValue`: Short = 0.toShort(),
+    @JvmField internal var `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
 ) : Structure() {
     class UniffiByValue(
-        returnValue: Short = 0.toShort(),
-        callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultU16(returnValue, callStatus), ByValue
+        `returnValue`: Short = 0.toShort(),
+        `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    ): UniffiForeignFutureResultU16(`returnValue`,`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultU16) {
-        returnValue = other.returnValue
-        callStatus = other.callStatus
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultU16) {
+        `returnValue` = other.`returnValue`
+        `callStatus` = other.`callStatus`
     }
 
 }
-
-internal interface UniffiForeignFutureCompleteU16 : Callback {
-    fun callback(callbackData: Long, result: UniffiForeignFutureResultU16.UniffiByValue)
+internal interface UniffiForeignFutureCompleteU16 : com.sun.jna.Callback {
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultU16.UniffiByValue,)
 }
-
 @Structure.FieldOrder("returnValue", "callStatus")
 internal open class UniffiForeignFutureResultI16(
-    @JvmField internal var returnValue: Short = 0.toShort(),
-    @JvmField internal var callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    @JvmField internal var `returnValue`: Short = 0.toShort(),
+    @JvmField internal var `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
 ) : Structure() {
     class UniffiByValue(
-        returnValue: Short = 0.toShort(),
-        callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultI16(returnValue, callStatus), ByValue
+        `returnValue`: Short = 0.toShort(),
+        `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    ): UniffiForeignFutureResultI16(`returnValue`,`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultI16) {
-        returnValue = other.returnValue
-        callStatus = other.callStatus
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultI16) {
+        `returnValue` = other.`returnValue`
+        `callStatus` = other.`callStatus`
     }
 
 }
-
-internal interface UniffiForeignFutureCompleteI16 : Callback {
-    fun callback(callbackData: Long, result: UniffiForeignFutureResultI16.UniffiByValue)
+internal interface UniffiForeignFutureCompleteI16 : com.sun.jna.Callback {
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultI16.UniffiByValue,)
 }
-
 @Structure.FieldOrder("returnValue", "callStatus")
 internal open class UniffiForeignFutureResultU32(
-    @JvmField internal var returnValue: Int = 0,
-    @JvmField internal var callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    @JvmField internal var `returnValue`: Int = 0,
+    @JvmField internal var `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
 ) : Structure() {
     class UniffiByValue(
-        returnValue: Int = 0,
-        callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultU32(returnValue, callStatus), ByValue
+        `returnValue`: Int = 0,
+        `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    ): UniffiForeignFutureResultU32(`returnValue`,`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultU32) {
-        returnValue = other.returnValue
-        callStatus = other.callStatus
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultU32) {
+        `returnValue` = other.`returnValue`
+        `callStatus` = other.`callStatus`
     }
 
 }
-
-internal interface UniffiForeignFutureCompleteU32 : Callback {
-    fun callback(callbackData: Long, result: UniffiForeignFutureResultU32.UniffiByValue)
+internal interface UniffiForeignFutureCompleteU32 : com.sun.jna.Callback {
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultU32.UniffiByValue,)
 }
-
 @Structure.FieldOrder("returnValue", "callStatus")
 internal open class UniffiForeignFutureResultI32(
-    @JvmField internal var returnValue: Int = 0,
-    @JvmField internal var callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    @JvmField internal var `returnValue`: Int = 0,
+    @JvmField internal var `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
 ) : Structure() {
     class UniffiByValue(
-        returnValue: Int = 0,
-        callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultI32(returnValue, callStatus), ByValue
+        `returnValue`: Int = 0,
+        `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    ): UniffiForeignFutureResultI32(`returnValue`,`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultI32) {
-        returnValue = other.returnValue
-        callStatus = other.callStatus
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultI32) {
+        `returnValue` = other.`returnValue`
+        `callStatus` = other.`callStatus`
     }
 
 }
-
-internal interface UniffiForeignFutureCompleteI32 : Callback {
-    fun callback(callbackData: Long, result: UniffiForeignFutureResultI32.UniffiByValue)
+internal interface UniffiForeignFutureCompleteI32 : com.sun.jna.Callback {
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultI32.UniffiByValue,)
 }
-
 @Structure.FieldOrder("returnValue", "callStatus")
 internal open class UniffiForeignFutureResultU64(
-    @JvmField internal var returnValue: Long = 0.toLong(),
-    @JvmField internal var callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    @JvmField internal var `returnValue`: Long = 0.toLong(),
+    @JvmField internal var `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
 ) : Structure() {
     class UniffiByValue(
-        returnValue: Long = 0.toLong(),
-        callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultU64(returnValue, callStatus), ByValue
+        `returnValue`: Long = 0.toLong(),
+        `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    ): UniffiForeignFutureResultU64(`returnValue`,`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultU64) {
-        returnValue = other.returnValue
-        callStatus = other.callStatus
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultU64) {
+        `returnValue` = other.`returnValue`
+        `callStatus` = other.`callStatus`
     }
 
 }
-
-internal interface UniffiForeignFutureCompleteU64 : Callback {
-    fun callback(callbackData: Long, result: UniffiForeignFutureResultU64.UniffiByValue)
+internal interface UniffiForeignFutureCompleteU64 : com.sun.jna.Callback {
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultU64.UniffiByValue,)
 }
-
 @Structure.FieldOrder("returnValue", "callStatus")
 internal open class UniffiForeignFutureResultI64(
-    @JvmField internal var returnValue: Long = 0.toLong(),
-    @JvmField internal var callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    @JvmField internal var `returnValue`: Long = 0.toLong(),
+    @JvmField internal var `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
 ) : Structure() {
     class UniffiByValue(
-        returnValue: Long = 0.toLong(),
-        callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultI64(returnValue, callStatus), ByValue
+        `returnValue`: Long = 0.toLong(),
+        `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    ): UniffiForeignFutureResultI64(`returnValue`,`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultI64) {
-        returnValue = other.returnValue
-        callStatus = other.callStatus
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultI64) {
+        `returnValue` = other.`returnValue`
+        `callStatus` = other.`callStatus`
     }
 
 }
-
-internal interface UniffiForeignFutureCompleteI64 : Callback {
-    fun callback(callbackData: Long, result: UniffiForeignFutureResultI64.UniffiByValue)
+internal interface UniffiForeignFutureCompleteI64 : com.sun.jna.Callback {
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultI64.UniffiByValue,)
 }
-
 @Structure.FieldOrder("returnValue", "callStatus")
 internal open class UniffiForeignFutureResultF32(
-    @JvmField internal var returnValue: Float = 0.0f,
-    @JvmField internal var callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    @JvmField internal var `returnValue`: Float = 0.0f,
+    @JvmField internal var `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
 ) : Structure() {
     class UniffiByValue(
-        returnValue: Float = 0.0f,
-        callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultF32(returnValue, callStatus), ByValue
+        `returnValue`: Float = 0.0f,
+        `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    ): UniffiForeignFutureResultF32(`returnValue`,`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultF32) {
-        returnValue = other.returnValue
-        callStatus = other.callStatus
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultF32) {
+        `returnValue` = other.`returnValue`
+        `callStatus` = other.`callStatus`
     }
 
 }
-
-internal interface UniffiForeignFutureCompleteF32 : Callback {
-    fun callback(callbackData: Long, result: UniffiForeignFutureResultF32.UniffiByValue)
+internal interface UniffiForeignFutureCompleteF32 : com.sun.jna.Callback {
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultF32.UniffiByValue,)
 }
-
 @Structure.FieldOrder("returnValue", "callStatus")
 internal open class UniffiForeignFutureResultF64(
-    @JvmField internal var returnValue: Double = 0.0,
-    @JvmField internal var callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    @JvmField internal var `returnValue`: Double = 0.0,
+    @JvmField internal var `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
 ) : Structure() {
     class UniffiByValue(
-        returnValue: Double = 0.0,
-        callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultF64(returnValue, callStatus), ByValue
+        `returnValue`: Double = 0.0,
+        `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    ): UniffiForeignFutureResultF64(`returnValue`,`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultF64) {
-        returnValue = other.returnValue
-        callStatus = other.callStatus
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultF64) {
+        `returnValue` = other.`returnValue`
+        `callStatus` = other.`callStatus`
     }
 
 }
-
-internal interface UniffiForeignFutureCompleteF64 : Callback {
-    fun callback(callbackData: Long, result: UniffiForeignFutureResultF64.UniffiByValue)
+internal interface UniffiForeignFutureCompleteF64 : com.sun.jna.Callback {
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultF64.UniffiByValue,)
 }
-
 @Structure.FieldOrder("returnValue", "callStatus")
 internal open class UniffiForeignFutureResultRustBuffer(
-    @JvmField internal var returnValue: RustBuffer.ByValue = RustBuffer.ByValue(),
-    @JvmField internal var callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    @JvmField internal var `returnValue`: RustBuffer.ByValue = RustBuffer.ByValue(),
+    @JvmField internal var `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
 ) : Structure() {
     class UniffiByValue(
-        returnValue: RustBuffer.ByValue = RustBuffer.ByValue(),
-        callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultRustBuffer(returnValue, callStatus), ByValue
+        `returnValue`: RustBuffer.ByValue = RustBuffer.ByValue(),
+        `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    ): UniffiForeignFutureResultRustBuffer(`returnValue`,`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultRustBuffer) {
-        returnValue = other.returnValue
-        callStatus = other.callStatus
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultRustBuffer) {
+        `returnValue` = other.`returnValue`
+        `callStatus` = other.`callStatus`
     }
 
 }
-
-internal interface UniffiForeignFutureCompleteRustBuffer : Callback {
-    fun callback(callbackData: Long, result: UniffiForeignFutureResultRustBuffer.UniffiByValue)
+internal interface UniffiForeignFutureCompleteRustBuffer : com.sun.jna.Callback {
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultRustBuffer.UniffiByValue,)
 }
-
 @Structure.FieldOrder("callStatus")
 internal open class UniffiForeignFutureResultVoid(
-    @JvmField internal var callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    @JvmField internal var `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
 ) : Structure() {
     class UniffiByValue(
-        callStatus: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultVoid(callStatus), ByValue
+        `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
+    ): UniffiForeignFutureResultVoid(`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultVoid) {
-        callStatus = other.callStatus
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultVoid) {
+        `callStatus` = other.`callStatus`
     }
 
 }
-
-internal interface UniffiForeignFutureCompleteVoid : Callback {
-    fun callback(callbackData: Long, result: UniffiForeignFutureResultVoid.UniffiByValue)
+internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultVoid.UniffiByValue,)
 }
-
-internal interface UniffiCallbackInterfaceFilesEventListenerMethod0 : Callback {
-    fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, bytesSent: Long, totalBytes: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+internal interface UniffiCallbackInterfaceAppEventListenerMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`isOnline`: Byte,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-
-internal interface UniffiCallbackInterfaceFilesEventListenerMethod1 : Callback {
-    fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+internal interface UniffiCallbackInterfaceAppEventListenerMethod1 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`contactId`: Long,`messageId`: Long,`msgType`: Int,`replyTo`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-
-internal interface UniffiCallbackInterfaceFilesEventListenerMethod2 : Callback {
-    fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, error: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+internal interface UniffiCallbackInterfaceAppEventListenerMethod2 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`contactPubkey`: RustBuffer.ByValue,`guid`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-
-internal interface UniffiCallbackInterfaceFilesEventListenerMethod3 : Callback {
-    fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, bytesReceived: Long, totalBytes: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+internal interface UniffiCallbackInterfaceAppEventListenerMethod3 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`pubkey`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-
-internal interface UniffiCallbackInterfaceFilesEventListenerMethod4 : Callback {
-    fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, filePath: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+internal interface UniffiCallbackInterfaceAppEventListenerMethod4 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`pubkey`: RustBuffer.ByValue,`dead`: Byte,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-
-internal interface UniffiCallbackInterfaceFilesEventListenerMethod5 : Callback {
-    fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, error: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+internal interface UniffiCallbackInterfaceAppEventListenerMethod5 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`chatId`: Long,`messageId`: Long,`msgType`: Int,`replyTo`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-
-internal interface UniffiCallbackInterfaceInfoProviderMethod0 : Callback {
-    fun callback(uniffiHandle: Long, sinceTime: Long, uniffiOutReturn: RustBuffer, uniffiCallStatus: UniffiRustCallStatus)
+internal interface UniffiCallbackInterfaceAppEventListenerMethod6 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`chatId`: Long,`guid`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-
-internal interface UniffiCallbackInterfaceInfoProviderMethod1 : Callback {
-    fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, uniffiOutReturn: LongByReference, uniffiCallStatus: UniffiRustCallStatus)
+internal interface UniffiCallbackInterfaceAppEventListenerMethod7 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`chatId`: Long,`guid`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-
-internal interface UniffiCallbackInterfaceInfoProviderMethod2 : Callback {
-    fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, info: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+internal interface UniffiCallbackInterfaceAppEventListenerMethod8 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`isGroup`: Byte,`targetId`: Long,`messageId`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-
-internal interface UniffiCallbackInterfaceInfoProviderMethod3 : Callback {
-    fun callback(uniffiHandle: Long, uniffiOutReturn: RustBuffer, uniffiCallStatus: UniffiRustCallStatus)
+internal interface UniffiCallbackInterfaceAppEventListenerMethod9 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`chatId`: Long,`status`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-
-internal interface UniffiCallbackInterfaceInfoProviderMethod4 : Callback {
-    fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, uniffiOutReturn: IntByReference, uniffiCallStatus: UniffiRustCallStatus)
+internal interface UniffiCallbackInterfaceAppEventListenerMethod10 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`inviteId`: Long,`chatId`: Long,`fromPubkey`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-
-internal interface UniffiCallbackInterfaceMediatorEventListenerMethod0 : Callback {
-    fun callback(uniffiHandle: Long, mediatorPubkey: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+internal interface UniffiCallbackInterfaceAppEventListenerMethod11 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`chatId`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-
-internal interface UniffiCallbackInterfaceMediatorEventListenerMethod1 : Callback {
-    fun callback(uniffiHandle: Long, mediatorPubkey: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+internal interface UniffiCallbackInterfaceAppEventListenerMethod12 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`chatId`: Long,`pubkey`: RustBuffer.ByValue,`online`: Byte,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-
-internal interface UniffiCallbackInterfaceMediatorEventListenerMethod2 : Callback {
-    fun callback(uniffiHandle: Long, mediatorPubkey: RustBuffer.ByValue, chatId: Long, lastMessageId: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+internal interface UniffiCallbackInterfaceAppEventListenerMethod13 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`pubkey`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-
-internal interface UniffiCallbackInterfaceMediatorEventListenerMethod3 : Callback {
-    fun callback(uniffiHandle: Long, chatId: Long, messageId: Long, guid: Long, timestamp: Long, author: RustBuffer.ByValue, `data`: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+internal interface UniffiCallbackInterfaceAppEventListenerMethod14 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`status`: RustBuffer.ByValue,`pubkey`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-
-internal interface UniffiCallbackInterfaceMediatorEventListenerMethod4 : Callback {
-    fun callback(uniffiHandle: Long, chatId: Long, messageId: Long, guid: Long, timestamp: Long, body: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+internal interface UniffiCallbackInterfaceAppEventListenerMethod15 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`pubkey`: RustBuffer.ByValue,`data`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-
-internal interface UniffiCallbackInterfaceMediatorEventListenerMethod5 : Callback {
-    fun callback(uniffiHandle: Long, inviteId: Long, chatId: Long, fromPubkey: RustBuffer.ByValue, timestamp: Long, chatName: RustBuffer.ByValue, chatDesc: RustBuffer.ByValue, chatAvatar: RustBuffer.ByValue, encryptedData: RustBuffer.ByValue, mediatorPubkey: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+internal interface UniffiCallbackInterfaceAppEventListenerMethod16 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`guid`: Long,`bytesDone`: Long,`totalBytes`: Long,`isUpload`: Byte,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-
-internal interface UniffiCallbackInterfaceMediatorEventListenerMethod6 : Callback {
-    fun callback(uniffiHandle: Long, chatId: Long, lastUpdate: Long, uniffiOutReturn: RustBuffer, uniffiCallStatus: UniffiRustCallStatus)
+internal interface UniffiCallbackInterfaceAppEventListenerMethod17 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`pubkey`: RustBuffer.ByValue,`guid`: Long,`metaJson`: RustBuffer.ByValue,`filePath`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-
-internal interface UniffiCallbackInterfaceMediatorEventListenerMethod7 : Callback {
-    fun callback(uniffiHandle: Long, chatId: Long, memberPubkey: RustBuffer.ByValue, encryptedInfo: RustBuffer.ByValue, timestamp: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+internal interface UniffiCallbackInterfaceAppEventListenerMethod18 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`chatId`: Long,`guid`: Long,`filePath`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-
-internal interface UniffiCallbackInterfaceMediatorEventListenerMethod8 : Callback {
-    fun callback(uniffiHandle: Long, chatId: Long, memberPubkey: RustBuffer.ByValue, isOnline: Byte, timestamp: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+internal interface UniffiCallbackInterfaceAppEventListenerMethod19 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`requestId`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-
-internal interface UniffiCallbackInterfaceMediatorEventListenerMethod9 : Callback {
-    fun callback(uniffiHandle: Long, mediatorPubkey: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+internal interface UniffiCallbackInterfaceAppEventListenerMethod20 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`pubkey`: RustBuffer.ByValue,`accepted`: Byte,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-
-internal interface UniffiCallbackInterfacePeerEventListenerMethod0 : Callback {
-    fun callback(uniffiHandle: Long, isOnline: Byte, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
+internal interface UniffiCallbackInterfaceAppEventListenerMethod21 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`ok`: Byte,`ttl`: Int,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-
-internal interface UniffiCallbackInterfacePeerEventListenerMethod1 : Callback {
-    fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, address: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
-}
-
-internal interface UniffiCallbackInterfacePeerEventListenerMethod2 : Callback {
-    fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, address: RustBuffer.ByValue, deadContact: Byte, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
-}
-
-internal interface UniffiCallbackInterfacePeerEventListenerMethod3 : Callback {
-    fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, msgType: Int, `data`: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
-}
-
-internal interface UniffiCallbackInterfacePeerEventListenerMethod4 : Callback {
-    fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, guid: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
-}
-
-internal interface UniffiCallbackInterfacePeerEventListenerMethod5 : Callback {
-    fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
-}
-
-internal interface UniffiCallbackInterfacePeerEventListenerMethod6 : Callback {
-    fun callback(uniffiHandle: Long, status: RustBuffer.ByValue, pubkey: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
-}
-
-internal interface UniffiCallbackInterfacePeerEventListenerMethod7 : Callback {
-    fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, `data`: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
-}
-
-internal interface UniffiCallbackInterfacePeerEventListenerMethod8 : Callback {
-    fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, guid: Long, bytesReceived: Long, totalBytes: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
-}
-
-internal interface UniffiCallbackInterfacePeerEventListenerMethod9 : Callback {
-    fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, guid: Long, bytesSent: Long, totalBytes: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
-}
-
-internal interface UniffiCallbackInterfacePeerEventListenerMethod10 : Callback {
-    fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, msgType: Int, metaJson: RustBuffer.ByValue, filePath: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
-}
-
-internal interface UniffiCallbackInterfacePeerEventListenerMethod11 : Callback {
-    fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, message: RustBuffer.ByValue, nickname: RustBuffer.ByValue, info: RustBuffer.ByValue, avatar: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
-}
-
-internal interface UniffiCallbackInterfacePeerEventListenerMethod12 : Callback {
-    fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, accepted: Byte, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
-}
-
-internal interface UniffiCallbackInterfacePeerEventListenerMethod13 : Callback {
-    fun callback(uniffiHandle: Long, ok: Byte, ttl: Int, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus)
-}
-
-@Structure.FieldOrder("uniffiFree", "uniffiClone", "onUploadProgress", "onUploadComplete", "onUploadError", "onDownloadProgress", "onDownloadComplete", "onDownloadError")
-internal open class UniffiVTableCallbackInterfaceFilesEventListener(
-    @JvmField internal var uniffiFree: UniffiCallbackInterfaceFree? = null,
-    @JvmField internal var uniffiClone: UniffiCallbackInterfaceClone? = null,
-    @JvmField internal var onUploadProgress: UniffiCallbackInterfaceFilesEventListenerMethod0? = null,
-    @JvmField internal var onUploadComplete: UniffiCallbackInterfaceFilesEventListenerMethod1? = null,
-    @JvmField internal var onUploadError: UniffiCallbackInterfaceFilesEventListenerMethod2? = null,
-    @JvmField internal var onDownloadProgress: UniffiCallbackInterfaceFilesEventListenerMethod3? = null,
-    @JvmField internal var onDownloadComplete: UniffiCallbackInterfaceFilesEventListenerMethod4? = null,
-    @JvmField internal var onDownloadError: UniffiCallbackInterfaceFilesEventListenerMethod5? = null,
+@Structure.FieldOrder("uniffiFree", "uniffiClone", "onConnectivityChanged", "onMessageReceived", "onMessageDelivered", "onContactConnected", "onContactDisconnected", "onGroupMessageReceived", "onGroupMessageDeleted", "onGroupMessageDelivered", "onOutgoingMessageStored", "onGroupChatStatus", "onGroupInviteReceived", "onGroupMembersChanged", "onGroupMemberOnline", "onIncomingCall", "onCallStatusChanged", "onCallPacket", "onFileProgress", "onFileReceived", "onFileDownloaded", "onContactRequestReceived", "onContactResponse", "onTrackerAnnounce")
+internal open class UniffiVTableCallbackInterfaceAppEventListener(
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    @JvmField internal var `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+    @JvmField internal var `onConnectivityChanged`: UniffiCallbackInterfaceAppEventListenerMethod0? = null,
+    @JvmField internal var `onMessageReceived`: UniffiCallbackInterfaceAppEventListenerMethod1? = null,
+    @JvmField internal var `onMessageDelivered`: UniffiCallbackInterfaceAppEventListenerMethod2? = null,
+    @JvmField internal var `onContactConnected`: UniffiCallbackInterfaceAppEventListenerMethod3? = null,
+    @JvmField internal var `onContactDisconnected`: UniffiCallbackInterfaceAppEventListenerMethod4? = null,
+    @JvmField internal var `onGroupMessageReceived`: UniffiCallbackInterfaceAppEventListenerMethod5? = null,
+    @JvmField internal var `onGroupMessageDeleted`: UniffiCallbackInterfaceAppEventListenerMethod6? = null,
+    @JvmField internal var `onGroupMessageDelivered`: UniffiCallbackInterfaceAppEventListenerMethod7? = null,
+    @JvmField internal var `onOutgoingMessageStored`: UniffiCallbackInterfaceAppEventListenerMethod8? = null,
+    @JvmField internal var `onGroupChatStatus`: UniffiCallbackInterfaceAppEventListenerMethod9? = null,
+    @JvmField internal var `onGroupInviteReceived`: UniffiCallbackInterfaceAppEventListenerMethod10? = null,
+    @JvmField internal var `onGroupMembersChanged`: UniffiCallbackInterfaceAppEventListenerMethod11? = null,
+    @JvmField internal var `onGroupMemberOnline`: UniffiCallbackInterfaceAppEventListenerMethod12? = null,
+    @JvmField internal var `onIncomingCall`: UniffiCallbackInterfaceAppEventListenerMethod13? = null,
+    @JvmField internal var `onCallStatusChanged`: UniffiCallbackInterfaceAppEventListenerMethod14? = null,
+    @JvmField internal var `onCallPacket`: UniffiCallbackInterfaceAppEventListenerMethod15? = null,
+    @JvmField internal var `onFileProgress`: UniffiCallbackInterfaceAppEventListenerMethod16? = null,
+    @JvmField internal var `onFileReceived`: UniffiCallbackInterfaceAppEventListenerMethod17? = null,
+    @JvmField internal var `onFileDownloaded`: UniffiCallbackInterfaceAppEventListenerMethod18? = null,
+    @JvmField internal var `onContactRequestReceived`: UniffiCallbackInterfaceAppEventListenerMethod19? = null,
+    @JvmField internal var `onContactResponse`: UniffiCallbackInterfaceAppEventListenerMethod20? = null,
+    @JvmField internal var `onTrackerAnnounce`: UniffiCallbackInterfaceAppEventListenerMethod21? = null,
 ) : Structure() {
     class UniffiByValue(
-        uniffiFree: UniffiCallbackInterfaceFree? = null,
-        uniffiClone: UniffiCallbackInterfaceClone? = null,
-        onUploadProgress: UniffiCallbackInterfaceFilesEventListenerMethod0? = null,
-        onUploadComplete: UniffiCallbackInterfaceFilesEventListenerMethod1? = null,
-        onUploadError: UniffiCallbackInterfaceFilesEventListenerMethod2? = null,
-        onDownloadProgress: UniffiCallbackInterfaceFilesEventListenerMethod3? = null,
-        onDownloadComplete: UniffiCallbackInterfaceFilesEventListenerMethod4? = null,
-        onDownloadError: UniffiCallbackInterfaceFilesEventListenerMethod5? = null,
-    ) : UniffiVTableCallbackInterfaceFilesEventListener(uniffiFree, uniffiClone, onUploadProgress, onUploadComplete, onUploadError, onDownloadProgress, onDownloadComplete, onDownloadError),
-        ByValue
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+        `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+        `onConnectivityChanged`: UniffiCallbackInterfaceAppEventListenerMethod0? = null,
+        `onMessageReceived`: UniffiCallbackInterfaceAppEventListenerMethod1? = null,
+        `onMessageDelivered`: UniffiCallbackInterfaceAppEventListenerMethod2? = null,
+        `onContactConnected`: UniffiCallbackInterfaceAppEventListenerMethod3? = null,
+        `onContactDisconnected`: UniffiCallbackInterfaceAppEventListenerMethod4? = null,
+        `onGroupMessageReceived`: UniffiCallbackInterfaceAppEventListenerMethod5? = null,
+        `onGroupMessageDeleted`: UniffiCallbackInterfaceAppEventListenerMethod6? = null,
+        `onGroupMessageDelivered`: UniffiCallbackInterfaceAppEventListenerMethod7? = null,
+        `onOutgoingMessageStored`: UniffiCallbackInterfaceAppEventListenerMethod8? = null,
+        `onGroupChatStatus`: UniffiCallbackInterfaceAppEventListenerMethod9? = null,
+        `onGroupInviteReceived`: UniffiCallbackInterfaceAppEventListenerMethod10? = null,
+        `onGroupMembersChanged`: UniffiCallbackInterfaceAppEventListenerMethod11? = null,
+        `onGroupMemberOnline`: UniffiCallbackInterfaceAppEventListenerMethod12? = null,
+        `onIncomingCall`: UniffiCallbackInterfaceAppEventListenerMethod13? = null,
+        `onCallStatusChanged`: UniffiCallbackInterfaceAppEventListenerMethod14? = null,
+        `onCallPacket`: UniffiCallbackInterfaceAppEventListenerMethod15? = null,
+        `onFileProgress`: UniffiCallbackInterfaceAppEventListenerMethod16? = null,
+        `onFileReceived`: UniffiCallbackInterfaceAppEventListenerMethod17? = null,
+        `onFileDownloaded`: UniffiCallbackInterfaceAppEventListenerMethod18? = null,
+        `onContactRequestReceived`: UniffiCallbackInterfaceAppEventListenerMethod19? = null,
+        `onContactResponse`: UniffiCallbackInterfaceAppEventListenerMethod20? = null,
+        `onTrackerAnnounce`: UniffiCallbackInterfaceAppEventListenerMethod21? = null,
+    ): UniffiVTableCallbackInterfaceAppEventListener(`uniffiFree`,`uniffiClone`,`onConnectivityChanged`,`onMessageReceived`,`onMessageDelivered`,`onContactConnected`,`onContactDisconnected`,`onGroupMessageReceived`,`onGroupMessageDeleted`,`onGroupMessageDelivered`,`onOutgoingMessageStored`,`onGroupChatStatus`,`onGroupInviteReceived`,`onGroupMembersChanged`,`onGroupMemberOnline`,`onIncomingCall`,`onCallStatusChanged`,`onCallPacket`,`onFileProgress`,`onFileReceived`,`onFileDownloaded`,`onContactRequestReceived`,`onContactResponse`,`onTrackerAnnounce`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceFilesEventListener) {
-        uniffiFree = other.uniffiFree
-        uniffiClone = other.uniffiClone
-        onUploadProgress = other.onUploadProgress
-        onUploadComplete = other.onUploadComplete
-        onUploadError = other.onUploadError
-        onDownloadProgress = other.onDownloadProgress
-        onDownloadComplete = other.onDownloadComplete
-        onDownloadError = other.onDownloadError
-    }
-
-}
-
-@Structure.FieldOrder("uniffiFree", "uniffiClone", "getMyInfo", "getContactUpdateTime", "updateContactInfo", "getFilesDir", "getContactFlags")
-internal open class UniffiVTableCallbackInterfaceInfoProvider(
-    @JvmField internal var uniffiFree: UniffiCallbackInterfaceFree? = null,
-    @JvmField internal var uniffiClone: UniffiCallbackInterfaceClone? = null,
-    @JvmField internal var getMyInfo: UniffiCallbackInterfaceInfoProviderMethod0? = null,
-    @JvmField internal var getContactUpdateTime: UniffiCallbackInterfaceInfoProviderMethod1? = null,
-    @JvmField internal var updateContactInfo: UniffiCallbackInterfaceInfoProviderMethod2? = null,
-    @JvmField internal var getFilesDir: UniffiCallbackInterfaceInfoProviderMethod3? = null,
-    @JvmField internal var getContactFlags: UniffiCallbackInterfaceInfoProviderMethod4? = null,
-) : Structure() {
-    class UniffiByValue(
-        uniffiFree: UniffiCallbackInterfaceFree? = null,
-        uniffiClone: UniffiCallbackInterfaceClone? = null,
-        getMyInfo: UniffiCallbackInterfaceInfoProviderMethod0? = null,
-        getContactUpdateTime: UniffiCallbackInterfaceInfoProviderMethod1? = null,
-        updateContactInfo: UniffiCallbackInterfaceInfoProviderMethod2? = null,
-        getFilesDir: UniffiCallbackInterfaceInfoProviderMethod3? = null,
-        getContactFlags: UniffiCallbackInterfaceInfoProviderMethod4? = null,
-    ) : UniffiVTableCallbackInterfaceInfoProvider(uniffiFree, uniffiClone, getMyInfo, getContactUpdateTime, updateContactInfo, getFilesDir, getContactFlags),
-        ByValue
-
-    internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceInfoProvider) {
-        uniffiFree = other.uniffiFree
-        uniffiClone = other.uniffiClone
-        getMyInfo = other.getMyInfo
-        getContactUpdateTime = other.getContactUpdateTime
-        updateContactInfo = other.updateContactInfo
-        getFilesDir = other.getFilesDir
-        getContactFlags = other.getContactFlags
-    }
-
-}
-
-@Structure.FieldOrder("uniffiFree", "uniffiClone", "onConnecting", "onConnected", "onSubscribed", "onPushMessage", "onSystemMessage", "onPushInvite", "onMemberInfoRequest", "onMemberInfoUpdate", "onMemberOnlineStatusChanged", "onDisconnected")
-internal open class UniffiVTableCallbackInterfaceMediatorEventListener(
-    @JvmField internal var uniffiFree: UniffiCallbackInterfaceFree? = null,
-    @JvmField internal var uniffiClone: UniffiCallbackInterfaceClone? = null,
-    @JvmField internal var onConnecting: UniffiCallbackInterfaceMediatorEventListenerMethod0? = null,
-    @JvmField internal var onConnected: UniffiCallbackInterfaceMediatorEventListenerMethod1? = null,
-    @JvmField internal var onSubscribed: UniffiCallbackInterfaceMediatorEventListenerMethod2? = null,
-    @JvmField internal var onPushMessage: UniffiCallbackInterfaceMediatorEventListenerMethod3? = null,
-    @JvmField internal var onSystemMessage: UniffiCallbackInterfaceMediatorEventListenerMethod4? = null,
-    @JvmField internal var onPushInvite: UniffiCallbackInterfaceMediatorEventListenerMethod5? = null,
-    @JvmField internal var onMemberInfoRequest: UniffiCallbackInterfaceMediatorEventListenerMethod6? = null,
-    @JvmField internal var onMemberInfoUpdate: UniffiCallbackInterfaceMediatorEventListenerMethod7? = null,
-    @JvmField internal var onMemberOnlineStatusChanged: UniffiCallbackInterfaceMediatorEventListenerMethod8? = null,
-    @JvmField internal var onDisconnected: UniffiCallbackInterfaceMediatorEventListenerMethod9? = null,
-) : Structure() {
-    class UniffiByValue(
-        uniffiFree: UniffiCallbackInterfaceFree? = null,
-        uniffiClone: UniffiCallbackInterfaceClone? = null,
-        onConnecting: UniffiCallbackInterfaceMediatorEventListenerMethod0? = null,
-        onConnected: UniffiCallbackInterfaceMediatorEventListenerMethod1? = null,
-        onSubscribed: UniffiCallbackInterfaceMediatorEventListenerMethod2? = null,
-        onPushMessage: UniffiCallbackInterfaceMediatorEventListenerMethod3? = null,
-        onSystemMessage: UniffiCallbackInterfaceMediatorEventListenerMethod4? = null,
-        onPushInvite: UniffiCallbackInterfaceMediatorEventListenerMethod5? = null,
-        onMemberInfoRequest: UniffiCallbackInterfaceMediatorEventListenerMethod6? = null,
-        onMemberInfoUpdate: UniffiCallbackInterfaceMediatorEventListenerMethod7? = null,
-        onMemberOnlineStatusChanged: UniffiCallbackInterfaceMediatorEventListenerMethod8? = null,
-        onDisconnected: UniffiCallbackInterfaceMediatorEventListenerMethod9? = null,
-    ) : UniffiVTableCallbackInterfaceMediatorEventListener(uniffiFree, uniffiClone, onConnecting, onConnected, onSubscribed, onPushMessage, onSystemMessage, onPushInvite, onMemberInfoRequest, onMemberInfoUpdate, onMemberOnlineStatusChanged, onDisconnected),
-        ByValue
-
-    internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceMediatorEventListener) {
-        uniffiFree = other.uniffiFree
-        uniffiClone = other.uniffiClone
-        onConnecting = other.onConnecting
-        onConnected = other.onConnected
-        onSubscribed = other.onSubscribed
-        onPushMessage = other.onPushMessage
-        onSystemMessage = other.onSystemMessage
-        onPushInvite = other.onPushInvite
-        onMemberInfoRequest = other.onMemberInfoRequest
-        onMemberInfoUpdate = other.onMemberInfoUpdate
-        onMemberOnlineStatusChanged = other.onMemberOnlineStatusChanged
-        onDisconnected = other.onDisconnected
-    }
-
-}
-
-@Structure.FieldOrder("uniffiFree", "uniffiClone", "onConnectivityChanged", "onContactConnected", "onContactDisconnected", "onMessageReceived", "onMessageDelivered", "onIncomingCall", "onCallStatusChanged", "onCallPacket", "onFileReceiveProgress", "onFileSendProgress", "onFileReceived", "onContactRequest", "onContactResponse", "onTrackerAnnounce")
-internal open class UniffiVTableCallbackInterfacePeerEventListener(
-    @JvmField internal var uniffiFree: UniffiCallbackInterfaceFree? = null,
-    @JvmField internal var uniffiClone: UniffiCallbackInterfaceClone? = null,
-    @JvmField internal var onConnectivityChanged: UniffiCallbackInterfacePeerEventListenerMethod0? = null,
-    @JvmField internal var onContactConnected: UniffiCallbackInterfacePeerEventListenerMethod1? = null,
-    @JvmField internal var onContactDisconnected: UniffiCallbackInterfacePeerEventListenerMethod2? = null,
-    @JvmField internal var onMessageReceived: UniffiCallbackInterfacePeerEventListenerMethod3? = null,
-    @JvmField internal var onMessageDelivered: UniffiCallbackInterfacePeerEventListenerMethod4? = null,
-    @JvmField internal var onIncomingCall: UniffiCallbackInterfacePeerEventListenerMethod5? = null,
-    @JvmField internal var onCallStatusChanged: UniffiCallbackInterfacePeerEventListenerMethod6? = null,
-    @JvmField internal var onCallPacket: UniffiCallbackInterfacePeerEventListenerMethod7? = null,
-    @JvmField internal var onFileReceiveProgress: UniffiCallbackInterfacePeerEventListenerMethod8? = null,
-    @JvmField internal var onFileSendProgress: UniffiCallbackInterfacePeerEventListenerMethod9? = null,
-    @JvmField internal var onFileReceived: UniffiCallbackInterfacePeerEventListenerMethod10? = null,
-    @JvmField internal var onContactRequest: UniffiCallbackInterfacePeerEventListenerMethod11? = null,
-    @JvmField internal var onContactResponse: UniffiCallbackInterfacePeerEventListenerMethod12? = null,
-    @JvmField internal var onTrackerAnnounce: UniffiCallbackInterfacePeerEventListenerMethod13? = null,
-) : Structure() {
-    class UniffiByValue(
-        uniffiFree: UniffiCallbackInterfaceFree? = null,
-        uniffiClone: UniffiCallbackInterfaceClone? = null,
-        onConnectivityChanged: UniffiCallbackInterfacePeerEventListenerMethod0? = null,
-        onContactConnected: UniffiCallbackInterfacePeerEventListenerMethod1? = null,
-        onContactDisconnected: UniffiCallbackInterfacePeerEventListenerMethod2? = null,
-        onMessageReceived: UniffiCallbackInterfacePeerEventListenerMethod3? = null,
-        onMessageDelivered: UniffiCallbackInterfacePeerEventListenerMethod4? = null,
-        onIncomingCall: UniffiCallbackInterfacePeerEventListenerMethod5? = null,
-        onCallStatusChanged: UniffiCallbackInterfacePeerEventListenerMethod6? = null,
-        onCallPacket: UniffiCallbackInterfacePeerEventListenerMethod7? = null,
-        onFileReceiveProgress: UniffiCallbackInterfacePeerEventListenerMethod8? = null,
-        onFileSendProgress: UniffiCallbackInterfacePeerEventListenerMethod9? = null,
-        onFileReceived: UniffiCallbackInterfacePeerEventListenerMethod10? = null,
-        onContactRequest: UniffiCallbackInterfacePeerEventListenerMethod11? = null,
-        onContactResponse: UniffiCallbackInterfacePeerEventListenerMethod12? = null,
-        onTrackerAnnounce: UniffiCallbackInterfacePeerEventListenerMethod13? = null,
-    ) : UniffiVTableCallbackInterfacePeerEventListener(uniffiFree, uniffiClone, onConnectivityChanged, onContactConnected, onContactDisconnected, onMessageReceived, onMessageDelivered, onIncomingCall, onCallStatusChanged, onCallPacket, onFileReceiveProgress, onFileSendProgress, onFileReceived, onContactRequest, onContactResponse, onTrackerAnnounce),
-        ByValue
-
-    internal fun uniffiSetValue(other: UniffiVTableCallbackInterfacePeerEventListener) {
-        uniffiFree = other.uniffiFree
-        uniffiClone = other.uniffiClone
-        onConnectivityChanged = other.onConnectivityChanged
-        onContactConnected = other.onContactConnected
-        onContactDisconnected = other.onContactDisconnected
-        onMessageReceived = other.onMessageReceived
-        onMessageDelivered = other.onMessageDelivered
-        onIncomingCall = other.onIncomingCall
-        onCallStatusChanged = other.onCallStatusChanged
-        onCallPacket = other.onCallPacket
-        onFileReceiveProgress = other.onFileReceiveProgress
-        onFileSendProgress = other.onFileSendProgress
-        onFileReceived = other.onFileReceived
-        onContactRequest = other.onContactRequest
-        onContactResponse = other.onContactResponse
-        onTrackerAnnounce = other.onTrackerAnnounce
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceAppEventListener) {
+        `uniffiFree` = other.`uniffiFree`
+        `uniffiClone` = other.`uniffiClone`
+        `onConnectivityChanged` = other.`onConnectivityChanged`
+        `onMessageReceived` = other.`onMessageReceived`
+        `onMessageDelivered` = other.`onMessageDelivered`
+        `onContactConnected` = other.`onContactConnected`
+        `onContactDisconnected` = other.`onContactDisconnected`
+        `onGroupMessageReceived` = other.`onGroupMessageReceived`
+        `onGroupMessageDeleted` = other.`onGroupMessageDeleted`
+        `onGroupMessageDelivered` = other.`onGroupMessageDelivered`
+        `onOutgoingMessageStored` = other.`onOutgoingMessageStored`
+        `onGroupChatStatus` = other.`onGroupChatStatus`
+        `onGroupInviteReceived` = other.`onGroupInviteReceived`
+        `onGroupMembersChanged` = other.`onGroupMembersChanged`
+        `onGroupMemberOnline` = other.`onGroupMemberOnline`
+        `onIncomingCall` = other.`onIncomingCall`
+        `onCallStatusChanged` = other.`onCallStatusChanged`
+        `onCallPacket` = other.`onCallPacket`
+        `onFileProgress` = other.`onFileProgress`
+        `onFileReceived` = other.`onFileReceived`
+        `onFileDownloaded` = other.`onFileDownloaded`
+        `onContactRequestReceived` = other.`onContactRequestReceived`
+        `onContactResponse` = other.`onContactResponse`
+        `onTrackerAnnounce` = other.`onTrackerAnnounce`
     }
 
 }
@@ -999,776 +784,989 @@ internal object IntegrityCheckingUniffiLib {
         uniffiCheckContractApiVersion(this)
         uniffiCheckApiChecksums(this)
     }
-
     external fun uniffi_mimir_checksum_func_decrypt_message(
-    ): Short
-
-    external fun uniffi_mimir_checksum_func_decrypt_shared_key(
-    ): Short
-
-    external fun uniffi_mimir_checksum_func_encrypt_message(
-    ): Short
-
-    external fun uniffi_mimir_checksum_func_encrypt_shared_key(
-    ): Short
-
-    external fun uniffi_mimir_checksum_func_generate_shared_key(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_filesnode_download_file(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_filesnode_file_info(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_filesnode_stop(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_filesnode_upload_file(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatornode_add_user(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatornode_change_member_status(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatornode_check_connections(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatornode_connect_to_mediator(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatornode_create_chat(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatornode_delete_chat(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatornode_delete_message(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatornode_delete_user(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatornode_get_last_message_id(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatornode_get_members(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatornode_get_members_info(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatornode_get_messages_since(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatornode_leave_chat(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatornode_respond_to_invite(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatornode_send_group_message(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatornode_send_invite(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatornode_stop(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatornode_subscribe(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatornode_update_chat_info(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatornode_update_member_info(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_add_peer(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_announce_to_trackers(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_answer_call(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_connect_to_contact(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_disconnect_contact(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_ephemeral_key(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_get_paths_json(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_get_peers_json(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_get_tree_json(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_hangup_call(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_public_key(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_remove_peer(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_request_file(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_retry_peers_now(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_send_call_packet(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_send_contact_request(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_send_contact_response(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_send_message(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_set_network_online(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_set_ygg_peers(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_start_call(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_stop(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_update_network_interfaces(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peernode_wait_for_peer_info(
-    ): Short
-
-    external fun uniffi_mimir_checksum_constructor_filesnode_new(
-    ): Short
-
-    external fun uniffi_mimir_checksum_constructor_mediatornode_new(
-    ): Short
-
-    external fun uniffi_mimir_checksum_constructor_peernode_new(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_fileseventlistener_on_upload_progress(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_fileseventlistener_on_upload_complete(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_fileseventlistener_on_upload_error(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_fileseventlistener_on_download_progress(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_fileseventlistener_on_download_complete(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_fileseventlistener_on_download_error(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_infoprovider_get_my_info(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_infoprovider_get_contact_update_time(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_infoprovider_update_contact_info(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_infoprovider_get_files_dir(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_infoprovider_get_contact_flags(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatoreventlistener_on_connecting(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatoreventlistener_on_connected(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatoreventlistener_on_subscribed(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatoreventlistener_on_push_message(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatoreventlistener_on_system_message(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatoreventlistener_on_push_invite(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatoreventlistener_on_member_info_request(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatoreventlistener_on_member_info_update(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatoreventlistener_on_member_online_status_changed(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_mediatoreventlistener_on_disconnected(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peereventlistener_on_connectivity_changed(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peereventlistener_on_contact_connected(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peereventlistener_on_contact_disconnected(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peereventlistener_on_message_received(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peereventlistener_on_message_delivered(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peereventlistener_on_incoming_call(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peereventlistener_on_call_status_changed(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peereventlistener_on_call_packet(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peereventlistener_on_file_receive_progress(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peereventlistener_on_file_send_progress(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peereventlistener_on_file_received(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peereventlistener_on_contact_request(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peereventlistener_on_contact_response(
-    ): Short
-
-    external fun uniffi_mimir_checksum_method_peereventlistener_on_tracker_announce(
-    ): Short
-
-    external fun ffi_mimir_uniffi_contract_version(
-    ): Int
-
-
+): Short
+external fun uniffi_mimir_checksum_func_decrypt_shared_key(
+): Short
+external fun uniffi_mimir_checksum_func_default_config(
+): Short
+external fun uniffi_mimir_checksum_func_encrypt_message(
+): Short
+external fun uniffi_mimir_checksum_func_encrypt_shared_key(
+): Short
+external fun uniffi_mimir_checksum_func_generate_keypair(
+): Short
+external fun uniffi_mimir_checksum_func_generate_shared_key(
+): Short
+external fun uniffi_mimir_checksum_func_keypair_from_seed(
+): Short
+external fun uniffi_mimir_checksum_func_load_config(
+): Short
+external fun uniffi_mimir_checksum_func_parse_system_message(
+): Short
+external fun uniffi_mimir_checksum_func_save_config(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_accept_group_invite(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_add_contact(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_announce_to_trackers(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_answer_call(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_ban_member(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_change_member_role(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_close_all_connections(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_connect_to_contact(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_create_group(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_delete_draft(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_delete_group(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_delete_group_chat(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_delete_group_message(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_delete_message_by_id(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_disconnect_contact(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_download_group_file(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_ephemeral_key(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_generate_guid(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_account(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_contact(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_contact_by_pubkey(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_contact_id(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_contact_requests(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_contacts(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_draft(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_first_unread_id(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_group_chat(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_group_chat_status(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_group_chats(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_group_members(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_group_message(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_group_message_by_guid(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_group_messages(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_member_count(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_member_info(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_member_nickname(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_member_pubkey(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_message(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_message_by_guid(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_messages(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_peers_json(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_pending_invites(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_get_unread_count(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_hangup_call_with(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_invite_to_group(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_is_contact_muted(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_leave_group(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_mark_all_group_read(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_mark_all_read(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_public_key(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_remove_contact(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_request_file(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_retry_peers_now(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_save_draft(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_send_call_packet(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_send_contact_message(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_send_contact_request(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_send_contact_response(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_send_group_chat_message(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_send_group_message(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_send_message(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_set_contact_muted(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_set_group_chat_muted(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_set_group_message_read(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_set_message_read(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_set_network_online(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_set_ygg_peers(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_start_call(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_stop(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_subscribe_to_chat(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_update_account_avatar(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_update_account_info(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_update_account_name(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_update_group_info(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_update_network_interfaces(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_wait_for_peer_info(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_accept_contact_request(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_add_contact(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_add_contact_request(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_add_group_message(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_add_message(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_backup_to(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_block_contact(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_change_group_message_guid(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_check_group_message_exists(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_checkpoint(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_cleanup_old_drafts(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_clear_contact_history(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_clear_group_chat_history(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_create_account(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_delete_contact_request(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_delete_draft(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_delete_group_chat(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_delete_group_message(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_delete_group_message_by_guid(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_delete_invite(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_delete_member(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_delete_message(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_fix_corrupted_group_messages(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_generate_guid(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_account(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_account_updated_at(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_all_file_items(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_blocked_contacts(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_contact(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_contact_by_pubkey(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_contact_flags(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_contact_id(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_contact_requests(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_contact_update_time(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_contacts(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_contacts_with_unsent(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_draft(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_first_unread_group_message_id(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_first_unread_id(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_first_unseen_group_reaction(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_first_unseen_reaction(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_group_chat(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_group_chats(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_group_message(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_group_message_by_guid(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_group_messages(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_group_unseen_reactions_count(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_known_mediators(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_last_group_message(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_last_message(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_latest_member_update(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_max_server_msg_id(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_member_count(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_member_info(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_member_nickname(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_member_pubkey(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_members(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_message(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_message_by_guid(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_messages(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_online_member_count(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_peer_addresses(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_pending_invites(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_reactions_for_group_message(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_reactions_for_message(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_undelivered_group_messages(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_unread_count(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_unseen_reactions_count(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_unsent_messages(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_user_group_reaction(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_get_user_reaction(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_is_contact_blocked(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_is_contact_muted(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_is_member_online(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_mark_all_group_read(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_mark_all_read(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_mark_group_reaction_as_seen(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_mark_group_reactions_as_seen_for_message(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_mark_reaction_as_seen(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_mark_reactions_as_seen_for_message(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_migrate_from_android(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_remove_contact(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_remove_expired_addresses(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_rename_contact(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_reset_group_unread(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_save_draft(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_save_group_chat(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_save_group_invite(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_save_peer_address(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_set_contact_muted(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_set_group_chat_muted(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_set_group_chat_read_only(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_set_group_message_delivered(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_set_group_message_read(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_set_message_delivered(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_set_message_read(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_unblock_contact(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_update_account_avatar(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_update_account_info(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_update_account_name(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_update_contact_avatar(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_update_contact_info(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_update_group_chat_avatar(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_update_group_chat_description(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_update_group_chat_name(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_update_group_message_data(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_update_group_message_server_id(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_update_invite_status(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_update_member_info(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_update_member_online(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_update_members_bulk(
+): Short
+external fun uniffi_mimir_checksum_method_mimirstorage_update_message_data(
+): Short
+external fun uniffi_mimir_checksum_constructor_mimirapp_new(
+): Short
+external fun uniffi_mimir_checksum_constructor_mimirstorage_new(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_connectivity_changed(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_message_received(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_message_delivered(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_contact_connected(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_contact_disconnected(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_group_message_received(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_group_message_deleted(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_group_message_delivered(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_outgoing_message_stored(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_group_chat_status(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_group_invite_received(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_group_members_changed(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_group_member_online(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_incoming_call(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_call_status_changed(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_call_packet(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_file_progress(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_file_received(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_file_downloaded(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_contact_request_received(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_contact_response(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_tracker_announce(
+): Short
+external fun ffi_mimir_uniffi_contract_version(
+): Int
+
+    
 }
 
 internal object UniffiLib {
-
+    
     // The Cleaner for the whole library
     internal val CLEANER: UniffiCleaner by lazy {
         UniffiCleaner.create()
     }
-
+    
 
     init {
         Native.register(UniffiLib::class.java, findLibraryName(componentName = "mimir"))
-        uniffiCallbackInterfaceFilesEventListener.register(this)
-        uniffiCallbackInterfaceInfoProvider.register(this)
-        uniffiCallbackInterfaceMediatorEventListener.register(this)
-        uniffiCallbackInterfacePeerEventListener.register(this)
-
+        uniffiCallbackInterfaceAppEventListener.register(this)
+        
     }
-
-    external fun uniffi_mimir_fn_clone_filesnode(
-        handle: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Long
-
-    external fun uniffi_mimir_fn_free_filesnode(
-        handle: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_constructor_filesnode_new(
-        peerNode: Long, filesPort: Short, eventListener: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Long
-
-    external fun uniffi_mimir_fn_method_filesnode_download_file(
-        ptr: Long, serverPubkey: RustBuffer.ByValue, fileHash: RustBuffer.ByValue, messageGuid: Long, destPath: RustBuffer.ByValue, encryptionKey: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_filesnode_file_info(
-        ptr: Long, serverPubkey: RustBuffer.ByValue, fileHash: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): RustBuffer.ByValue
-
-    external fun uniffi_mimir_fn_method_filesnode_stop(
-        ptr: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_filesnode_upload_file(
-        ptr: Long, serverPubkey: RustBuffer.ByValue, filePath: RustBuffer.ByValue, messageGuid: Long, encryptionKey: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): RustBuffer.ByValue
-
-    external fun uniffi_mimir_fn_clone_mediatornode(
-        handle: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Long
-
-    external fun uniffi_mimir_fn_free_mediatornode(
-        handle: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_constructor_mediatornode_new(
-        peerNode: Long, mediatorPort: Short, eventListener: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Long
-
-    external fun uniffi_mimir_fn_method_mediatornode_add_user(
-        ptr: Long, mediatorPubkey: RustBuffer.ByValue, chatId: Long, userPubkey: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_mediatornode_change_member_status(
-        ptr: Long, mediatorPubkey: RustBuffer.ByValue, chatId: Long, userPubkey: RustBuffer.ByValue, newPermissions: Byte, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_mediatornode_check_connections(
-        ptr: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_mediatornode_connect_to_mediator(
-        ptr: Long, mediatorPubkey: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_mediatornode_create_chat(
-        ptr: Long, mediatorPubkey: RustBuffer.ByValue, name: RustBuffer.ByValue, description: RustBuffer.ByValue, avatar: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): Long
-
-    external fun uniffi_mimir_fn_method_mediatornode_delete_chat(
-        ptr: Long, mediatorPubkey: RustBuffer.ByValue, chatId: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_mediatornode_delete_message(
-        ptr: Long, mediatorPubkey: RustBuffer.ByValue, chatId: Long, guid: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_mediatornode_delete_user(
-        ptr: Long, mediatorPubkey: RustBuffer.ByValue, chatId: Long, userPubkey: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_mediatornode_get_last_message_id(
-        ptr: Long, mediatorPubkey: RustBuffer.ByValue, chatId: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Long
-
-    external fun uniffi_mimir_fn_method_mediatornode_get_members(
-        ptr: Long, mediatorPubkey: RustBuffer.ByValue, chatId: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): RustBuffer.ByValue
-
-    external fun uniffi_mimir_fn_method_mediatornode_get_members_info(
-        ptr: Long, mediatorPubkey: RustBuffer.ByValue, chatId: Long, sinceTimestamp: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): RustBuffer.ByValue
-
-    external fun uniffi_mimir_fn_method_mediatornode_get_messages_since(
-        ptr: Long, mediatorPubkey: RustBuffer.ByValue, chatId: Long, sinceId: Long, limit: Int, uniffi_out_err: UniffiRustCallStatus,
-    ): RustBuffer.ByValue
-
-    external fun uniffi_mimir_fn_method_mediatornode_leave_chat(
-        ptr: Long, mediatorPubkey: RustBuffer.ByValue, chatId: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_mediatornode_respond_to_invite(
-        ptr: Long, mediatorPubkey: RustBuffer.ByValue, chatId: Long, inviteId: Long, accept: Byte, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_mediatornode_send_group_message(
-        ptr: Long, mediatorPubkey: RustBuffer.ByValue, chatId: Long, guid: Long, timestamp: Long, `data`: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): Long
-
-    external fun uniffi_mimir_fn_method_mediatornode_send_invite(
-        ptr: Long, mediatorPubkey: RustBuffer.ByValue, chatId: Long, recipientPubkey: RustBuffer.ByValue, encryptedData: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_mediatornode_stop(
-        ptr: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_mediatornode_subscribe(
-        ptr: Long, mediatorPubkey: RustBuffer.ByValue, chatId: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Long
-
-    external fun uniffi_mimir_fn_method_mediatornode_update_chat_info(
-        ptr: Long, mediatorPubkey: RustBuffer.ByValue, chatId: Long, name: RustBuffer.ByValue, description: RustBuffer.ByValue, avatar: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_mediatornode_update_member_info(
-        ptr: Long, mediatorPubkey: RustBuffer.ByValue, chatId: Long, encryptedBlob: RustBuffer.ByValue, timestamp: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_clone_peernode(
-        handle: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Long
-
-    external fun uniffi_mimir_fn_free_peernode(
-        handle: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_constructor_peernode_new(
-        signingKey: RustBuffer.ByValue, ephemeralKey: RustBuffer.ByValue, yggPeers: RustBuffer.ByValue, peerPort: Short, trackers: RustBuffer.ByValue, multicast: Byte, eventListener: Long, infoProvider: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Long
-
-    external fun uniffi_mimir_fn_method_peernode_add_peer(
-        ptr: Long, uri: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_peernode_announce_to_trackers(
-        ptr: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_peernode_answer_call(
-        ptr: Long, pubkey: RustBuffer.ByValue, accept: Byte, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_peernode_connect_to_contact(
-        ptr: Long, pubkey: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_peernode_disconnect_contact(
-        ptr: Long, pubkey: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_peernode_ephemeral_key(
-        ptr: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): RustBuffer.ByValue
-
-    external fun uniffi_mimir_fn_method_peernode_get_paths_json(
-        ptr: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): RustBuffer.ByValue
-
-    external fun uniffi_mimir_fn_method_peernode_get_peers_json(
-        ptr: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): RustBuffer.ByValue
-
-    external fun uniffi_mimir_fn_method_peernode_get_tree_json(
-        ptr: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): RustBuffer.ByValue
-
-    external fun uniffi_mimir_fn_method_peernode_hangup_call(
-        ptr: Long, pubkey: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_peernode_public_key(
-        ptr: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): RustBuffer.ByValue
-
-    external fun uniffi_mimir_fn_method_peernode_remove_peer(
-        ptr: Long, uri: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_peernode_request_file(
-        ptr: Long, pubkey: RustBuffer.ByValue, guid: Long, name: RustBuffer.ByValue, hash: RustBuffer.ByValue, size: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_peernode_retry_peers_now(
-        ptr: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_peernode_send_call_packet(
-        ptr: Long, pubkey: RustBuffer.ByValue, `data`: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_peernode_send_contact_request(
-        ptr: Long, pubkey: RustBuffer.ByValue, message: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_peernode_send_contact_response(
-        ptr: Long, pubkey: RustBuffer.ByValue, accepted: Byte, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_peernode_send_message(
-        ptr: Long, pubkey: RustBuffer.ByValue, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, msgType: Int, `data`: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_peernode_set_network_online(
-        ptr: Long, online: Byte, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_peernode_set_ygg_peers(
-        ptr: Long, peers: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_peernode_start_call(
-        ptr: Long, pubkey: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_peernode_stop(
-        ptr: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_peernode_update_network_interfaces(
-        ptr: Long, interfaces: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun uniffi_mimir_fn_method_peernode_wait_for_peer_info(
-        ptr: Long, timeoutMs: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): RustBuffer.ByValue
-
-    external fun uniffi_mimir_fn_init_callback_vtable_fileseventlistener(
-        vtable: UniffiVTableCallbackInterfaceFilesEventListener,
-    ): Unit
-
-    external fun uniffi_mimir_fn_init_callback_vtable_infoprovider(
-        vtable: UniffiVTableCallbackInterfaceInfoProvider,
-    ): Unit
-
-    external fun uniffi_mimir_fn_init_callback_vtable_mediatoreventlistener(
-        vtable: UniffiVTableCallbackInterfaceMediatorEventListener,
-    ): Unit
-
-    external fun uniffi_mimir_fn_init_callback_vtable_peereventlistener(
-        vtable: UniffiVTableCallbackInterfacePeerEventListener,
-    ): Unit
-
-    external fun uniffi_mimir_fn_func_decrypt_message(
-        encrypted: RustBuffer.ByValue, sharedKey: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): RustBuffer.ByValue
-
-    external fun uniffi_mimir_fn_func_decrypt_shared_key(
-        encrypted: RustBuffer.ByValue, seed: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): RustBuffer.ByValue
-
-    external fun uniffi_mimir_fn_func_encrypt_message(
-        plaintext: RustBuffer.ByValue, sharedKey: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): RustBuffer.ByValue
-
-    external fun uniffi_mimir_fn_func_encrypt_shared_key(
-        sharedKey: RustBuffer.ByValue, recipientEd25519Pubkey: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): RustBuffer.ByValue
-
-    external fun uniffi_mimir_fn_func_generate_shared_key(
-        uniffi_out_err: UniffiRustCallStatus,
-    ): RustBuffer.ByValue
-
-    external fun ffi_mimir_rustbuffer_alloc(
-        size: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): RustBuffer.ByValue
-
-    external fun ffi_mimir_rustbuffer_from_bytes(
-        bytes: ForeignBytes.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): RustBuffer.ByValue
-
-    external fun ffi_mimir_rustbuffer_free(
-        buf: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-    external fun ffi_mimir_rustbuffer_reserve(
-        buf: RustBuffer.ByValue, additional: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): RustBuffer.ByValue
-
-    external fun ffi_mimir_rust_future_poll_u8(
-        handle: Long, callback: UniffiRustFutureContinuationCallback, callbackData: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_cancel_u8(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_free_u8(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_complete_u8(
-        handle: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Byte
-
-    external fun ffi_mimir_rust_future_poll_i8(
-        handle: Long, callback: UniffiRustFutureContinuationCallback, callbackData: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_cancel_i8(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_free_i8(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_complete_i8(
-        handle: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Byte
-
-    external fun ffi_mimir_rust_future_poll_u16(
-        handle: Long, callback: UniffiRustFutureContinuationCallback, callbackData: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_cancel_u16(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_free_u16(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_complete_u16(
-        handle: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Short
-
-    external fun ffi_mimir_rust_future_poll_i16(
-        handle: Long, callback: UniffiRustFutureContinuationCallback, callbackData: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_cancel_i16(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_free_i16(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_complete_i16(
-        handle: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Short
-
-    external fun ffi_mimir_rust_future_poll_u32(
-        handle: Long, callback: UniffiRustFutureContinuationCallback, callbackData: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_cancel_u32(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_free_u32(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_complete_u32(
-        handle: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Int
-
-    external fun ffi_mimir_rust_future_poll_i32(
-        handle: Long, callback: UniffiRustFutureContinuationCallback, callbackData: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_cancel_i32(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_free_i32(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_complete_i32(
-        handle: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Int
-
-    external fun ffi_mimir_rust_future_poll_u64(
-        handle: Long, callback: UniffiRustFutureContinuationCallback, callbackData: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_cancel_u64(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_free_u64(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_complete_u64(
-        handle: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Long
-
-    external fun ffi_mimir_rust_future_poll_i64(
-        handle: Long, callback: UniffiRustFutureContinuationCallback, callbackData: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_cancel_i64(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_free_i64(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_complete_i64(
-        handle: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Long
-
-    external fun ffi_mimir_rust_future_poll_f32(
-        handle: Long, callback: UniffiRustFutureContinuationCallback, callbackData: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_cancel_f32(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_free_f32(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_complete_f32(
-        handle: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Float
-
-    external fun ffi_mimir_rust_future_poll_f64(
-        handle: Long, callback: UniffiRustFutureContinuationCallback, callbackData: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_cancel_f64(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_free_f64(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_complete_f64(
-        handle: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Double
-
-    external fun ffi_mimir_rust_future_poll_rust_buffer(
-        handle: Long, callback: UniffiRustFutureContinuationCallback, callbackData: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_cancel_rust_buffer(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_free_rust_buffer(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_complete_rust_buffer(
-        handle: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): RustBuffer.ByValue
-
-    external fun ffi_mimir_rust_future_poll_void(
-        handle: Long, callback: UniffiRustFutureContinuationCallback, callbackData: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_cancel_void(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_free_void(
-        handle: Long,
-    ): Unit
-
-    external fun ffi_mimir_rust_future_complete_void(
-        handle: Long, uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
-
-
+    external fun uniffi_mimir_fn_clone_mimirapp(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_free_mimirapp(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_constructor_mimirapp_new(`config`: RustBuffer.ByValue,`dataDir`: RustBuffer.ByValue,`eventListener`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_method_mimirapp_accept_group_invite(`ptr`: Long,`inviteId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_add_contact(`ptr`: Long,`pubkey`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_method_mimirapp_announce_to_trackers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_answer_call(`ptr`: Long,`pubkey`: RustBuffer.ByValue,`accept`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_ban_member(`ptr`: Long,`chatId`: Long,`pubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_change_member_role(`ptr`: Long,`chatId`: Long,`pubkey`: RustBuffer.ByValue,`permissions`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_close_all_connections(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_connect_to_contact(`ptr`: Long,`pubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_create_group(`ptr`: Long,`name`: RustBuffer.ByValue,`description`: RustBuffer.ByValue,`avatar`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_method_mimirapp_delete_draft(`ptr`: Long,`chatType`: Int,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_delete_group(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_delete_group_chat(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_delete_group_message(`ptr`: Long,`chatId`: Long,`guid`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_delete_message_by_id(`ptr`: Long,`id`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_disconnect_contact(`ptr`: Long,`pubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_download_group_file(`ptr`: Long,`chatId`: Long,`guid`: Long,`destPath`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_ephemeral_key(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_generate_guid(`ptr`: Long,`time`: Long,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_method_mimirapp_get_account(`ptr`: Long,`id`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_get_contact(`ptr`: Long,`id`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_get_contact_by_pubkey(`ptr`: Long,`pubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_get_contact_id(`ptr`: Long,`pubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_method_mimirapp_get_contact_requests(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_get_contacts(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_get_draft(`ptr`: Long,`chatType`: Int,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_get_first_unread_id(`ptr`: Long,`contactId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_get_group_chat(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_get_group_chat_status(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_get_group_chats(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_get_group_members(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_get_group_message(`ptr`: Long,`chatId`: Long,`id`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_get_group_message_by_guid(`ptr`: Long,`chatId`: Long,`guid`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_get_group_messages(`ptr`: Long,`chatId`: Long,`beforeId`: Long,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_get_member_count(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun uniffi_mimir_fn_method_mimirapp_get_member_info(`ptr`: Long,`chatId`: Long,`pubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_get_member_nickname(`ptr`: Long,`chatId`: Long,`memberId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_get_member_pubkey(`ptr`: Long,`chatId`: Long,`memberId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_get_message(`ptr`: Long,`id`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_get_message_by_guid(`ptr`: Long,`guid`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_get_messages(`ptr`: Long,`contactId`: Long,`beforeId`: Long,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_get_peers_json(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_get_pending_invites(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_get_unread_count(`ptr`: Long,`contactId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun uniffi_mimir_fn_method_mimirapp_hangup_call_with(`ptr`: Long,`pubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_invite_to_group(`ptr`: Long,`chatId`: Long,`pubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_is_contact_muted(`ptr`: Long,`id`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun uniffi_mimir_fn_method_mimirapp_leave_group(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_mark_all_group_read(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_mark_all_read(`ptr`: Long,`contactId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_public_key(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_remove_contact(`ptr`: Long,`id`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_request_file(`ptr`: Long,`pubkey`: RustBuffer.ByValue,`guid`: Long,`name`: RustBuffer.ByValue,`hash`: RustBuffer.ByValue,`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_retry_peers_now(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_save_draft(`ptr`: Long,`chatType`: Int,`chatId`: Long,`text`: RustBuffer.ByValue,`mediaUri`: RustBuffer.ByValue,`mediaType`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_send_call_packet(`ptr`: Long,`pubkey`: RustBuffer.ByValue,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_send_contact_message(`ptr`: Long,`pubkey`: RustBuffer.ByValue,`replyTo`: Long,`text`: RustBuffer.ByValue,`attachment`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_method_mimirapp_send_contact_request(`ptr`: Long,`pubkey`: RustBuffer.ByValue,`message`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_send_contact_response(`ptr`: Long,`pubkey`: RustBuffer.ByValue,`accepted`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_send_group_chat_message(`ptr`: Long,`chatId`: Long,`replyTo`: Long,`text`: RustBuffer.ByValue,`attachment`: RustBuffer.ByValue,`fileServerPubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_method_mimirapp_send_group_message(`ptr`: Long,`chatId`: Long,`guid`: Long,`replyTo`: Long,`sendTime`: Long,`msgType`: Int,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_method_mimirapp_send_message(`ptr`: Long,`pubkey`: RustBuffer.ByValue,`guid`: Long,`replyTo`: Long,`sendTime`: Long,`msgType`: Int,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_set_contact_muted(`ptr`: Long,`id`: Long,`muted`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_set_group_chat_muted(`ptr`: Long,`chatId`: Long,`muted`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_set_group_message_read(`ptr`: Long,`chatId`: Long,`id`: Long,`read`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_set_message_read(`ptr`: Long,`contactId`: Long,`messageId`: Long,`read`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_set_network_online(`ptr`: Long,`online`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_set_ygg_peers(`ptr`: Long,`peers`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_start_call(`ptr`: Long,`pubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_stop(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_subscribe_to_chat(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_update_account_avatar(`ptr`: Long,`id`: Int,`avatarBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirapp_update_account_info(`ptr`: Long,`id`: Int,`info`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_update_account_name(`ptr`: Long,`id`: Int,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_update_group_info(`ptr`: Long,`chatId`: Long,`name`: RustBuffer.ByValue,`description`: RustBuffer.ByValue,`avatar`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_update_network_interfaces(`ptr`: Long,`interfaces`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_wait_for_peer_info(`ptr`: Long,`timeoutMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_clone_mimirstorage(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_free_mimirstorage(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_constructor_mimirstorage_new(`dataDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_method_mimirstorage_accept_contact_request(`ptr`: Long,`requestId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_method_mimirstorage_add_contact(`ptr`: Long,`pubkey`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_method_mimirstorage_add_contact_request(`ptr`: Long,`pubkey`: RustBuffer.ByValue,`message`: RustBuffer.ByValue,`nickname`: RustBuffer.ByValue,`info`: RustBuffer.ByValue,`avatarBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_method_mimirstorage_add_group_message(`ptr`: Long,`chatId`: Long,`serverMsgId`: Long,`guid`: Long,`authorPubkey`: RustBuffer.ByValue,`sendTime`: Long,`msgType`: Int,`system`: Byte,`data`: RustBuffer.ByValue,`replyTo`: Long,`fromSync`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_method_mimirstorage_add_message(`ptr`: Long,`contactPubkey`: RustBuffer.ByValue,`guid`: Long,`replyTo`: Long,`incoming`: Byte,`delivered`: Byte,`sendTime`: Long,`editTime`: Long,`msgType`: Int,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_method_mimirstorage_backup_to(`ptr`: Long,`destPath`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_block_contact(`ptr`: Long,`pubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_change_group_message_guid(`ptr`: Long,`chatId`: Long,`oldGuid`: Long,`newGuid`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_check_group_message_exists(`ptr`: Long,`chatId`: Long,`guid`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun uniffi_mimir_fn_method_mimirstorage_checkpoint(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_cleanup_old_drafts(`ptr`: Long,`maxAgeDays`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun uniffi_mimir_fn_method_mimirstorage_clear_contact_history(`ptr`: Long,`contactId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_clear_group_chat_history(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_create_account(`ptr`: Long,`id`: Int,`privkey`: RustBuffer.ByValue,`pubkey`: RustBuffer.ByValue,`clientId`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_delete_contact_request(`ptr`: Long,`requestId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_delete_draft(`ptr`: Long,`chatType`: Int,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_delete_group_chat(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_delete_group_message(`ptr`: Long,`chatId`: Long,`id`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_delete_group_message_by_guid(`ptr`: Long,`chatId`: Long,`guid`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_delete_invite(`ptr`: Long,`inviteId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_delete_member(`ptr`: Long,`chatId`: Long,`pubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_delete_message(`ptr`: Long,`id`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_fix_corrupted_group_messages(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_generate_guid(`ptr`: Long,`time`: Long,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_method_mimirstorage_get_account(`ptr`: Long,`id`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_account_updated_at(`ptr`: Long,`id`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_method_mimirstorage_get_all_file_items(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_blocked_contacts(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_contact(`ptr`: Long,`id`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_contact_by_pubkey(`ptr`: Long,`pubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_contact_flags(`ptr`: Long,`pubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun uniffi_mimir_fn_method_mimirstorage_get_contact_id(`ptr`: Long,`pubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_method_mimirstorage_get_contact_requests(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_contact_update_time(`ptr`: Long,`pubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_method_mimirstorage_get_contacts(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_contacts_with_unsent(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_draft(`ptr`: Long,`chatType`: Int,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_first_unread_group_message_id(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_first_unread_id(`ptr`: Long,`contactId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_first_unseen_group_reaction(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_first_unseen_reaction(`ptr`: Long,`contactId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_group_chat(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_group_chats(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_group_message(`ptr`: Long,`chatId`: Long,`id`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_group_message_by_guid(`ptr`: Long,`chatId`: Long,`guid`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_group_messages(`ptr`: Long,`chatId`: Long,`beforeId`: Long,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_group_unseen_reactions_count(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun uniffi_mimir_fn_method_mimirstorage_get_known_mediators(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_last_group_message(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_last_message(`ptr`: Long,`contactId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_latest_member_update(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_method_mimirstorage_get_max_server_msg_id(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_method_mimirstorage_get_member_count(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun uniffi_mimir_fn_method_mimirstorage_get_member_info(`ptr`: Long,`chatId`: Long,`pubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_member_nickname(`ptr`: Long,`chatId`: Long,`memberId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_member_pubkey(`ptr`: Long,`chatId`: Long,`memberId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_members(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_message(`ptr`: Long,`id`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_message_by_guid(`ptr`: Long,`guid`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_messages(`ptr`: Long,`contactId`: Long,`beforeId`: Long,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_online_member_count(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun uniffi_mimir_fn_method_mimirstorage_get_peer_addresses(`ptr`: Long,`pubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_pending_invites(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_reactions_for_group_message(`ptr`: Long,`chatId`: Long,`targetGuid`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_reactions_for_message(`ptr`: Long,`contactId`: Long,`targetGuid`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_undelivered_group_messages(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_unread_count(`ptr`: Long,`contactId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun uniffi_mimir_fn_method_mimirstorage_get_unseen_reactions_count(`ptr`: Long,`contactId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun uniffi_mimir_fn_method_mimirstorage_get_unsent_messages(`ptr`: Long,`contactPubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_user_group_reaction(`ptr`: Long,`chatId`: Long,`targetGuid`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_get_user_reaction(`ptr`: Long,`contactId`: Long,`targetGuid`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_is_contact_blocked(`ptr`: Long,`pubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun uniffi_mimir_fn_method_mimirstorage_is_contact_muted(`ptr`: Long,`id`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun uniffi_mimir_fn_method_mimirstorage_is_member_online(`ptr`: Long,`chatId`: Long,`pubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun uniffi_mimir_fn_method_mimirstorage_mark_all_group_read(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_mark_all_read(`ptr`: Long,`contactId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_mark_group_reaction_as_seen(`ptr`: Long,`chatId`: Long,`reactionGuid`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_mark_group_reactions_as_seen_for_message(`ptr`: Long,`chatId`: Long,`targetGuid`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun uniffi_mimir_fn_method_mimirstorage_mark_reaction_as_seen(`ptr`: Long,`contactId`: Long,`reactionGuid`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_mark_reactions_as_seen_for_message(`ptr`: Long,`contactId`: Long,`targetGuid`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun uniffi_mimir_fn_method_mimirstorage_migrate_from_android(`ptr`: Long,`oldDbPath`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun uniffi_mimir_fn_method_mimirstorage_remove_contact(`ptr`: Long,`id`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_remove_expired_addresses(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun uniffi_mimir_fn_method_mimirstorage_rename_contact(`ptr`: Long,`id`: Long,`name`: RustBuffer.ByValue,`isLocalRename`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_reset_group_unread(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_save_draft(`ptr`: Long,`chatType`: Int,`chatId`: Long,`text`: RustBuffer.ByValue,`mediaUri`: RustBuffer.ByValue,`mediaType`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_save_group_chat(`ptr`: Long,`chatId`: Long,`name`: RustBuffer.ByValue,`description`: RustBuffer.ByValue,`avatarBytes`: RustBuffer.ByValue,`mediatorPubkey`: RustBuffer.ByValue,`ownerPubkey`: RustBuffer.ByValue,`sharedKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_save_group_invite(`ptr`: Long,`chatId`: Long,`inviteId`: Long,`fromPubkey`: RustBuffer.ByValue,`timestamp`: Long,`name`: RustBuffer.ByValue,`description`: RustBuffer.ByValue,`avatarBytes`: RustBuffer.ByValue,`encryptedData`: RustBuffer.ByValue,`mediatorPubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_mimir_fn_method_mimirstorage_save_peer_address(`ptr`: Long,`pubkey`: RustBuffer.ByValue,`address`: RustBuffer.ByValue,`port`: Int,`clientId`: Int,`priority`: Int,`expiration`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_set_contact_muted(`ptr`: Long,`id`: Long,`muted`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_set_group_chat_muted(`ptr`: Long,`chatId`: Long,`muted`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_set_group_chat_read_only(`ptr`: Long,`chatId`: Long,`readOnly`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_set_group_message_delivered(`ptr`: Long,`chatId`: Long,`guid`: Long,`delivered`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_set_group_message_read(`ptr`: Long,`chatId`: Long,`id`: Long,`read`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_set_message_delivered(`ptr`: Long,`contactPubkey`: RustBuffer.ByValue,`guid`: Long,`delivered`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_set_message_read(`ptr`: Long,`contactId`: Long,`messageId`: Long,`read`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_unblock_contact(`ptr`: Long,`pubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_update_account_avatar(`ptr`: Long,`id`: Int,`avatarBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_update_account_info(`ptr`: Long,`id`: Int,`info`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_update_account_name(`ptr`: Long,`id`: Int,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_update_contact_avatar(`ptr`: Long,`id`: Long,`avatarBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_update_contact_info(`ptr`: Long,`id`: Long,`info`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_update_group_chat_avatar(`ptr`: Long,`chatId`: Long,`avatarBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_update_group_chat_description(`ptr`: Long,`chatId`: Long,`description`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_update_group_chat_name(`ptr`: Long,`chatId`: Long,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_update_group_message_data(`ptr`: Long,`chatId`: Long,`guid`: Long,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_update_group_message_server_id(`ptr`: Long,`chatId`: Long,`guid`: Long,`serverMsgId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_update_invite_status(`ptr`: Long,`inviteId`: Long,`status`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_update_member_info(`ptr`: Long,`chatId`: Long,`pubkey`: RustBuffer.ByValue,`nickname`: RustBuffer.ByValue,`info`: RustBuffer.ByValue,`avatarBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_method_mimirstorage_update_member_online(`ptr`: Long,`chatId`: Long,`pubkey`: RustBuffer.ByValue,`online`: Byte,`lastSeen`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_update_members_bulk(`ptr`: Long,`chatId`: Long,`members`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirstorage_update_message_data(`ptr`: Long,`guid`: Long,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_init_callback_vtable_appeventlistener(`vtable`: UniffiVTableCallbackInterfaceAppEventListener,
+): Unit
+external fun uniffi_mimir_fn_func_decrypt_message(`encrypted`: RustBuffer.ByValue,`sharedKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_func_decrypt_shared_key(`encrypted`: RustBuffer.ByValue,`seed`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_func_default_config(uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_func_encrypt_message(`plaintext`: RustBuffer.ByValue,`sharedKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_func_encrypt_shared_key(`sharedKey`: RustBuffer.ByValue,`recipientEd25519Pubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_func_generate_keypair(uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_func_generate_shared_key(uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_func_keypair_from_seed(`seed`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_func_load_config(`dataDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_func_parse_system_message(`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun uniffi_mimir_fn_func_save_config(`dataDir`: RustBuffer.ByValue,`config`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun ffi_mimir_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun ffi_mimir_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun ffi_mimir_rustbuffer_free(`buf`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun ffi_mimir_rustbuffer_reserve(`buf`: RustBuffer.ByValue,`additional`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun ffi_mimir_rust_future_poll_u8(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_mimir_rust_future_cancel_u8(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_free_u8(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_complete_u8(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun ffi_mimir_rust_future_poll_i8(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_mimir_rust_future_cancel_i8(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_free_i8(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_complete_i8(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+external fun ffi_mimir_rust_future_poll_u16(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_mimir_rust_future_cancel_u16(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_free_u16(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_complete_u16(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Short
+external fun ffi_mimir_rust_future_poll_i16(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_mimir_rust_future_cancel_i16(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_free_i16(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_complete_i16(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Short
+external fun ffi_mimir_rust_future_poll_u32(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_mimir_rust_future_cancel_u32(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_free_u32(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_complete_u32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun ffi_mimir_rust_future_poll_i32(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_mimir_rust_future_cancel_i32(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_free_i32(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_complete_i32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+external fun ffi_mimir_rust_future_poll_u64(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_mimir_rust_future_cancel_u64(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_free_u64(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_complete_u64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun ffi_mimir_rust_future_poll_i64(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_mimir_rust_future_cancel_i64(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_free_i64(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_complete_i64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun ffi_mimir_rust_future_poll_f32(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_mimir_rust_future_cancel_f32(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_free_f32(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_complete_f32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Float
+external fun ffi_mimir_rust_future_poll_f64(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_mimir_rust_future_cancel_f64(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_free_f64(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_complete_f64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Double
+external fun ffi_mimir_rust_future_poll_rust_buffer(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_mimir_rust_future_cancel_rust_buffer(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_free_rust_buffer(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_complete_rust_buffer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+external fun ffi_mimir_rust_future_poll_void(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+): Unit
+external fun ffi_mimir_rust_future_cancel_void(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_free_void(`handle`: Long,
+): Unit
+external fun ffi_mimir_rust_future_complete_void(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+
+    
 }
 
 private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
@@ -1780,7 +1778,6 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI contract version mismatch: try cleaning and rebuilding your project")
     }
 }
-
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_mimir_checksum_func_decrypt_message() != 19113.toShort()) {
@@ -1789,271 +1786,667 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_mimir_checksum_func_decrypt_shared_key() != 7530.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_mimir_checksum_func_default_config() != 63421.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_mimir_checksum_func_encrypt_message() != 39388.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_mimir_checksum_func_encrypt_shared_key() != 63137.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_mimir_checksum_func_generate_keypair() != 64859.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_mimir_checksum_func_generate_shared_key() != 5316.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_filesnode_download_file() != 16529.toShort()) {
+    if (lib.uniffi_mimir_checksum_func_keypair_from_seed() != 24029.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_filesnode_file_info() != 45413.toShort()) {
+    if (lib.uniffi_mimir_checksum_func_load_config() != 55648.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_filesnode_stop() != 22209.toShort()) {
+    if (lib.uniffi_mimir_checksum_func_parse_system_message() != 57638.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_filesnode_upload_file() != 13069.toShort()) {
+    if (lib.uniffi_mimir_checksum_func_save_config() != 16940.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatornode_add_user() != 23230.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_accept_group_invite() != 40475.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatornode_change_member_status() != 51924.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_add_contact() != 7858.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatornode_check_connections() != 12961.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_announce_to_trackers() != 29502.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatornode_connect_to_mediator() != 50762.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_answer_call() != 21402.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatornode_create_chat() != 35392.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_ban_member() != 41420.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatornode_delete_chat() != 36732.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_change_member_role() != 32237.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatornode_delete_message() != 61904.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_close_all_connections() != 24774.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatornode_delete_user() != 9060.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_connect_to_contact() != 54860.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatornode_get_last_message_id() != 34703.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_create_group() != 42309.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatornode_get_members() != 63508.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_delete_draft() != 15158.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatornode_get_members_info() != 10854.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_delete_group() != 20293.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatornode_get_messages_since() != 5809.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_delete_group_chat() != 53556.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatornode_leave_chat() != 19043.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_delete_group_message() != 49552.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatornode_respond_to_invite() != 7409.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_delete_message_by_id() != 10570.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatornode_send_group_message() != 63762.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_disconnect_contact() != 5067.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatornode_send_invite() != 13606.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_download_group_file() != 4571.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatornode_stop() != 34229.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_ephemeral_key() != 50556.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatornode_subscribe() != 6707.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_generate_guid() != 51456.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatornode_update_chat_info() != 5828.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_account() != 23801.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatornode_update_member_info() != 37390.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_contact() != 34004.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_add_peer() != 47599.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_contact_by_pubkey() != 27805.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_announce_to_trackers() != 54462.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_contact_id() != 65378.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_answer_call() != 58305.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_contact_requests() != 40080.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_connect_to_contact() != 19808.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_contacts() != 48579.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_disconnect_contact() != 37505.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_draft() != 59147.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_ephemeral_key() != 59422.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_first_unread_id() != 4834.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_get_paths_json() != 14722.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_group_chat() != 38860.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_get_peers_json() != 33679.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_group_chat_status() != 51730.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_get_tree_json() != 55307.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_group_chats() != 42690.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_hangup_call() != 15789.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_group_members() != 7630.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_public_key() != 44357.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_group_message() != 31033.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_remove_peer() != 39068.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_group_message_by_guid() != 2356.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_request_file() != 13046.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_group_messages() != 26859.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_retry_peers_now() != 8707.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_member_count() != 23039.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_send_call_packet() != 62685.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_member_info() != 12536.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_send_contact_request() != 58421.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_member_nickname() != 13064.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_send_contact_response() != 24520.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_member_pubkey() != 60580.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_send_message() != 2360.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_message() != 42044.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_set_network_online() != 8523.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_message_by_guid() != 20679.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_set_ygg_peers() != 38177.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_messages() != 50782.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_start_call() != 51052.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_peers_json() != 29742.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_stop() != 57126.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_pending_invites() != 18183.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_update_network_interfaces() != 42611.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_get_unread_count() != 61452.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peernode_wait_for_peer_info() != 561.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_hangup_call_with() != 20732.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_constructor_filesnode_new() != 6494.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_invite_to_group() != 30642.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_constructor_mediatornode_new() != 6653.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_is_contact_muted() != 47377.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_constructor_peernode_new() != 12828.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_leave_group() != 60291.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_fileseventlistener_on_upload_progress() != 59179.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_mark_all_group_read() != 55175.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_fileseventlistener_on_upload_complete() != 58000.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_mark_all_read() != 5561.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_fileseventlistener_on_upload_error() != 32295.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_public_key() != 21431.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_fileseventlistener_on_download_progress() != 7346.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_remove_contact() != 28722.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_fileseventlistener_on_download_complete() != 29041.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_request_file() != 46798.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_fileseventlistener_on_download_error() != 53835.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_retry_peers_now() != 25044.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_infoprovider_get_my_info() != 53015.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_save_draft() != 61699.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_infoprovider_get_contact_update_time() != 41609.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_send_call_packet() != 12690.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_infoprovider_update_contact_info() != 14253.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_send_contact_message() != 6688.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_infoprovider_get_files_dir() != 49441.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_send_contact_request() != 1932.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_infoprovider_get_contact_flags() != 16833.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_send_contact_response() != 65383.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatoreventlistener_on_connecting() != 29396.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_send_group_chat_message() != 24212.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatoreventlistener_on_connected() != 45987.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_send_group_message() != 15085.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatoreventlistener_on_subscribed() != 5336.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_send_message() != 30698.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatoreventlistener_on_push_message() != 2729.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_set_contact_muted() != 21448.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatoreventlistener_on_system_message() != 6710.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_set_group_chat_muted() != 11385.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatoreventlistener_on_push_invite() != 48845.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_set_group_message_read() != 1469.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatoreventlistener_on_member_info_request() != 62990.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_set_message_read() != 1655.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatoreventlistener_on_member_info_update() != 13028.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_set_network_online() != 28141.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatoreventlistener_on_member_online_status_changed() != 36651.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_set_ygg_peers() != 20177.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_mediatoreventlistener_on_disconnected() != 2507.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_start_call() != 40179.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peereventlistener_on_connectivity_changed() != 10610.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_stop() != 51516.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peereventlistener_on_contact_connected() != 17449.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_subscribe_to_chat() != 62060.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peereventlistener_on_contact_disconnected() != 12940.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_update_account_avatar() != 38782.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peereventlistener_on_message_received() != 46213.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_update_account_info() != 53241.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peereventlistener_on_message_delivered() != 3137.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_update_account_name() != 14119.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peereventlistener_on_incoming_call() != 45240.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_update_group_info() != 14974.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peereventlistener_on_call_status_changed() != 59979.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_update_network_interfaces() != 35085.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peereventlistener_on_call_packet() != 46954.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirapp_wait_for_peer_info() != 48359.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peereventlistener_on_file_receive_progress() != 9124.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_accept_contact_request() != 50680.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peereventlistener_on_file_send_progress() != 41733.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_add_contact() != 6756.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peereventlistener_on_file_received() != 42146.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_add_contact_request() != 47065.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peereventlistener_on_contact_request() != 35964.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_add_group_message() != 28243.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peereventlistener_on_contact_response() != 14945.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_add_message() != 24244.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_mimir_checksum_method_peereventlistener_on_tracker_announce() != 64405.toShort()) {
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_backup_to() != 58944.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_block_contact() != 7037.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_change_group_message_guid() != 10074.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_check_group_message_exists() != 25256.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_checkpoint() != 8454.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_cleanup_old_drafts() != 54224.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_clear_contact_history() != 52602.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_clear_group_chat_history() != 58843.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_create_account() != 51415.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_delete_contact_request() != 47792.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_delete_draft() != 26069.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_delete_group_chat() != 19877.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_delete_group_message() != 65518.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_delete_group_message_by_guid() != 9839.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_delete_invite() != 35905.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_delete_member() != 14377.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_delete_message() != 16756.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_fix_corrupted_group_messages() != 55249.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_generate_guid() != 60139.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_account() != 56265.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_account_updated_at() != 6245.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_all_file_items() != 28357.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_blocked_contacts() != 5931.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_contact() != 7072.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_contact_by_pubkey() != 58923.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_contact_flags() != 55944.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_contact_id() != 7650.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_contact_requests() != 65435.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_contact_update_time() != 36814.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_contacts() != 59120.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_contacts_with_unsent() != 17803.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_draft() != 35856.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_first_unread_group_message_id() != 11532.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_first_unread_id() != 24717.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_first_unseen_group_reaction() != 4553.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_first_unseen_reaction() != 17727.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_group_chat() != 8447.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_group_chats() != 18670.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_group_message() != 56381.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_group_message_by_guid() != 6540.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_group_messages() != 20998.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_group_unseen_reactions_count() != 39554.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_known_mediators() != 9341.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_last_group_message() != 19033.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_last_message() != 1874.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_latest_member_update() != 64510.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_max_server_msg_id() != 59591.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_member_count() != 11212.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_member_info() != 10301.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_member_nickname() != 1114.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_member_pubkey() != 56684.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_members() != 52604.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_message() != 32607.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_message_by_guid() != 36296.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_messages() != 3233.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_online_member_count() != 60671.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_peer_addresses() != 33049.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_pending_invites() != 51360.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_reactions_for_group_message() != 5624.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_reactions_for_message() != 31179.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_undelivered_group_messages() != 25710.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_unread_count() != 50120.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_unseen_reactions_count() != 47048.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_unsent_messages() != 55329.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_user_group_reaction() != 20274.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_get_user_reaction() != 48302.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_is_contact_blocked() != 31461.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_is_contact_muted() != 46457.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_is_member_online() != 19246.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_mark_all_group_read() != 21485.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_mark_all_read() != 62885.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_mark_group_reaction_as_seen() != 47456.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_mark_group_reactions_as_seen_for_message() != 39574.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_mark_reaction_as_seen() != 8114.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_mark_reactions_as_seen_for_message() != 3183.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_migrate_from_android() != 31334.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_remove_contact() != 14613.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_remove_expired_addresses() != 16185.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_rename_contact() != 47210.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_reset_group_unread() != 21970.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_save_draft() != 40739.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_save_group_chat() != 64649.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_save_group_invite() != 11699.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_save_peer_address() != 49170.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_set_contact_muted() != 13882.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_set_group_chat_muted() != 64681.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_set_group_chat_read_only() != 64595.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_set_group_message_delivered() != 33628.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_set_group_message_read() != 17208.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_set_message_delivered() != 50466.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_set_message_read() != 34758.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_unblock_contact() != 35453.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_update_account_avatar() != 58939.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_update_account_info() != 65010.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_update_account_name() != 4297.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_update_contact_avatar() != 46062.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_update_contact_info() != 17082.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_update_group_chat_avatar() != 19249.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_update_group_chat_description() != 27418.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_update_group_chat_name() != 31100.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_update_group_message_data() != 31004.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_update_group_message_server_id() != 3097.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_update_invite_status() != 35585.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_update_member_info() != 45464.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_update_member_online() != 11152.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_update_members_bulk() != 29822.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirstorage_update_message_data() != 63140.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_constructor_mimirapp_new() != 25889.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_constructor_mimirstorage_new() != 61850.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_connectivity_changed() != 292.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_message_received() != 44737.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_message_delivered() != 29218.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_contact_connected() != 8001.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_contact_disconnected() != 10463.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_group_message_received() != 47459.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_group_message_deleted() != 17533.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_group_message_delivered() != 32125.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_outgoing_message_stored() != 27155.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_group_chat_status() != 2208.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_group_invite_received() != 17080.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_group_members_changed() != 14528.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_group_member_online() != 8063.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_incoming_call() != 30112.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_call_status_changed() != 24411.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_call_packet() != 26962.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_file_progress() != 14051.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_file_received() != 5388.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_file_downloaded() != 27121.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_contact_request_received() != 31305.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_contact_response() != 41893.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_tracker_announce() != 44646.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }
@@ -2061,7 +2454,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
 /**
  * @suppress
  */
-fun uniffiEnsureInitialized() {
+public fun uniffiEnsureInitialized() {
     IntegrityCheckingUniffiLib
     // UniffiLib() initialized as objects are used, but we still need to explicitly
     // reference it so initialization across crates works as expected.
@@ -2083,7 +2476,6 @@ fun uniffiEnsureInitialized() {
 // helper method to execute a block and destroy the object at the end.
 interface Disposable {
     fun destroy()
-
     companion object {
         fun destroy(vararg args: Any?) {
             for (arg in args) {
@@ -2097,7 +2489,6 @@ interface Disposable {
                             }
                         }
                     }
-
                     is Map<*, *> -> {
                         for (element in arg.values) {
                             if (element is Disposable) {
@@ -2105,7 +2496,6 @@ interface Disposable {
                             }
                         }
                     }
-
                     is Iterable<*> -> {
                         for (element in arg) {
                             if (element is Disposable) {
@@ -2151,10 +2541,8 @@ object UniffiWithHandle
  * @suppress
  * */
 object NoHandle// Magic number for the Rust proxy to call using the same mechanism as every other method,
-
 // to free the callback once it's dropped by Rust.
 internal const val IDX_CALLBACK_FREE = 0
-
 // Callback return codes
 internal const val UNIFFI_CALLBACK_SUCCESS = 0
 internal const val UNIFFI_CALLBACK_ERROR = 1
@@ -2163,7 +2551,7 @@ internal const val UNIFFI_CALLBACK_UNEXPECTED_ERROR = 2
 /**
  * @suppress
  */
-abstract class FfiConverterCallbackInterface<CallbackInterface : Any> : FfiConverter<CallbackInterface, Long> {
+public abstract class FfiConverterCallbackInterface<CallbackInterface: Any>: FfiConverter<CallbackInterface, Long> {
     internal val handleMap = UniffiHandleMap<CallbackInterface>()
 
     internal fun drop(handle: Long) {
@@ -2184,7 +2572,6 @@ abstract class FfiConverterCallbackInterface<CallbackInterface : Any> : FfiConve
         buf.putLong(lower(value))
     }
 }
-
 /**
  * The cleaner interface for Object finalization code to run.
  * This is the entry point to any implementation that we're using.
@@ -2200,7 +2587,7 @@ interface UniffiCleaner {
         fun clean()
     }
 
-    fun register(value: Any, cleanUpTask: Runnable): Cleanable
+    fun register(value: Any, cleanUpTask: Runnable): UniffiCleaner.Cleanable
 
     companion object
 }
@@ -2230,7 +2617,7 @@ private fun UniffiCleaner.Companion.create(): UniffiCleaner =
         // mode, but is being run on Android, then we still need to think about
         // Android API versions.
         // So we check if java.lang.ref.Cleaner is there, and use that…
-        Class.forName("java.lang.ref.Cleaner")
+        java.lang.Class.forName("java.lang.ref.Cleaner")
         JavaLangRefCleaner()
     } catch (e: ClassNotFoundException) {
         // … otherwise, fallback to the JNA cleaner.
@@ -2253,7 +2640,7 @@ private class JavaLangRefCleanable(
 /**
  * @suppress
  */
-object FfiConverterUByte : FfiConverter<UByte, Byte> {
+public object FfiConverterUByte: FfiConverter<UByte, Byte> {
     override fun lift(value: Byte): UByte {
         return value.toUByte()
     }
@@ -2276,7 +2663,7 @@ object FfiConverterUByte : FfiConverter<UByte, Byte> {
 /**
  * @suppress
  */
-object FfiConverterUShort : FfiConverter<UShort, Short> {
+public object FfiConverterUShort: FfiConverter<UShort, Short> {
     override fun lift(value: Short): UShort {
         return value.toUShort()
     }
@@ -2299,7 +2686,7 @@ object FfiConverterUShort : FfiConverter<UShort, Short> {
 /**
  * @suppress
  */
-object FfiConverterUInt : FfiConverter<UInt, Int> {
+public object FfiConverterUInt: FfiConverter<UInt, Int> {
     override fun lift(value: Int): UInt {
         return value.toUInt()
     }
@@ -2322,7 +2709,7 @@ object FfiConverterUInt : FfiConverter<UInt, Int> {
 /**
  * @suppress
  */
-object FfiConverterInt : FfiConverter<Int, Int> {
+public object FfiConverterInt: FfiConverter<Int, Int> {
     override fun lift(value: Int): Int {
         return value
     }
@@ -2345,7 +2732,7 @@ object FfiConverterInt : FfiConverter<Int, Int> {
 /**
  * @suppress
  */
-object FfiConverterULong : FfiConverter<ULong, Long> {
+public object FfiConverterULong: FfiConverter<ULong, Long> {
     override fun lift(value: Long): ULong {
         return value.toULong()
     }
@@ -2368,7 +2755,7 @@ object FfiConverterULong : FfiConverter<ULong, Long> {
 /**
  * @suppress
  */
-object FfiConverterLong : FfiConverter<Long, Long> {
+public object FfiConverterLong: FfiConverter<Long, Long> {
     override fun lift(value: Long): Long {
         return value
     }
@@ -2391,7 +2778,7 @@ object FfiConverterLong : FfiConverter<Long, Long> {
 /**
  * @suppress
  */
-object FfiConverterBoolean : FfiConverter<Boolean, Byte> {
+public object FfiConverterBoolean: FfiConverter<Boolean, Byte> {
     override fun lift(value: Byte): Boolean {
         return value.toInt() != 0
     }
@@ -2414,7 +2801,7 @@ object FfiConverterBoolean : FfiConverter<Boolean, Byte> {
 /**
  * @suppress
  */
-object FfiConverterString : FfiConverter<String, RustBuffer.ByValue> {
+public object FfiConverterString: FfiConverter<String, RustBuffer.ByValue> {
     // Note: we don't inherit from FfiConverterRustBuffer, because we use a
     // special encoding when lowering/lifting.  We can use `RustBuffer.len` to
     // store our length and avoid writing it out to the buffer.
@@ -2471,18 +2858,16 @@ object FfiConverterString : FfiConverter<String, RustBuffer.ByValue> {
 /**
  * @suppress
  */
-object FfiConverterByteArray : FfiConverterRustBuffer<ByteArray> {
+public object FfiConverterByteArray: FfiConverterRustBuffer<ByteArray> {
     override fun read(buf: ByteBuffer): ByteArray {
         val len = buf.getInt()
         val byteArr = ByteArray(len)
         buf.get(byteArr)
         return byteArr
     }
-
     override fun allocationSize(value: ByteArray): ULong {
         return 4UL + value.size.toULong()
     }
-
     override fun write(value: ByteArray, buf: ByteBuffer) {
         buf.putInt(value.size)
         buf.put(value)
@@ -2586,60 +2971,177 @@ object FfiConverterByteArray : FfiConverterRustBuffer<ByteArray> {
 
 
 /**
- * Manages encrypted file uploads and downloads through file servers.
- *
- * Shares the Yggdrasil identity from an existing `PeerNode`.
- * All methods are thread-safe.
+ * All-in-one Mimir application. Owns PeerNode, MediatorNode, FilesNode, and Storage.
+ * Callers interact through this simplified API and receive events via AppEventListener.
  */
-interface FilesNodeInterface {
-
-    /**
-     * Download a file from the server and decrypt it to `dest_path`.
-     *
-     * `server_pubkey`   – 32-byte public key of the file server.
-     * `file_hash`       – 32-byte SHA-256 hash of the encrypted file.
-     * `message_guid`    – Client-generated message GUID.
-     * `dest_path`       – Where to write the decrypted file.
-     * `encryption_key`  – 32-byte ChaCha20-Poly1305 key for decryption.
-     */
-    fun downloadFile(serverPubkey: ByteArray, fileHash: ByteArray, messageGuid: Long, destPath: String, encryptionKey: ByteArray)
-
-    /**
-     * Query file metadata from the server.
-     */
-    fun fileInfo(serverPubkey: ByteArray, fileHash: ByteArray): FileInfo
-
-    /**
-     * Stop all cached file server connections.
-     */
-    fun stop()
-
-    /**
-     * Upload a file to the server.
-     * Returns the 32-byte SHA-256 hash of the encrypted file.
-     *
-     * `server_pubkey`   – 32-byte public key of the file server.
-     * `file_path`       – Path to the plaintext file on disk.
-     * `message_guid`    – Client-generated message GUID for this file.
-     * `encryption_key`  – 32-byte ChaCha20-Poly1305 key for encryption.
-     */
-    fun uploadFile(serverPubkey: ByteArray, filePath: String, messageGuid: Long, encryptionKey: ByteArray): ByteArray
-
+public interface MimirAppInterface {
+    
+    fun `acceptGroupInvite`(`inviteId`: kotlin.Long)
+    
+    fun `addContact`(`pubkey`: kotlin.ByteArray, `name`: kotlin.String): kotlin.Long
+    
+    fun `announceToTrackers`()
+    
+    fun `answerCall`(`pubkey`: kotlin.ByteArray, `accept`: kotlin.Boolean)
+    
+    fun `banMember`(`chatId`: kotlin.Long, `pubkey`: kotlin.ByteArray)
+    
+    fun `changeMemberRole`(`chatId`: kotlin.Long, `pubkey`: kotlin.ByteArray, `permissions`: kotlin.UByte)
+    
+    fun `closeAllConnections`()
+    
+    fun `connectToContact`(`pubkey`: kotlin.ByteArray)
+    
+    fun `createGroup`(`name`: kotlin.String, `description`: kotlin.String, `avatar`: kotlin.ByteArray?): kotlin.Long
+    
+    fun `deleteDraft`(`chatType`: kotlin.Int, `chatId`: kotlin.Long)
+    
+    fun `deleteGroup`(`chatId`: kotlin.Long)
+    
+    fun `deleteGroupChat`(`chatId`: kotlin.Long)
+    
+    fun `deleteGroupMessage`(`chatId`: kotlin.Long, `guid`: kotlin.Long)
+    
+    fun `deleteMessageById`(`id`: kotlin.Long): kotlin.String?
+    
+    fun `disconnectContact`(`pubkey`: kotlin.ByteArray)
+    
+    fun `downloadGroupFile`(`chatId`: kotlin.Long, `guid`: kotlin.Long, `destPath`: kotlin.String)
+    
+    fun `ephemeralKey`(): kotlin.ByteArray
+    
+    fun `generateGuid`(`time`: kotlin.Long, `data`: kotlin.ByteArray): kotlin.Long
+    
+    fun `getAccount`(`id`: kotlin.Int): StoredAccount?
+    
+    fun `getContact`(`id`: kotlin.Long): StoredContact?
+    
+    fun `getContactByPubkey`(`pubkey`: kotlin.ByteArray): StoredContact?
+    
+    fun `getContactId`(`pubkey`: kotlin.ByteArray): kotlin.Long
+    
+    fun `getContactRequests`(): List<StoredContactRequest>
+    
+    fun `getContacts`(): List<StoredContact>
+    
+    fun `getDraft`(`chatType`: kotlin.Int, `chatId`: kotlin.Long): StoredDraft?
+    
+    fun `getFirstUnreadId`(`contactId`: kotlin.Long): kotlin.Long?
+    
+    fun `getGroupChat`(`chatId`: kotlin.Long): StoredGroupChat?
+    
+    fun `getGroupChatStatus`(`chatId`: kotlin.Long): kotlin.String
+    
+    fun `getGroupChats`(): List<StoredGroupChat>
+    
+    fun `getGroupMembers`(`chatId`: kotlin.Long): List<StoredMember>
+    
+    fun `getGroupMessage`(`chatId`: kotlin.Long, `id`: kotlin.Long): StoredMessage?
+    
+    fun `getGroupMessageByGuid`(`chatId`: kotlin.Long, `guid`: kotlin.Long): StoredMessage?
+    
+    fun `getGroupMessages`(`chatId`: kotlin.Long, `beforeId`: kotlin.Long, `limit`: kotlin.Int): List<StoredGroupMessage>
+    
+    fun `getMemberCount`(`chatId`: kotlin.Long): kotlin.Int
+    
+    fun `getMemberInfo`(`chatId`: kotlin.Long, `pubkey`: kotlin.ByteArray): StoredMember?
+    
+    fun `getMemberNickname`(`chatId`: kotlin.Long, `memberId`: kotlin.Long): kotlin.String?
+    
+    fun `getMemberPubkey`(`chatId`: kotlin.Long, `memberId`: kotlin.Long): kotlin.ByteArray?
+    
+    fun `getMessage`(`id`: kotlin.Long): StoredMessage?
+    
+    fun `getMessageByGuid`(`guid`: kotlin.Long): StoredMessage?
+    
+    fun `getMessages`(`contactId`: kotlin.Long, `beforeId`: kotlin.Long, `limit`: kotlin.Int): List<StoredMessage>
+    
+    fun `getPeersJson`(): kotlin.String
+    
+    fun `getPendingInvites`(): List<StoredInvite>
+    
+    fun `getUnreadCount`(`contactId`: kotlin.Long): kotlin.Int
+    
+    fun `hangupCallWith`(`pubkey`: kotlin.ByteArray)
+    
+    fun `inviteToGroup`(`chatId`: kotlin.Long, `pubkey`: kotlin.ByteArray)
+    
+    fun `isContactMuted`(`id`: kotlin.Long): kotlin.Boolean
+    
+    fun `leaveGroup`(`chatId`: kotlin.Long)
+    
+    fun `markAllGroupRead`(`chatId`: kotlin.Long)
+    
+    fun `markAllRead`(`contactId`: kotlin.Long)
+    
+    fun `publicKey`(): kotlin.ByteArray
+    
+    fun `removeContact`(`id`: kotlin.Long)
+    
+    fun `requestFile`(`pubkey`: kotlin.ByteArray, `guid`: kotlin.Long, `name`: kotlin.String, `hash`: kotlin.String, `size`: kotlin.Long)
+    
+    fun `retryPeersNow`()
+    
+    fun `saveDraft`(`chatType`: kotlin.Int, `chatId`: kotlin.Long, `text`: kotlin.String?, `mediaUri`: kotlin.String?, `mediaType`: kotlin.Int)
+    
+    fun `sendCallPacket`(`pubkey`: kotlin.ByteArray, `data`: kotlin.ByteArray)
+    
+    fun `sendContactMessage`(`pubkey`: kotlin.ByteArray, `replyTo`: kotlin.Long, `text`: kotlin.String, `attachment`: AttachmentSpec?): kotlin.Long
+    
+    fun `sendContactRequest`(`pubkey`: kotlin.ByteArray, `message`: kotlin.String)
+    
+    fun `sendContactResponse`(`pubkey`: kotlin.ByteArray, `accepted`: kotlin.Boolean)
+    
+    fun `sendGroupChatMessage`(`chatId`: kotlin.Long, `replyTo`: kotlin.Long, `text`: kotlin.String, `attachment`: AttachmentSpec?, `fileServerPubkey`: kotlin.ByteArray?): kotlin.Long
+    
+    fun `sendGroupMessage`(`chatId`: kotlin.Long, `guid`: kotlin.Long, `replyTo`: kotlin.Long, `sendTime`: kotlin.Long, `msgType`: kotlin.Int, `data`: kotlin.ByteArray): kotlin.Long
+    
+    fun `sendMessage`(`pubkey`: kotlin.ByteArray, `guid`: kotlin.Long, `replyTo`: kotlin.Long, `sendTime`: kotlin.Long, `msgType`: kotlin.Int, `data`: kotlin.ByteArray)
+    
+    fun `setContactMuted`(`id`: kotlin.Long, `muted`: kotlin.Boolean)
+    
+    fun `setGroupChatMuted`(`chatId`: kotlin.Long, `muted`: kotlin.Boolean)
+    
+    fun `setGroupMessageRead`(`chatId`: kotlin.Long, `id`: kotlin.Long, `read`: kotlin.Boolean)
+    
+    fun `setMessageRead`(`contactId`: kotlin.Long, `messageId`: kotlin.Long, `read`: kotlin.Boolean)
+    
+    fun `setNetworkOnline`(`online`: kotlin.Boolean)
+    
+    fun `setYggPeers`(`peers`: List<kotlin.String>)
+    
+    fun `startCall`(`pubkey`: kotlin.ByteArray)
+    
+    fun `stop`()
+    
+    fun `subscribeToChat`(`chatId`: kotlin.Long)
+    
+    fun `updateAccountAvatar`(`id`: kotlin.Int, `avatarBytes`: kotlin.ByteArray): kotlin.String
+    
+    fun `updateAccountInfo`(`id`: kotlin.Int, `info`: kotlin.String)
+    
+    fun `updateAccountName`(`id`: kotlin.Int, `name`: kotlin.String)
+    
+    fun `updateGroupInfo`(`chatId`: kotlin.Long, `name`: kotlin.String?, `description`: kotlin.String?, `avatar`: kotlin.ByteArray?)
+    
+    fun `updateNetworkInterfaces`(`interfaces`: List<AndroidNetworkInterface>)
+    
+    fun `waitForPeerInfo`(`timeoutMs`: kotlin.ULong): YggPeerInfo
+    
     companion object
 }
 
 /**
- * Manages encrypted file uploads and downloads through file servers.
- *
- * Shares the Yggdrasil identity from an existing `PeerNode`.
- * All methods are thread-safe.
+ * All-in-one Mimir application. Owns PeerNode, MediatorNode, FilesNode, and Storage.
+ * Callers interact through this simplified API and receive events via AppEventListener.
  */
-open class FilesNode : Disposable, AutoCloseable, FilesNodeInterface {
+open class MimirApp: Disposable, AutoCloseable, MimirAppInterface
+{
 
     @Suppress("UNUSED_PARAMETER")
-            /**
-             * @suppress
-             */
+    /**
+     * @suppress
+     */
     constructor(withHandle: UniffiWithHandle, handle: Long) {
         this.handle = handle
         this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
@@ -2657,24 +3159,14 @@ open class FilesNode : Disposable, AutoCloseable, FilesNodeInterface {
         this.handle = 0
         this.cleanable = null
     }
-
-    /**
-     * Create a new FilesNode.
-     *
-     * `peer_node`       – Running PeerNode (its Ygg node + runtime are shared).
-     * `files_port`      – Port file servers listen on.
-     * `event_listener`  – Receives upload/download progress events.
-     */
-    constructor(peerNode: PeerNode, filesPort: UShort, eventListener: FilesEventListener) :
-            this(
-                UniffiWithHandle,
-                uniffiRustCallWithError(MimirException) { _status ->
-                    UniffiLib.uniffi_mimir_fn_constructor_filesnode_new(
-
-                        FfiConverterTypePeerNode.lower(peerNode), FfiConverterUShort.lower(filesPort), FfiConverterTypeFilesEventListener.lower(eventListener), _status
-                    )
-                }
-            )
+    constructor(`config`: AppConfig, `dataDir`: kotlin.String, `eventListener`: AppEventListener) :
+        this(UniffiWithHandle, 
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_constructor_mimirapp_new(
+    
+        FfiConverterTypeAppConfig.lower(`config`),FfiConverterString.lower(`dataDir`),FfiConverterTypeAppEventListener.lower(`eventListener`),_status)
+}
+    )
 
     protected val handle: Long
     protected val cleanable: UniffiCleaner.Cleanable?
@@ -2709,7 +3201,7 @@ open class FilesNode : Disposable, AutoCloseable, FilesNodeInterface {
             if (c == Long.MAX_VALUE) {
                 throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
             }
-        } while (!this.callCounter.compareAndSet(c, c + 1L))
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
         // Now we can safely do the method call without the handle being freed concurrently.
         try {
             return block(this.uniffiCloneHandle())
@@ -2730,7 +3222,7 @@ open class FilesNode : Disposable, AutoCloseable, FilesNodeInterface {
                 return;
             }
             uniffiRustCall { status ->
-                UniffiLib.uniffi_mimir_fn_free_filesnode(handle, status)
+                UniffiLib.uniffi_mimir_fn_free_mimirapp(handle, status)
             }
         }
     }
@@ -2743,115 +3235,1030 @@ open class FilesNode : Disposable, AutoCloseable, FilesNodeInterface {
             throw InternalException("uniffiCloneHandle() called on NoHandle object");
         }
         return uniffiRustCall() { status ->
-            UniffiLib.uniffi_mimir_fn_clone_filesnode(handle, status)
+            UniffiLib.uniffi_mimir_fn_clone_mimirapp(handle, status)
         }
     }
 
-
-    /**
-     * Download a file from the server and decrypt it to `dest_path`.
-     *
-     * `server_pubkey`   – 32-byte public key of the file server.
-     * `file_hash`       – 32-byte SHA-256 hash of the encrypted file.
-     * `message_guid`    – Client-generated message GUID.
-     * `dest_path`       – Where to write the decrypted file.
-     * `encryption_key`  – 32-byte ChaCha20-Poly1305 key for decryption.
-     */
-    @Throws(MimirException::class)
-    override fun downloadFile(serverPubkey: ByteArray, fileHash: ByteArray, messageGuid: Long, destPath: String, encryptionKey: ByteArray) =
-        callWithHandle {
-            uniffiRustCallWithError(MimirException) { _status ->
-                UniffiLib.uniffi_mimir_fn_method_filesnode_download_file(
-                    it,
-                    FfiConverterByteArray.lower(serverPubkey), FfiConverterByteArray.lower(fileHash), FfiConverterLong.lower(messageGuid), FfiConverterString.lower(destPath), FfiConverterByteArray.lower(encryptionKey), _status
-                )
-            }
-        }
-
-
-    /**
-     * Query file metadata from the server.
-     */
-    @Throws(MimirException::class)
-    override fun fileInfo(serverPubkey: ByteArray, fileHash: ByteArray): FileInfo {
-        return FfiConverterTypeFileInfo.lift(
-            callWithHandle {
-                uniffiRustCallWithError(MimirException) { _status ->
-                    UniffiLib.uniffi_mimir_fn_method_filesnode_file_info(
-                        it,
-                        FfiConverterByteArray.lower(serverPubkey), FfiConverterByteArray.lower(fileHash), _status
-                    )
-                }
-            }
-        )
+    
+    @Throws(MimirException::class)override fun `acceptGroupInvite`(`inviteId`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_accept_group_invite(
+        it,
+        FfiConverterLong.lower(`inviteId`),_status)
+}
     }
+    
+    
 
-
-    /**
-     * Stop all cached file server connections.
-     */
-    override fun stop() =
-        callWithHandle {
-            uniffiRustCall() { _status ->
-                UniffiLib.uniffi_mimir_fn_method_filesnode_stop(
-                    it,
-                    _status
-                )
-            }
-        }
-
-
-    /**
-     * Upload a file to the server.
-     * Returns the 32-byte SHA-256 hash of the encrypted file.
-     *
-     * `server_pubkey`   – 32-byte public key of the file server.
-     * `file_path`       – Path to the plaintext file on disk.
-     * `message_guid`    – Client-generated message GUID for this file.
-     * `encryption_key`  – 32-byte ChaCha20-Poly1305 key for encryption.
-     */
-    @Throws(MimirException::class)
-    override fun uploadFile(serverPubkey: ByteArray, filePath: String, messageGuid: Long, encryptionKey: ByteArray): ByteArray {
-        return FfiConverterByteArray.lift(
-            callWithHandle {
-                uniffiRustCallWithError(MimirException) { _status ->
-                    UniffiLib.uniffi_mimir_fn_method_filesnode_upload_file(
-                        it,
-                        FfiConverterByteArray.lower(serverPubkey), FfiConverterString.lower(filePath), FfiConverterLong.lower(messageGuid), FfiConverterByteArray.lower(encryptionKey), _status
-                    )
-                }
-            }
-        )
+    
+    @Throws(MimirException::class)override fun `addContact`(`pubkey`: kotlin.ByteArray, `name`: kotlin.String): kotlin.Long {
+            return FfiConverterLong.lift(
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_add_contact(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),FfiConverterString.lower(`name`),_status)
+}
     }
+    )
+    }
+    
+
+    override fun `announceToTrackers`()
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_announce_to_trackers(
+        it,
+        _status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `answerCall`(`pubkey`: kotlin.ByteArray, `accept`: kotlin.Boolean)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_answer_call(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),FfiConverterBoolean.lower(`accept`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `banMember`(`chatId`: kotlin.Long, `pubkey`: kotlin.ByteArray)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_ban_member(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterByteArray.lower(`pubkey`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `changeMemberRole`(`chatId`: kotlin.Long, `pubkey`: kotlin.ByteArray, `permissions`: kotlin.UByte)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_change_member_role(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterByteArray.lower(`pubkey`),FfiConverterUByte.lower(`permissions`),_status)
+}
+    }
+    
+    
+
+    override fun `closeAllConnections`()
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_close_all_connections(
+        it,
+        _status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `connectToContact`(`pubkey`: kotlin.ByteArray)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_connect_to_contact(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `createGroup`(`name`: kotlin.String, `description`: kotlin.String, `avatar`: kotlin.ByteArray?): kotlin.Long {
+            return FfiConverterLong.lift(
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_create_group(
+        it,
+        FfiConverterString.lower(`name`),FfiConverterString.lower(`description`),FfiConverterOptionalByteArray.lower(`avatar`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `deleteDraft`(`chatType`: kotlin.Int, `chatId`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_delete_draft(
+        it,
+        FfiConverterInt.lower(`chatType`),FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `deleteGroup`(`chatId`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_delete_group(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `deleteGroupChat`(`chatId`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_delete_group_chat(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `deleteGroupMessage`(`chatId`: kotlin.Long, `guid`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_delete_group_message(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`guid`),_status)
+}
+    }
+    
+    
+
+    override fun `deleteMessageById`(`id`: kotlin.Long): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_delete_message_by_id(
+        it,
+        FfiConverterLong.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `disconnectContact`(`pubkey`: kotlin.ByteArray)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_disconnect_contact(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `downloadGroupFile`(`chatId`: kotlin.Long, `guid`: kotlin.Long, `destPath`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_download_group_file(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`guid`),FfiConverterString.lower(`destPath`),_status)
+}
+    }
+    
+    
+
+    override fun `ephemeralKey`(): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_ephemeral_key(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `generateGuid`(`time`: kotlin.Long, `data`: kotlin.ByteArray): kotlin.Long {
+            return FfiConverterLong.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_generate_guid(
+        it,
+        FfiConverterLong.lower(`time`),FfiConverterByteArray.lower(`data`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getAccount`(`id`: kotlin.Int): StoredAccount? {
+            return FfiConverterOptionalTypeStoredAccount.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_account(
+        it,
+        FfiConverterInt.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getContact`(`id`: kotlin.Long): StoredContact? {
+            return FfiConverterOptionalTypeStoredContact.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_contact(
+        it,
+        FfiConverterLong.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getContactByPubkey`(`pubkey`: kotlin.ByteArray): StoredContact? {
+            return FfiConverterOptionalTypeStoredContact.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_contact_by_pubkey(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getContactId`(`pubkey`: kotlin.ByteArray): kotlin.Long {
+            return FfiConverterLong.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_contact_id(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getContactRequests`(): List<StoredContactRequest> {
+            return FfiConverterSequenceTypeStoredContactRequest.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_contact_requests(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getContacts`(): List<StoredContact> {
+            return FfiConverterSequenceTypeStoredContact.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_contacts(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getDraft`(`chatType`: kotlin.Int, `chatId`: kotlin.Long): StoredDraft? {
+            return FfiConverterOptionalTypeStoredDraft.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_draft(
+        it,
+        FfiConverterInt.lower(`chatType`),FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getFirstUnreadId`(`contactId`: kotlin.Long): kotlin.Long? {
+            return FfiConverterOptionalLong.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_first_unread_id(
+        it,
+        FfiConverterLong.lower(`contactId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getGroupChat`(`chatId`: kotlin.Long): StoredGroupChat? {
+            return FfiConverterOptionalTypeStoredGroupChat.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_group_chat(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getGroupChatStatus`(`chatId`: kotlin.Long): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_group_chat_status(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getGroupChats`(): List<StoredGroupChat> {
+            return FfiConverterSequenceTypeStoredGroupChat.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_group_chats(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getGroupMembers`(`chatId`: kotlin.Long): List<StoredMember> {
+            return FfiConverterSequenceTypeStoredMember.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_group_members(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getGroupMessage`(`chatId`: kotlin.Long, `id`: kotlin.Long): StoredMessage? {
+            return FfiConverterOptionalTypeStoredMessage.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_group_message(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getGroupMessageByGuid`(`chatId`: kotlin.Long, `guid`: kotlin.Long): StoredMessage? {
+            return FfiConverterOptionalTypeStoredMessage.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_group_message_by_guid(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`guid`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getGroupMessages`(`chatId`: kotlin.Long, `beforeId`: kotlin.Long, `limit`: kotlin.Int): List<StoredGroupMessage> {
+            return FfiConverterSequenceTypeStoredGroupMessage.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_group_messages(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`beforeId`),FfiConverterInt.lower(`limit`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getMemberCount`(`chatId`: kotlin.Long): kotlin.Int {
+            return FfiConverterInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_member_count(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getMemberInfo`(`chatId`: kotlin.Long, `pubkey`: kotlin.ByteArray): StoredMember? {
+            return FfiConverterOptionalTypeStoredMember.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_member_info(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterByteArray.lower(`pubkey`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getMemberNickname`(`chatId`: kotlin.Long, `memberId`: kotlin.Long): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_member_nickname(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`memberId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getMemberPubkey`(`chatId`: kotlin.Long, `memberId`: kotlin.Long): kotlin.ByteArray? {
+            return FfiConverterOptionalByteArray.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_member_pubkey(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`memberId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getMessage`(`id`: kotlin.Long): StoredMessage? {
+            return FfiConverterOptionalTypeStoredMessage.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_message(
+        it,
+        FfiConverterLong.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getMessageByGuid`(`guid`: kotlin.Long): StoredMessage? {
+            return FfiConverterOptionalTypeStoredMessage.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_message_by_guid(
+        it,
+        FfiConverterLong.lower(`guid`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getMessages`(`contactId`: kotlin.Long, `beforeId`: kotlin.Long, `limit`: kotlin.Int): List<StoredMessage> {
+            return FfiConverterSequenceTypeStoredMessage.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_messages(
+        it,
+        FfiConverterLong.lower(`contactId`),FfiConverterLong.lower(`beforeId`),FfiConverterInt.lower(`limit`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getPeersJson`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_peers_json(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getPendingInvites`(): List<StoredInvite> {
+            return FfiConverterSequenceTypeStoredInvite.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_pending_invites(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getUnreadCount`(`contactId`: kotlin.Long): kotlin.Int {
+            return FfiConverterInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_get_unread_count(
+        it,
+        FfiConverterLong.lower(`contactId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `hangupCallWith`(`pubkey`: kotlin.ByteArray)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_hangup_call_with(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `inviteToGroup`(`chatId`: kotlin.Long, `pubkey`: kotlin.ByteArray)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_invite_to_group(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterByteArray.lower(`pubkey`),_status)
+}
+    }
+    
+    
+
+    override fun `isContactMuted`(`id`: kotlin.Long): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_is_contact_muted(
+        it,
+        FfiConverterLong.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `leaveGroup`(`chatId`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_leave_group(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `markAllGroupRead`(`chatId`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_mark_all_group_read(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `markAllRead`(`contactId`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_mark_all_read(
+        it,
+        FfiConverterLong.lower(`contactId`),_status)
+}
+    }
+    
+    
+
+    override fun `publicKey`(): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_public_key(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `removeContact`(`id`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_remove_contact(
+        it,
+        FfiConverterLong.lower(`id`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `requestFile`(`pubkey`: kotlin.ByteArray, `guid`: kotlin.Long, `name`: kotlin.String, `hash`: kotlin.String, `size`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_request_file(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),FfiConverterLong.lower(`guid`),FfiConverterString.lower(`name`),FfiConverterString.lower(`hash`),FfiConverterLong.lower(`size`),_status)
+}
+    }
+    
+    
+
+    override fun `retryPeersNow`()
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_retry_peers_now(
+        it,
+        _status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `saveDraft`(`chatType`: kotlin.Int, `chatId`: kotlin.Long, `text`: kotlin.String?, `mediaUri`: kotlin.String?, `mediaType`: kotlin.Int)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_save_draft(
+        it,
+        FfiConverterInt.lower(`chatType`),FfiConverterLong.lower(`chatId`),FfiConverterOptionalString.lower(`text`),FfiConverterOptionalString.lower(`mediaUri`),FfiConverterInt.lower(`mediaType`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `sendCallPacket`(`pubkey`: kotlin.ByteArray, `data`: kotlin.ByteArray)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_send_call_packet(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),FfiConverterByteArray.lower(`data`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `sendContactMessage`(`pubkey`: kotlin.ByteArray, `replyTo`: kotlin.Long, `text`: kotlin.String, `attachment`: AttachmentSpec?): kotlin.Long {
+            return FfiConverterLong.lift(
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_send_contact_message(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),FfiConverterLong.lower(`replyTo`),FfiConverterString.lower(`text`),FfiConverterOptionalTypeAttachmentSpec.lower(`attachment`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `sendContactRequest`(`pubkey`: kotlin.ByteArray, `message`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_send_contact_request(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),FfiConverterString.lower(`message`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `sendContactResponse`(`pubkey`: kotlin.ByteArray, `accepted`: kotlin.Boolean)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_send_contact_response(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),FfiConverterBoolean.lower(`accepted`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `sendGroupChatMessage`(`chatId`: kotlin.Long, `replyTo`: kotlin.Long, `text`: kotlin.String, `attachment`: AttachmentSpec?, `fileServerPubkey`: kotlin.ByteArray?): kotlin.Long {
+            return FfiConverterLong.lift(
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_send_group_chat_message(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`replyTo`),FfiConverterString.lower(`text`),FfiConverterOptionalTypeAttachmentSpec.lower(`attachment`),FfiConverterOptionalByteArray.lower(`fileServerPubkey`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `sendGroupMessage`(`chatId`: kotlin.Long, `guid`: kotlin.Long, `replyTo`: kotlin.Long, `sendTime`: kotlin.Long, `msgType`: kotlin.Int, `data`: kotlin.ByteArray): kotlin.Long {
+            return FfiConverterLong.lift(
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_send_group_message(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`guid`),FfiConverterLong.lower(`replyTo`),FfiConverterLong.lower(`sendTime`),FfiConverterInt.lower(`msgType`),FfiConverterByteArray.lower(`data`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `sendMessage`(`pubkey`: kotlin.ByteArray, `guid`: kotlin.Long, `replyTo`: kotlin.Long, `sendTime`: kotlin.Long, `msgType`: kotlin.Int, `data`: kotlin.ByteArray)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_send_message(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),FfiConverterLong.lower(`guid`),FfiConverterLong.lower(`replyTo`),FfiConverterLong.lower(`sendTime`),FfiConverterInt.lower(`msgType`),FfiConverterByteArray.lower(`data`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `setContactMuted`(`id`: kotlin.Long, `muted`: kotlin.Boolean)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_set_contact_muted(
+        it,
+        FfiConverterLong.lower(`id`),FfiConverterBoolean.lower(`muted`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `setGroupChatMuted`(`chatId`: kotlin.Long, `muted`: kotlin.Boolean)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_set_group_chat_muted(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterBoolean.lower(`muted`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `setGroupMessageRead`(`chatId`: kotlin.Long, `id`: kotlin.Long, `read`: kotlin.Boolean)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_set_group_message_read(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`id`),FfiConverterBoolean.lower(`read`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `setMessageRead`(`contactId`: kotlin.Long, `messageId`: kotlin.Long, `read`: kotlin.Boolean)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_set_message_read(
+        it,
+        FfiConverterLong.lower(`contactId`),FfiConverterLong.lower(`messageId`),FfiConverterBoolean.lower(`read`),_status)
+}
+    }
+    
+    
+
+    override fun `setNetworkOnline`(`online`: kotlin.Boolean)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_set_network_online(
+        it,
+        FfiConverterBoolean.lower(`online`),_status)
+}
+    }
+    
+    
+
+    override fun `setYggPeers`(`peers`: List<kotlin.String>)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_set_ygg_peers(
+        it,
+        FfiConverterSequenceString.lower(`peers`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `startCall`(`pubkey`: kotlin.ByteArray)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_start_call(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),_status)
+}
+    }
+    
+    
+
+    override fun `stop`()
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_stop(
+        it,
+        _status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `subscribeToChat`(`chatId`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_subscribe_to_chat(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `updateAccountAvatar`(`id`: kotlin.Int, `avatarBytes`: kotlin.ByteArray): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_update_account_avatar(
+        it,
+        FfiConverterInt.lower(`id`),FfiConverterByteArray.lower(`avatarBytes`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `updateAccountInfo`(`id`: kotlin.Int, `info`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_update_account_info(
+        it,
+        FfiConverterInt.lower(`id`),FfiConverterString.lower(`info`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `updateAccountName`(`id`: kotlin.Int, `name`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_update_account_name(
+        it,
+        FfiConverterInt.lower(`id`),FfiConverterString.lower(`name`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `updateGroupInfo`(`chatId`: kotlin.Long, `name`: kotlin.String?, `description`: kotlin.String?, `avatar`: kotlin.ByteArray?)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_update_group_info(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterOptionalString.lower(`name`),FfiConverterOptionalString.lower(`description`),FfiConverterOptionalByteArray.lower(`avatar`),_status)
+}
+    }
+    
+    
+
+    override fun `updateNetworkInterfaces`(`interfaces`: List<AndroidNetworkInterface>)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_update_network_interfaces(
+        it,
+        FfiConverterSequenceTypeAndroidNetworkInterface.lower(`interfaces`),_status)
+}
+    }
+    
+    
+
+    override fun `waitForPeerInfo`(`timeoutMs`: kotlin.ULong): YggPeerInfo {
+            return FfiConverterTypeYggPeerInfo.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_wait_for_peer_info(
+        it,
+        FfiConverterULong.lower(`timeoutMs`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+
+    
 
 
+    
+    
     /**
      * @suppress
      */
     companion object
-
+    
 }
 
 
 /**
  * @suppress
  */
-object FfiConverterTypeFilesNode : FfiConverter<FilesNode, Long> {
-    override fun lower(value: FilesNode): Long {
+public object FfiConverterTypeMimirApp: FfiConverter<MimirApp, Long> {
+    override fun lower(value: MimirApp): Long {
         return value.uniffiCloneHandle()
     }
 
-    override fun lift(value: Long): FilesNode {
-        return FilesNode(UniffiWithHandle, value)
+    override fun lift(value: Long): MimirApp {
+        return MimirApp(UniffiWithHandle, value)
     }
 
-    override fun read(buf: ByteBuffer): FilesNode {
+    override fun read(buf: ByteBuffer): MimirApp {
         return lift(buf.getLong())
     }
 
-    override fun allocationSize(value: FilesNode) = 8UL
+    override fun allocationSize(value: MimirApp) = 8UL
 
-    override fun write(value: FilesNode, buf: ByteBuffer) {
+    override fun write(value: MimirApp, buf: ByteBuffer) {
         buf.putLong(lower(value))
     }
 }
@@ -2952,105 +4359,242 @@ object FfiConverterTypeFilesNode : FfiConverter<FilesNode, Long> {
 //
 
 
-/**
- * Manages connections to one or more mediator servers.
- *
- * Shares the Yggdrasil identity from an existing `PeerNode`.
- * All methods are thread-safe.
- */
-interface MediatorNodeInterface {
-
-    fun addUser(mediatorPubkey: ByteArray, chatId: Long, userPubkey: ByteArray)
-
-    /**
-     * Change a member's permission flags (ban, promote, demote).
-     */
-    fun changeMemberStatus(mediatorPubkey: ByteArray, chatId: Long, userPubkey: ByteArray, newPermissions: UByte)
-
-    /**
-     * Probe all live mediator connections after Yggdrasil connectivity restores.
-     */
-    fun checkConnections()
-
-    /**
-     * Dial a mediator.  Returns immediately; on_connected fires on success.
-     */
-    fun connectToMediator(mediatorPubkey: ByteArray)
-
-    /**
-     * Create a new group chat (includes proof-of-work; may take a few seconds).
-     * Returns the mediator-assigned chat ID.
-     */
-    fun createChat(mediatorPubkey: ByteArray, name: String, description: String, avatar: ByteArray?): Long
-
-    fun deleteChat(mediatorPubkey: ByteArray, chatId: Long)
-
-    /**
-     * Delete a message.  `guid` is the client-generated GUID originally passed to
-     * send_group_message — NOT the server-assigned message_id returned by it.
-     */
-    fun deleteMessage(mediatorPubkey: ByteArray, chatId: Long, guid: Long)
-
-    fun deleteUser(mediatorPubkey: ByteArray, chatId: Long, userPubkey: ByteArray)
-
-    fun getLastMessageId(mediatorPubkey: ByteArray, chatId: Long): Long
-
-    fun getMembers(mediatorPubkey: ByteArray, chatId: Long): List<GroupMember>
-
-    fun getMembersInfo(mediatorPubkey: ByteArray, chatId: Long, sinceTimestamp: Long): List<GroupMemberInfo>
-
-    fun getMessagesSince(mediatorPubkey: ByteArray, chatId: Long, sinceId: Long, limit: UInt): List<GroupMessage>
-
-    fun leaveChat(mediatorPubkey: ByteArray, chatId: Long)
-
-    fun respondToInvite(mediatorPubkey: ByteArray, chatId: Long, inviteId: Long, accept: Boolean)
-
-    /**
-     * Send an encrypted message blob.  Returns the server-assigned message ID.
-     * `timestamp` must be milliseconds since epoch (e.g. System.currentTimeMillis()).
-     * Rust converts it to seconds internally before sending.
-     */
-    fun sendGroupMessage(mediatorPubkey: ByteArray, chatId: Long, guid: Long, timestamp: Long, `data`: ByteArray): Long
-
-    /**
-     * Send an invite to `recipient_pubkey`.
-     * `encrypted_data` is the AES-encrypted shared key for the recipient.
-     */
-    fun sendInvite(mediatorPubkey: ByteArray, chatId: Long, recipientPubkey: ByteArray, encryptedData: ByteArray)
-
-    /**
-     * Stop all mediator connections.
-     */
-    fun stop()
-
-    /**
-     * Subscribe to push messages for `chat_id`.
-     * Returns the server's last message ID.
-     */
-    fun subscribe(mediatorPubkey: ByteArray, chatId: Long): Long
-
-    fun updateChatInfo(mediatorPubkey: ByteArray, chatId: Long, name: String?, description: String?, avatar: ByteArray?)
-
-    /**
-     * Push our pre-encrypted profile blob to the mediator.
-     */
-    fun updateMemberInfo(mediatorPubkey: ByteArray, chatId: Long, encryptedBlob: ByteArray, timestamp: Long)
-
+public interface MimirStorageInterface {
+    
+    fun `acceptContactRequest`(`requestId`: kotlin.Long): kotlin.Long
+    
+    fun `addContact`(`pubkey`: kotlin.ByteArray, `name`: kotlin.String): kotlin.Long
+    
+    fun `addContactRequest`(`pubkey`: kotlin.ByteArray, `message`: kotlin.String, `nickname`: kotlin.String, `info`: kotlin.String, `avatarBytes`: kotlin.ByteArray?): kotlin.Long
+    
+    fun `addGroupMessage`(`chatId`: kotlin.Long, `serverMsgId`: kotlin.Long, `guid`: kotlin.Long, `authorPubkey`: kotlin.ByteArray, `sendTime`: kotlin.Long, `msgType`: kotlin.Int, `system`: kotlin.Boolean, `data`: kotlin.ByteArray, `replyTo`: kotlin.Long, `fromSync`: kotlin.Boolean): kotlin.Long
+    
+    fun `addMessage`(`contactPubkey`: kotlin.ByteArray, `guid`: kotlin.Long, `replyTo`: kotlin.Long, `incoming`: kotlin.Boolean, `delivered`: kotlin.Boolean, `sendTime`: kotlin.Long, `editTime`: kotlin.Long, `msgType`: kotlin.Int, `data`: kotlin.ByteArray): kotlin.Long
+    
+    fun `backupTo`(`destPath`: kotlin.String)
+    
+    fun `blockContact`(`pubkey`: kotlin.ByteArray)
+    
+    fun `changeGroupMessageGuid`(`chatId`: kotlin.Long, `oldGuid`: kotlin.Long, `newGuid`: kotlin.Long)
+    
+    fun `checkGroupMessageExists`(`chatId`: kotlin.Long, `guid`: kotlin.Long): kotlin.Boolean
+    
+    fun `checkpoint`()
+    
+    fun `cleanupOldDrafts`(`maxAgeDays`: kotlin.Int): kotlin.Int
+    
+    fun `clearContactHistory`(`contactId`: kotlin.Long): List<kotlin.String>
+    
+    fun `clearGroupChatHistory`(`chatId`: kotlin.Long): List<kotlin.String>
+    
+    fun `createAccount`(`id`: kotlin.Int, `privkey`: kotlin.ByteArray, `pubkey`: kotlin.ByteArray, `clientId`: kotlin.Int): StoredAccount
+    
+    fun `deleteContactRequest`(`requestId`: kotlin.Long)
+    
+    fun `deleteDraft`(`chatType`: kotlin.Int, `chatId`: kotlin.Long)
+    
+    fun `deleteGroupChat`(`chatId`: kotlin.Long)
+    
+    fun `deleteGroupMessage`(`chatId`: kotlin.Long, `id`: kotlin.Long)
+    
+    fun `deleteGroupMessageByGuid`(`chatId`: kotlin.Long, `guid`: kotlin.Long): kotlin.String?
+    
+    fun `deleteInvite`(`inviteId`: kotlin.Long)
+    
+    fun `deleteMember`(`chatId`: kotlin.Long, `pubkey`: kotlin.ByteArray)
+    
+    fun `deleteMessage`(`id`: kotlin.Long): kotlin.String?
+    
+    fun `fixCorruptedGroupMessages`(): FixStats
+    
+    fun `generateGuid`(`time`: kotlin.Long, `data`: kotlin.ByteArray): kotlin.Long
+    
+    fun `getAccount`(`id`: kotlin.Int): StoredAccount?
+    
+    fun `getAccountUpdatedAt`(`id`: kotlin.Int): kotlin.Long
+    
+    fun `getAllFileItems`(): List<FileItem>
+    
+    fun `getBlockedContacts`(): List<kotlin.ByteArray>
+    
+    fun `getContact`(`id`: kotlin.Long): StoredContact?
+    
+    fun `getContactByPubkey`(`pubkey`: kotlin.ByteArray): StoredContact?
+    
+    fun `getContactFlags`(`pubkey`: kotlin.ByteArray): kotlin.Int
+    
+    fun `getContactId`(`pubkey`: kotlin.ByteArray): kotlin.Long
+    
+    fun `getContactRequests`(): List<StoredContactRequest>
+    
+    fun `getContactUpdateTime`(`pubkey`: kotlin.ByteArray): kotlin.Long
+    
+    fun `getContacts`(): List<StoredContact>
+    
+    fun `getContactsWithUnsent`(): List<kotlin.ByteArray>
+    
+    fun `getDraft`(`chatType`: kotlin.Int, `chatId`: kotlin.Long): StoredDraft?
+    
+    fun `getFirstUnreadGroupMessageId`(`chatId`: kotlin.Long): kotlin.Long?
+    
+    fun `getFirstUnreadId`(`contactId`: kotlin.Long): kotlin.Long?
+    
+    fun `getFirstUnseenGroupReaction`(`chatId`: kotlin.Long): ReactionTarget?
+    
+    fun `getFirstUnseenReaction`(`contactId`: kotlin.Long): ReactionTarget?
+    
+    fun `getGroupChat`(`chatId`: kotlin.Long): StoredGroupChat?
+    
+    fun `getGroupChats`(): List<StoredGroupChat>
+    
+    fun `getGroupMessage`(`chatId`: kotlin.Long, `id`: kotlin.Long): StoredMessage?
+    
+    fun `getGroupMessageByGuid`(`chatId`: kotlin.Long, `guid`: kotlin.Long): StoredMessage?
+    
+    fun `getGroupMessages`(`chatId`: kotlin.Long, `beforeId`: kotlin.Long, `limit`: kotlin.Int): List<StoredGroupMessage>
+    
+    fun `getGroupUnseenReactionsCount`(`chatId`: kotlin.Long): kotlin.UInt
+    
+    fun `getKnownMediators`(): List<kotlin.ByteArray>
+    
+    fun `getLastGroupMessage`(`chatId`: kotlin.Long): StoredMessage?
+    
+    fun `getLastMessage`(`contactId`: kotlin.Long): StoredMessage?
+    
+    fun `getLatestMemberUpdate`(`chatId`: kotlin.Long): kotlin.Long
+    
+    fun `getMaxServerMsgId`(`chatId`: kotlin.Long): kotlin.Long
+    
+    fun `getMemberCount`(`chatId`: kotlin.Long): kotlin.Int
+    
+    fun `getMemberInfo`(`chatId`: kotlin.Long, `pubkey`: kotlin.ByteArray): StoredMember?
+    
+    fun `getMemberNickname`(`chatId`: kotlin.Long, `memberId`: kotlin.Long): kotlin.String?
+    
+    fun `getMemberPubkey`(`chatId`: kotlin.Long, `memberId`: kotlin.Long): kotlin.ByteArray?
+    
+    fun `getMembers`(`chatId`: kotlin.Long): List<StoredMember>
+    
+    fun `getMessage`(`id`: kotlin.Long): StoredMessage?
+    
+    fun `getMessageByGuid`(`guid`: kotlin.Long): StoredMessage?
+    
+    fun `getMessages`(`contactId`: kotlin.Long, `beforeId`: kotlin.Long, `limit`: kotlin.Int): List<StoredMessage>
+    
+    fun `getOnlineMemberCount`(`chatId`: kotlin.Long): kotlin.Int
+    
+    fun `getPeerAddresses`(`pubkey`: kotlin.ByteArray): List<PeerAddress>
+    
+    fun `getPendingInvites`(): List<StoredInvite>
+    
+    fun `getReactionsForGroupMessage`(`chatId`: kotlin.Long, `targetGuid`: kotlin.Long): List<Reaction>
+    
+    fun `getReactionsForMessage`(`contactId`: kotlin.Long, `targetGuid`: kotlin.Long): List<Reaction>
+    
+    fun `getUndeliveredGroupMessages`(`chatId`: kotlin.Long): List<StoredGroupMessage>
+    
+    fun `getUnreadCount`(`contactId`: kotlin.Long): kotlin.Int
+    
+    fun `getUnseenReactionsCount`(`contactId`: kotlin.Long): kotlin.UInt
+    
+    fun `getUnsentMessages`(`contactPubkey`: kotlin.ByteArray): List<kotlin.Long>
+    
+    fun `getUserGroupReaction`(`chatId`: kotlin.Long, `targetGuid`: kotlin.Long): kotlin.String?
+    
+    fun `getUserReaction`(`contactId`: kotlin.Long, `targetGuid`: kotlin.Long): kotlin.String?
+    
+    fun `isContactBlocked`(`pubkey`: kotlin.ByteArray): kotlin.Boolean
+    
+    fun `isContactMuted`(`id`: kotlin.Long): kotlin.Boolean
+    
+    fun `isMemberOnline`(`chatId`: kotlin.Long, `pubkey`: kotlin.ByteArray): kotlin.Boolean
+    
+    fun `markAllGroupRead`(`chatId`: kotlin.Long)
+    
+    fun `markAllRead`(`contactId`: kotlin.Long)
+    
+    fun `markGroupReactionAsSeen`(`chatId`: kotlin.Long, `reactionGuid`: kotlin.Long)
+    
+    fun `markGroupReactionsAsSeenForMessage`(`chatId`: kotlin.Long, `targetGuid`: kotlin.Long): kotlin.UInt
+    
+    fun `markReactionAsSeen`(`contactId`: kotlin.Long, `reactionGuid`: kotlin.Long)
+    
+    fun `markReactionsAsSeenForMessage`(`contactId`: kotlin.Long, `targetGuid`: kotlin.Long): kotlin.UInt
+    
+    fun `migrateFromAndroid`(`oldDbPath`: kotlin.String): kotlin.Boolean
+    
+    fun `removeContact`(`id`: kotlin.Long)
+    
+    fun `removeExpiredAddresses`(): kotlin.Int
+    
+    fun `renameContact`(`id`: kotlin.Long, `name`: kotlin.String, `isLocalRename`: kotlin.Boolean)
+    
+    fun `resetGroupUnread`(`chatId`: kotlin.Long)
+    
+    fun `saveDraft`(`chatType`: kotlin.Int, `chatId`: kotlin.Long, `text`: kotlin.String?, `mediaUri`: kotlin.String?, `mediaType`: kotlin.Int)
+    
+    fun `saveGroupChat`(`chatId`: kotlin.Long, `name`: kotlin.String, `description`: kotlin.String, `avatarBytes`: kotlin.ByteArray?, `mediatorPubkey`: kotlin.ByteArray, `ownerPubkey`: kotlin.ByteArray, `sharedKey`: kotlin.ByteArray)
+    
+    fun `saveGroupInvite`(`chatId`: kotlin.Long, `inviteId`: kotlin.Long, `fromPubkey`: kotlin.ByteArray, `timestamp`: kotlin.Long, `name`: kotlin.String, `description`: kotlin.String, `avatarBytes`: kotlin.ByteArray?, `encryptedData`: kotlin.ByteArray, `mediatorPubkey`: kotlin.ByteArray): kotlin.Long
+    
+    fun `savePeerAddress`(`pubkey`: kotlin.ByteArray, `address`: kotlin.String, `port`: kotlin.Int, `clientId`: kotlin.Int, `priority`: kotlin.Int, `expiration`: kotlin.Long)
+    
+    fun `setContactMuted`(`id`: kotlin.Long, `muted`: kotlin.Boolean)
+    
+    fun `setGroupChatMuted`(`chatId`: kotlin.Long, `muted`: kotlin.Boolean)
+    
+    fun `setGroupChatReadOnly`(`chatId`: kotlin.Long, `readOnly`: kotlin.Boolean)
+    
+    fun `setGroupMessageDelivered`(`chatId`: kotlin.Long, `guid`: kotlin.Long, `delivered`: kotlin.Boolean)
+    
+    fun `setGroupMessageRead`(`chatId`: kotlin.Long, `id`: kotlin.Long, `read`: kotlin.Boolean)
+    
+    fun `setMessageDelivered`(`contactPubkey`: kotlin.ByteArray, `guid`: kotlin.Long, `delivered`: kotlin.Boolean)
+    
+    fun `setMessageRead`(`contactId`: kotlin.Long, `messageId`: kotlin.Long, `read`: kotlin.Boolean)
+    
+    fun `unblockContact`(`pubkey`: kotlin.ByteArray)
+    
+    fun `updateAccountAvatar`(`id`: kotlin.Int, `avatarBytes`: kotlin.ByteArray): kotlin.String
+    
+    fun `updateAccountInfo`(`id`: kotlin.Int, `info`: kotlin.String)
+    
+    fun `updateAccountName`(`id`: kotlin.Int, `name`: kotlin.String)
+    
+    fun `updateContactAvatar`(`id`: kotlin.Long, `avatarBytes`: kotlin.ByteArray): kotlin.String?
+    
+    fun `updateContactInfo`(`id`: kotlin.Long, `info`: kotlin.String)
+    
+    fun `updateGroupChatAvatar`(`chatId`: kotlin.Long, `avatarBytes`: kotlin.ByteArray): kotlin.String?
+    
+    fun `updateGroupChatDescription`(`chatId`: kotlin.Long, `description`: kotlin.String)
+    
+    fun `updateGroupChatName`(`chatId`: kotlin.Long, `name`: kotlin.String)
+    
+    fun `updateGroupMessageData`(`chatId`: kotlin.Long, `guid`: kotlin.Long, `data`: kotlin.ByteArray)
+    
+    fun `updateGroupMessageServerId`(`chatId`: kotlin.Long, `guid`: kotlin.Long, `serverMsgId`: kotlin.Long)
+    
+    fun `updateInviteStatus`(`inviteId`: kotlin.Long, `status`: kotlin.Int)
+    
+    fun `updateMemberInfo`(`chatId`: kotlin.Long, `pubkey`: kotlin.ByteArray, `nickname`: kotlin.String?, `info`: kotlin.String?, `avatarBytes`: kotlin.ByteArray?): kotlin.String?
+    
+    fun `updateMemberOnline`(`chatId`: kotlin.Long, `pubkey`: kotlin.ByteArray, `online`: kotlin.Boolean, `lastSeen`: kotlin.Long)
+    
+    fun `updateMembersBulk`(`chatId`: kotlin.Long, `members`: List<MemberUpdate>)
+    
+    fun `updateMessageData`(`guid`: kotlin.Long, `data`: kotlin.ByteArray)
+    
     companion object
 }
 
-/**
- * Manages connections to one or more mediator servers.
- *
- * Shares the Yggdrasil identity from an existing `PeerNode`.
- * All methods are thread-safe.
- */
-open class MediatorNode : Disposable, AutoCloseable, MediatorNodeInterface {
+open class MimirStorage: Disposable, AutoCloseable, MimirStorageInterface
+{
 
     @Suppress("UNUSED_PARAMETER")
-            /**
-             * @suppress
-             */
+    /**
+     * @suppress
+     */
     constructor(withHandle: UniffiWithHandle, handle: Long) {
         this.handle = handle
         this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
@@ -3068,24 +4612,14 @@ open class MediatorNode : Disposable, AutoCloseable, MediatorNodeInterface {
         this.handle = 0
         this.cleanable = null
     }
-
-    /**
-     * Create and start the mediator node.
-     *
-     * `peer_node`      – Running PeerNode (its Ygg node + runtime are shared).
-     * `mediator_port`  – Port mediator servers listen on.
-     * `event_listener` – Receives all mediator events.
-     */
-    constructor(peerNode: PeerNode, mediatorPort: UShort, eventListener: MediatorEventListener) :
-            this(
-                UniffiWithHandle,
-                uniffiRustCallWithError(MimirException) { _status ->
-                    UniffiLib.uniffi_mimir_fn_constructor_mediatornode_new(
-
-                        FfiConverterTypePeerNode.lower(peerNode), FfiConverterUShort.lower(mediatorPort), FfiConverterTypeMediatorEventListener.lower(eventListener), _status
-                    )
-                }
-            )
+    constructor(`dataDir`: kotlin.String) :
+        this(UniffiWithHandle, 
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_constructor_mimirstorage_new(
+    
+        FfiConverterString.lower(`dataDir`),_status)
+}
+    )
 
     protected val handle: Long
     protected val cleanable: UniffiCleaner.Cleanable?
@@ -3120,7 +4654,7 @@ open class MediatorNode : Disposable, AutoCloseable, MediatorNodeInterface {
             if (c == Long.MAX_VALUE) {
                 throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
             }
-        } while (!this.callCounter.compareAndSet(c, c + 1L))
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
         // Now we can safely do the method call without the handle being freed concurrently.
         try {
             return block(this.uniffiCloneHandle())
@@ -3141,7 +4675,7 @@ open class MediatorNode : Disposable, AutoCloseable, MediatorNodeInterface {
                 return;
             }
             uniffiRustCall { status ->
-                UniffiLib.uniffi_mimir_fn_free_mediatornode(handle, status)
+                UniffiLib.uniffi_mimir_fn_free_mimirstorage(handle, status)
             }
         }
     }
@@ -3154,1154 +4688,1542 @@ open class MediatorNode : Disposable, AutoCloseable, MediatorNodeInterface {
             throw InternalException("uniffiCloneHandle() called on NoHandle object");
         }
         return uniffiRustCall() { status ->
-            UniffiLib.uniffi_mimir_fn_clone_mediatornode(handle, status)
+            UniffiLib.uniffi_mimir_fn_clone_mimirstorage(handle, status)
         }
     }
 
-
-    @Throws(MimirException::class)
-    override fun addUser(mediatorPubkey: ByteArray, chatId: Long, userPubkey: ByteArray) =
-        callWithHandle {
-            uniffiRustCallWithError(MimirException) { _status ->
-                UniffiLib.uniffi_mimir_fn_method_mediatornode_add_user(
-                    it,
-                    FfiConverterByteArray.lower(mediatorPubkey), FfiConverterLong.lower(chatId), FfiConverterByteArray.lower(userPubkey), _status
-                )
-            }
-        }
-
-
-    /**
-     * Change a member's permission flags (ban, promote, demote).
-     */
-    @Throws(MimirException::class)
-    override fun changeMemberStatus(mediatorPubkey: ByteArray, chatId: Long, userPubkey: ByteArray, newPermissions: UByte) =
-        callWithHandle {
-            uniffiRustCallWithError(MimirException) { _status ->
-                UniffiLib.uniffi_mimir_fn_method_mediatornode_change_member_status(
-                    it,
-                    FfiConverterByteArray.lower(mediatorPubkey), FfiConverterLong.lower(chatId), FfiConverterByteArray.lower(userPubkey), FfiConverterUByte.lower(newPermissions), _status
-                )
-            }
-        }
-
-
-    /**
-     * Probe all live mediator connections after Yggdrasil connectivity restores.
-     */
-    override fun checkConnections() =
-        callWithHandle {
-            uniffiRustCall() { _status ->
-                UniffiLib.uniffi_mimir_fn_method_mediatornode_check_connections(
-                    it,
-                    _status
-                )
-            }
-        }
-
-
-    /**
-     * Dial a mediator.  Returns immediately; on_connected fires on success.
-     */
-    @Throws(MimirException::class)
-    override fun connectToMediator(mediatorPubkey: ByteArray) =
-        callWithHandle {
-            uniffiRustCallWithError(MimirException) { _status ->
-                UniffiLib.uniffi_mimir_fn_method_mediatornode_connect_to_mediator(
-                    it,
-                    FfiConverterByteArray.lower(mediatorPubkey), _status
-                )
-            }
-        }
-
-
-    /**
-     * Create a new group chat (includes proof-of-work; may take a few seconds).
-     * Returns the mediator-assigned chat ID.
-     */
-    @Throws(MimirException::class)
-    override fun createChat(mediatorPubkey: ByteArray, name: String, description: String, avatar: ByteArray?): Long {
-        return FfiConverterLong.lift(
-            callWithHandle {
-                uniffiRustCallWithError(MimirException) { _status ->
-                    UniffiLib.uniffi_mimir_fn_method_mediatornode_create_chat(
-                        it,
-                        FfiConverterByteArray.lower(mediatorPubkey), FfiConverterString.lower(name), FfiConverterString.lower(description), FfiConverterOptionalByteArray.lower(avatar), _status
-                    )
-                }
-            }
-        )
+    
+    @Throws(MimirException::class)override fun `acceptContactRequest`(`requestId`: kotlin.Long): kotlin.Long {
+            return FfiConverterLong.lift(
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_accept_contact_request(
+        it,
+        FfiConverterLong.lower(`requestId`),_status)
+}
     }
-
-
-    @Throws(MimirException::class)
-    override fun deleteChat(mediatorPubkey: ByteArray, chatId: Long) =
-        callWithHandle {
-            uniffiRustCallWithError(MimirException) { _status ->
-                UniffiLib.uniffi_mimir_fn_method_mediatornode_delete_chat(
-                    it,
-                    FfiConverterByteArray.lower(mediatorPubkey), FfiConverterLong.lower(chatId), _status
-                )
-            }
-        }
-
-
-    /**
-     * Delete a message.  `guid` is the client-generated GUID originally passed to
-     * send_group_message — NOT the server-assigned message_id returned by it.
-     */
-    @Throws(MimirException::class)
-    override fun deleteMessage(mediatorPubkey: ByteArray, chatId: Long, guid: Long) =
-        callWithHandle {
-            uniffiRustCallWithError(MimirException) { _status ->
-                UniffiLib.uniffi_mimir_fn_method_mediatornode_delete_message(
-                    it,
-                    FfiConverterByteArray.lower(mediatorPubkey), FfiConverterLong.lower(chatId), FfiConverterLong.lower(guid), _status
-                )
-            }
-        }
-
-
-    @Throws(MimirException::class)
-    override fun deleteUser(mediatorPubkey: ByteArray, chatId: Long, userPubkey: ByteArray) =
-        callWithHandle {
-            uniffiRustCallWithError(MimirException) { _status ->
-                UniffiLib.uniffi_mimir_fn_method_mediatornode_delete_user(
-                    it,
-                    FfiConverterByteArray.lower(mediatorPubkey), FfiConverterLong.lower(chatId), FfiConverterByteArray.lower(userPubkey), _status
-                )
-            }
-        }
-
-
-    @Throws(MimirException::class)
-    override fun getLastMessageId(mediatorPubkey: ByteArray, chatId: Long): Long {
-        return FfiConverterLong.lift(
-            callWithHandle {
-                uniffiRustCallWithError(MimirException) { _status ->
-                    UniffiLib.uniffi_mimir_fn_method_mediatornode_get_last_message_id(
-                        it,
-                        FfiConverterByteArray.lower(mediatorPubkey), FfiConverterLong.lower(chatId), _status
-                    )
-                }
-            }
-        )
+    )
     }
+    
 
-
-    @Throws(MimirException::class)
-    override fun getMembers(mediatorPubkey: ByteArray, chatId: Long): List<GroupMember> {
-        return FfiConverterSequenceTypeGroupMember.lift(
-            callWithHandle {
-                uniffiRustCallWithError(MimirException) { _status ->
-                    UniffiLib.uniffi_mimir_fn_method_mediatornode_get_members(
-                        it,
-                        FfiConverterByteArray.lower(mediatorPubkey), FfiConverterLong.lower(chatId), _status
-                    )
-                }
-            }
-        )
+    
+    @Throws(MimirException::class)override fun `addContact`(`pubkey`: kotlin.ByteArray, `name`: kotlin.String): kotlin.Long {
+            return FfiConverterLong.lift(
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_add_contact(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),FfiConverterString.lower(`name`),_status)
+}
     }
-
-
-    @Throws(MimirException::class)
-    override fun getMembersInfo(mediatorPubkey: ByteArray, chatId: Long, sinceTimestamp: Long): List<GroupMemberInfo> {
-        return FfiConverterSequenceTypeGroupMemberInfo.lift(
-            callWithHandle {
-                uniffiRustCallWithError(MimirException) { _status ->
-                    UniffiLib.uniffi_mimir_fn_method_mediatornode_get_members_info(
-                        it,
-                        FfiConverterByteArray.lower(mediatorPubkey), FfiConverterLong.lower(chatId), FfiConverterLong.lower(sinceTimestamp), _status
-                    )
-                }
-            }
-        )
+    )
     }
+    
 
-
-    @Throws(MimirException::class)
-    override fun getMessagesSince(mediatorPubkey: ByteArray, chatId: Long, sinceId: Long, limit: UInt): List<GroupMessage> {
-        return FfiConverterSequenceTypeGroupMessage.lift(
-            callWithHandle {
-                uniffiRustCallWithError(MimirException) { _status ->
-                    UniffiLib.uniffi_mimir_fn_method_mediatornode_get_messages_since(
-                        it,
-                        FfiConverterByteArray.lower(mediatorPubkey), FfiConverterLong.lower(chatId), FfiConverterLong.lower(sinceId), FfiConverterUInt.lower(limit), _status
-                    )
-                }
-            }
-        )
+    
+    @Throws(MimirException::class)override fun `addContactRequest`(`pubkey`: kotlin.ByteArray, `message`: kotlin.String, `nickname`: kotlin.String, `info`: kotlin.String, `avatarBytes`: kotlin.ByteArray?): kotlin.Long {
+            return FfiConverterLong.lift(
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_add_contact_request(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),FfiConverterString.lower(`message`),FfiConverterString.lower(`nickname`),FfiConverterString.lower(`info`),FfiConverterOptionalByteArray.lower(`avatarBytes`),_status)
+}
     }
-
-
-    @Throws(MimirException::class)
-    override fun leaveChat(mediatorPubkey: ByteArray, chatId: Long) =
-        callWithHandle {
-            uniffiRustCallWithError(MimirException) { _status ->
-                UniffiLib.uniffi_mimir_fn_method_mediatornode_leave_chat(
-                    it,
-                    FfiConverterByteArray.lower(mediatorPubkey), FfiConverterLong.lower(chatId), _status
-                )
-            }
-        }
-
-
-    @Throws(MimirException::class)
-    override fun respondToInvite(mediatorPubkey: ByteArray, chatId: Long, inviteId: Long, accept: Boolean) =
-        callWithHandle {
-            uniffiRustCallWithError(MimirException) { _status ->
-                UniffiLib.uniffi_mimir_fn_method_mediatornode_respond_to_invite(
-                    it,
-                    FfiConverterByteArray.lower(mediatorPubkey), FfiConverterLong.lower(chatId), FfiConverterLong.lower(inviteId), FfiConverterBoolean.lower(accept), _status
-                )
-            }
-        }
-
-
-    /**
-     * Send an encrypted message blob.  Returns the server-assigned message ID.
-     * `timestamp` must be milliseconds since epoch (e.g. System.currentTimeMillis()).
-     * Rust converts it to seconds internally before sending.
-     */
-    @Throws(MimirException::class)
-    override fun sendGroupMessage(mediatorPubkey: ByteArray, chatId: Long, guid: Long, timestamp: Long, `data`: ByteArray): Long {
-        return FfiConverterLong.lift(
-            callWithHandle {
-                uniffiRustCallWithError(MimirException) { _status ->
-                    UniffiLib.uniffi_mimir_fn_method_mediatornode_send_group_message(
-                        it,
-                        FfiConverterByteArray.lower(mediatorPubkey), FfiConverterLong.lower(chatId), FfiConverterLong.lower(guid), FfiConverterLong.lower(timestamp), FfiConverterByteArray.lower(`data`), _status
-                    )
-                }
-            }
-        )
+    )
     }
+    
 
-
-    /**
-     * Send an invite to `recipient_pubkey`.
-     * `encrypted_data` is the AES-encrypted shared key for the recipient.
-     */
-    @Throws(MimirException::class)
-    override fun sendInvite(mediatorPubkey: ByteArray, chatId: Long, recipientPubkey: ByteArray, encryptedData: ByteArray) =
-        callWithHandle {
-            uniffiRustCallWithError(MimirException) { _status ->
-                UniffiLib.uniffi_mimir_fn_method_mediatornode_send_invite(
-                    it,
-                    FfiConverterByteArray.lower(mediatorPubkey), FfiConverterLong.lower(chatId), FfiConverterByteArray.lower(recipientPubkey), FfiConverterByteArray.lower(encryptedData), _status
-                )
-            }
-        }
-
-
-    /**
-     * Stop all mediator connections.
-     */
-    override fun stop() =
-        callWithHandle {
-            uniffiRustCall() { _status ->
-                UniffiLib.uniffi_mimir_fn_method_mediatornode_stop(
-                    it,
-                    _status
-                )
-            }
-        }
-
-
-    /**
-     * Subscribe to push messages for `chat_id`.
-     * Returns the server's last message ID.
-     */
-    @Throws(MimirException::class)
-    override fun subscribe(mediatorPubkey: ByteArray, chatId: Long): Long {
-        return FfiConverterLong.lift(
-            callWithHandle {
-                uniffiRustCallWithError(MimirException) { _status ->
-                    UniffiLib.uniffi_mimir_fn_method_mediatornode_subscribe(
-                        it,
-                        FfiConverterByteArray.lower(mediatorPubkey), FfiConverterLong.lower(chatId), _status
-                    )
-                }
-            }
-        )
+    
+    @Throws(MimirException::class)override fun `addGroupMessage`(`chatId`: kotlin.Long, `serverMsgId`: kotlin.Long, `guid`: kotlin.Long, `authorPubkey`: kotlin.ByteArray, `sendTime`: kotlin.Long, `msgType`: kotlin.Int, `system`: kotlin.Boolean, `data`: kotlin.ByteArray, `replyTo`: kotlin.Long, `fromSync`: kotlin.Boolean): kotlin.Long {
+            return FfiConverterLong.lift(
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_add_group_message(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`serverMsgId`),FfiConverterLong.lower(`guid`),FfiConverterByteArray.lower(`authorPubkey`),FfiConverterLong.lower(`sendTime`),FfiConverterInt.lower(`msgType`),FfiConverterBoolean.lower(`system`),FfiConverterByteArray.lower(`data`),FfiConverterLong.lower(`replyTo`),FfiConverterBoolean.lower(`fromSync`),_status)
+}
     }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `addMessage`(`contactPubkey`: kotlin.ByteArray, `guid`: kotlin.Long, `replyTo`: kotlin.Long, `incoming`: kotlin.Boolean, `delivered`: kotlin.Boolean, `sendTime`: kotlin.Long, `editTime`: kotlin.Long, `msgType`: kotlin.Int, `data`: kotlin.ByteArray): kotlin.Long {
+            return FfiConverterLong.lift(
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_add_message(
+        it,
+        FfiConverterByteArray.lower(`contactPubkey`),FfiConverterLong.lower(`guid`),FfiConverterLong.lower(`replyTo`),FfiConverterBoolean.lower(`incoming`),FfiConverterBoolean.lower(`delivered`),FfiConverterLong.lower(`sendTime`),FfiConverterLong.lower(`editTime`),FfiConverterInt.lower(`msgType`),FfiConverterByteArray.lower(`data`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `backupTo`(`destPath`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_backup_to(
+        it,
+        FfiConverterString.lower(`destPath`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `blockContact`(`pubkey`: kotlin.ByteArray)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_block_contact(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `changeGroupMessageGuid`(`chatId`: kotlin.Long, `oldGuid`: kotlin.Long, `newGuid`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_change_group_message_guid(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`oldGuid`),FfiConverterLong.lower(`newGuid`),_status)
+}
+    }
+    
+    
+
+    override fun `checkGroupMessageExists`(`chatId`: kotlin.Long, `guid`: kotlin.Long): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_check_group_message_exists(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`guid`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `checkpoint`()
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_checkpoint(
+        it,
+        _status)
+}
+    }
+    
+    
+
+    override fun `cleanupOldDrafts`(`maxAgeDays`: kotlin.Int): kotlin.Int {
+            return FfiConverterInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_cleanup_old_drafts(
+        it,
+        FfiConverterInt.lower(`maxAgeDays`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `clearContactHistory`(`contactId`: kotlin.Long): List<kotlin.String> {
+            return FfiConverterSequenceString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_clear_contact_history(
+        it,
+        FfiConverterLong.lower(`contactId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `clearGroupChatHistory`(`chatId`: kotlin.Long): List<kotlin.String> {
+            return FfiConverterSequenceString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_clear_group_chat_history(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `createAccount`(`id`: kotlin.Int, `privkey`: kotlin.ByteArray, `pubkey`: kotlin.ByteArray, `clientId`: kotlin.Int): StoredAccount {
+            return FfiConverterTypeStoredAccount.lift(
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_create_account(
+        it,
+        FfiConverterInt.lower(`id`),FfiConverterByteArray.lower(`privkey`),FfiConverterByteArray.lower(`pubkey`),FfiConverterInt.lower(`clientId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `deleteContactRequest`(`requestId`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_delete_contact_request(
+        it,
+        FfiConverterLong.lower(`requestId`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `deleteDraft`(`chatType`: kotlin.Int, `chatId`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_delete_draft(
+        it,
+        FfiConverterInt.lower(`chatType`),FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `deleteGroupChat`(`chatId`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_delete_group_chat(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `deleteGroupMessage`(`chatId`: kotlin.Long, `id`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_delete_group_message(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`id`),_status)
+}
+    }
+    
+    
+
+    override fun `deleteGroupMessageByGuid`(`chatId`: kotlin.Long, `guid`: kotlin.Long): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_delete_group_message_by_guid(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`guid`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `deleteInvite`(`inviteId`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_delete_invite(
+        it,
+        FfiConverterLong.lower(`inviteId`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `deleteMember`(`chatId`: kotlin.Long, `pubkey`: kotlin.ByteArray)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_delete_member(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterByteArray.lower(`pubkey`),_status)
+}
+    }
+    
+    
+
+    override fun `deleteMessage`(`id`: kotlin.Long): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_delete_message(
+        it,
+        FfiConverterLong.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `fixCorruptedGroupMessages`(): FixStats {
+            return FfiConverterTypeFixStats.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_fix_corrupted_group_messages(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `generateGuid`(`time`: kotlin.Long, `data`: kotlin.ByteArray): kotlin.Long {
+            return FfiConverterLong.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_generate_guid(
+        it,
+        FfiConverterLong.lower(`time`),FfiConverterByteArray.lower(`data`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getAccount`(`id`: kotlin.Int): StoredAccount? {
+            return FfiConverterOptionalTypeStoredAccount.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_account(
+        it,
+        FfiConverterInt.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getAccountUpdatedAt`(`id`: kotlin.Int): kotlin.Long {
+            return FfiConverterLong.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_account_updated_at(
+        it,
+        FfiConverterInt.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getAllFileItems`(): List<FileItem> {
+            return FfiConverterSequenceTypeFileItem.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_all_file_items(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getBlockedContacts`(): List<kotlin.ByteArray> {
+            return FfiConverterSequenceByteArray.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_blocked_contacts(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getContact`(`id`: kotlin.Long): StoredContact? {
+            return FfiConverterOptionalTypeStoredContact.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_contact(
+        it,
+        FfiConverterLong.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getContactByPubkey`(`pubkey`: kotlin.ByteArray): StoredContact? {
+            return FfiConverterOptionalTypeStoredContact.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_contact_by_pubkey(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getContactFlags`(`pubkey`: kotlin.ByteArray): kotlin.Int {
+            return FfiConverterInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_contact_flags(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getContactId`(`pubkey`: kotlin.ByteArray): kotlin.Long {
+            return FfiConverterLong.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_contact_id(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getContactRequests`(): List<StoredContactRequest> {
+            return FfiConverterSequenceTypeStoredContactRequest.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_contact_requests(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getContactUpdateTime`(`pubkey`: kotlin.ByteArray): kotlin.Long {
+            return FfiConverterLong.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_contact_update_time(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getContacts`(): List<StoredContact> {
+            return FfiConverterSequenceTypeStoredContact.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_contacts(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getContactsWithUnsent`(): List<kotlin.ByteArray> {
+            return FfiConverterSequenceByteArray.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_contacts_with_unsent(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getDraft`(`chatType`: kotlin.Int, `chatId`: kotlin.Long): StoredDraft? {
+            return FfiConverterOptionalTypeStoredDraft.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_draft(
+        it,
+        FfiConverterInt.lower(`chatType`),FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getFirstUnreadGroupMessageId`(`chatId`: kotlin.Long): kotlin.Long? {
+            return FfiConverterOptionalLong.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_first_unread_group_message_id(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getFirstUnreadId`(`contactId`: kotlin.Long): kotlin.Long? {
+            return FfiConverterOptionalLong.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_first_unread_id(
+        it,
+        FfiConverterLong.lower(`contactId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getFirstUnseenGroupReaction`(`chatId`: kotlin.Long): ReactionTarget? {
+            return FfiConverterOptionalTypeReactionTarget.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_first_unseen_group_reaction(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getFirstUnseenReaction`(`contactId`: kotlin.Long): ReactionTarget? {
+            return FfiConverterOptionalTypeReactionTarget.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_first_unseen_reaction(
+        it,
+        FfiConverterLong.lower(`contactId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getGroupChat`(`chatId`: kotlin.Long): StoredGroupChat? {
+            return FfiConverterOptionalTypeStoredGroupChat.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_group_chat(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getGroupChats`(): List<StoredGroupChat> {
+            return FfiConverterSequenceTypeStoredGroupChat.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_group_chats(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getGroupMessage`(`chatId`: kotlin.Long, `id`: kotlin.Long): StoredMessage? {
+            return FfiConverterOptionalTypeStoredMessage.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_group_message(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getGroupMessageByGuid`(`chatId`: kotlin.Long, `guid`: kotlin.Long): StoredMessage? {
+            return FfiConverterOptionalTypeStoredMessage.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_group_message_by_guid(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`guid`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getGroupMessages`(`chatId`: kotlin.Long, `beforeId`: kotlin.Long, `limit`: kotlin.Int): List<StoredGroupMessage> {
+            return FfiConverterSequenceTypeStoredGroupMessage.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_group_messages(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`beforeId`),FfiConverterInt.lower(`limit`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getGroupUnseenReactionsCount`(`chatId`: kotlin.Long): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_group_unseen_reactions_count(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getKnownMediators`(): List<kotlin.ByteArray> {
+            return FfiConverterSequenceByteArray.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_known_mediators(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getLastGroupMessage`(`chatId`: kotlin.Long): StoredMessage? {
+            return FfiConverterOptionalTypeStoredMessage.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_last_group_message(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getLastMessage`(`contactId`: kotlin.Long): StoredMessage? {
+            return FfiConverterOptionalTypeStoredMessage.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_last_message(
+        it,
+        FfiConverterLong.lower(`contactId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getLatestMemberUpdate`(`chatId`: kotlin.Long): kotlin.Long {
+            return FfiConverterLong.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_latest_member_update(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getMaxServerMsgId`(`chatId`: kotlin.Long): kotlin.Long {
+            return FfiConverterLong.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_max_server_msg_id(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getMemberCount`(`chatId`: kotlin.Long): kotlin.Int {
+            return FfiConverterInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_member_count(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getMemberInfo`(`chatId`: kotlin.Long, `pubkey`: kotlin.ByteArray): StoredMember? {
+            return FfiConverterOptionalTypeStoredMember.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_member_info(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterByteArray.lower(`pubkey`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getMemberNickname`(`chatId`: kotlin.Long, `memberId`: kotlin.Long): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_member_nickname(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`memberId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getMemberPubkey`(`chatId`: kotlin.Long, `memberId`: kotlin.Long): kotlin.ByteArray? {
+            return FfiConverterOptionalByteArray.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_member_pubkey(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`memberId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getMembers`(`chatId`: kotlin.Long): List<StoredMember> {
+            return FfiConverterSequenceTypeStoredMember.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_members(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getMessage`(`id`: kotlin.Long): StoredMessage? {
+            return FfiConverterOptionalTypeStoredMessage.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_message(
+        it,
+        FfiConverterLong.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getMessageByGuid`(`guid`: kotlin.Long): StoredMessage? {
+            return FfiConverterOptionalTypeStoredMessage.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_message_by_guid(
+        it,
+        FfiConverterLong.lower(`guid`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getMessages`(`contactId`: kotlin.Long, `beforeId`: kotlin.Long, `limit`: kotlin.Int): List<StoredMessage> {
+            return FfiConverterSequenceTypeStoredMessage.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_messages(
+        it,
+        FfiConverterLong.lower(`contactId`),FfiConverterLong.lower(`beforeId`),FfiConverterInt.lower(`limit`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getOnlineMemberCount`(`chatId`: kotlin.Long): kotlin.Int {
+            return FfiConverterInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_online_member_count(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getPeerAddresses`(`pubkey`: kotlin.ByteArray): List<PeerAddress> {
+            return FfiConverterSequenceTypePeerAddress.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_peer_addresses(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getPendingInvites`(): List<StoredInvite> {
+            return FfiConverterSequenceTypeStoredInvite.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_pending_invites(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getReactionsForGroupMessage`(`chatId`: kotlin.Long, `targetGuid`: kotlin.Long): List<Reaction> {
+            return FfiConverterSequenceTypeReaction.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_reactions_for_group_message(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`targetGuid`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getReactionsForMessage`(`contactId`: kotlin.Long, `targetGuid`: kotlin.Long): List<Reaction> {
+            return FfiConverterSequenceTypeReaction.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_reactions_for_message(
+        it,
+        FfiConverterLong.lower(`contactId`),FfiConverterLong.lower(`targetGuid`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getUndeliveredGroupMessages`(`chatId`: kotlin.Long): List<StoredGroupMessage> {
+            return FfiConverterSequenceTypeStoredGroupMessage.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_undelivered_group_messages(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getUnreadCount`(`contactId`: kotlin.Long): kotlin.Int {
+            return FfiConverterInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_unread_count(
+        it,
+        FfiConverterLong.lower(`contactId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getUnseenReactionsCount`(`contactId`: kotlin.Long): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_unseen_reactions_count(
+        it,
+        FfiConverterLong.lower(`contactId`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getUnsentMessages`(`contactPubkey`: kotlin.ByteArray): List<kotlin.Long> {
+            return FfiConverterSequenceLong.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_unsent_messages(
+        it,
+        FfiConverterByteArray.lower(`contactPubkey`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getUserGroupReaction`(`chatId`: kotlin.Long, `targetGuid`: kotlin.Long): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_user_group_reaction(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`targetGuid`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `getUserReaction`(`contactId`: kotlin.Long, `targetGuid`: kotlin.Long): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_get_user_reaction(
+        it,
+        FfiConverterLong.lower(`contactId`),FfiConverterLong.lower(`targetGuid`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `isContactBlocked`(`pubkey`: kotlin.ByteArray): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_is_contact_blocked(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `isContactMuted`(`id`: kotlin.Long): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_is_contact_muted(
+        it,
+        FfiConverterLong.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `isMemberOnline`(`chatId`: kotlin.Long, `pubkey`: kotlin.ByteArray): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_is_member_online(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterByteArray.lower(`pubkey`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `markAllGroupRead`(`chatId`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_mark_all_group_read(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `markAllRead`(`contactId`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_mark_all_read(
+        it,
+        FfiConverterLong.lower(`contactId`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `markGroupReactionAsSeen`(`chatId`: kotlin.Long, `reactionGuid`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_mark_group_reaction_as_seen(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`reactionGuid`),_status)
+}
+    }
+    
+    
+
+    override fun `markGroupReactionsAsSeenForMessage`(`chatId`: kotlin.Long, `targetGuid`: kotlin.Long): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_mark_group_reactions_as_seen_for_message(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`targetGuid`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `markReactionAsSeen`(`contactId`: kotlin.Long, `reactionGuid`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_mark_reaction_as_seen(
+        it,
+        FfiConverterLong.lower(`contactId`),FfiConverterLong.lower(`reactionGuid`),_status)
+}
+    }
+    
+    
+
+    override fun `markReactionsAsSeenForMessage`(`contactId`: kotlin.Long, `targetGuid`: kotlin.Long): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_mark_reactions_as_seen_for_message(
+        it,
+        FfiConverterLong.lower(`contactId`),FfiConverterLong.lower(`targetGuid`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `migrateFromAndroid`(`oldDbPath`: kotlin.String): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_migrate_from_android(
+        it,
+        FfiConverterString.lower(`oldDbPath`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `removeContact`(`id`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_remove_contact(
+        it,
+        FfiConverterLong.lower(`id`),_status)
+}
+    }
+    
+    
+
+    override fun `removeExpiredAddresses`(): kotlin.Int {
+            return FfiConverterInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_remove_expired_addresses(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `renameContact`(`id`: kotlin.Long, `name`: kotlin.String, `isLocalRename`: kotlin.Boolean)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_rename_contact(
+        it,
+        FfiConverterLong.lower(`id`),FfiConverterString.lower(`name`),FfiConverterBoolean.lower(`isLocalRename`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `resetGroupUnread`(`chatId`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_reset_group_unread(
+        it,
+        FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `saveDraft`(`chatType`: kotlin.Int, `chatId`: kotlin.Long, `text`: kotlin.String?, `mediaUri`: kotlin.String?, `mediaType`: kotlin.Int)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_save_draft(
+        it,
+        FfiConverterInt.lower(`chatType`),FfiConverterLong.lower(`chatId`),FfiConverterOptionalString.lower(`text`),FfiConverterOptionalString.lower(`mediaUri`),FfiConverterInt.lower(`mediaType`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `saveGroupChat`(`chatId`: kotlin.Long, `name`: kotlin.String, `description`: kotlin.String, `avatarBytes`: kotlin.ByteArray?, `mediatorPubkey`: kotlin.ByteArray, `ownerPubkey`: kotlin.ByteArray, `sharedKey`: kotlin.ByteArray)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_save_group_chat(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterString.lower(`name`),FfiConverterString.lower(`description`),FfiConverterOptionalByteArray.lower(`avatarBytes`),FfiConverterByteArray.lower(`mediatorPubkey`),FfiConverterByteArray.lower(`ownerPubkey`),FfiConverterByteArray.lower(`sharedKey`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `saveGroupInvite`(`chatId`: kotlin.Long, `inviteId`: kotlin.Long, `fromPubkey`: kotlin.ByteArray, `timestamp`: kotlin.Long, `name`: kotlin.String, `description`: kotlin.String, `avatarBytes`: kotlin.ByteArray?, `encryptedData`: kotlin.ByteArray, `mediatorPubkey`: kotlin.ByteArray): kotlin.Long {
+            return FfiConverterLong.lift(
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_save_group_invite(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`inviteId`),FfiConverterByteArray.lower(`fromPubkey`),FfiConverterLong.lower(`timestamp`),FfiConverterString.lower(`name`),FfiConverterString.lower(`description`),FfiConverterOptionalByteArray.lower(`avatarBytes`),FfiConverterByteArray.lower(`encryptedData`),FfiConverterByteArray.lower(`mediatorPubkey`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `savePeerAddress`(`pubkey`: kotlin.ByteArray, `address`: kotlin.String, `port`: kotlin.Int, `clientId`: kotlin.Int, `priority`: kotlin.Int, `expiration`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_save_peer_address(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),FfiConverterString.lower(`address`),FfiConverterInt.lower(`port`),FfiConverterInt.lower(`clientId`),FfiConverterInt.lower(`priority`),FfiConverterLong.lower(`expiration`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `setContactMuted`(`id`: kotlin.Long, `muted`: kotlin.Boolean)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_set_contact_muted(
+        it,
+        FfiConverterLong.lower(`id`),FfiConverterBoolean.lower(`muted`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `setGroupChatMuted`(`chatId`: kotlin.Long, `muted`: kotlin.Boolean)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_set_group_chat_muted(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterBoolean.lower(`muted`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `setGroupChatReadOnly`(`chatId`: kotlin.Long, `readOnly`: kotlin.Boolean)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_set_group_chat_read_only(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterBoolean.lower(`readOnly`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `setGroupMessageDelivered`(`chatId`: kotlin.Long, `guid`: kotlin.Long, `delivered`: kotlin.Boolean)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_set_group_message_delivered(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`guid`),FfiConverterBoolean.lower(`delivered`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `setGroupMessageRead`(`chatId`: kotlin.Long, `id`: kotlin.Long, `read`: kotlin.Boolean)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_set_group_message_read(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`id`),FfiConverterBoolean.lower(`read`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `setMessageDelivered`(`contactPubkey`: kotlin.ByteArray, `guid`: kotlin.Long, `delivered`: kotlin.Boolean)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_set_message_delivered(
+        it,
+        FfiConverterByteArray.lower(`contactPubkey`),FfiConverterLong.lower(`guid`),FfiConverterBoolean.lower(`delivered`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `setMessageRead`(`contactId`: kotlin.Long, `messageId`: kotlin.Long, `read`: kotlin.Boolean)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_set_message_read(
+        it,
+        FfiConverterLong.lower(`contactId`),FfiConverterLong.lower(`messageId`),FfiConverterBoolean.lower(`read`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `unblockContact`(`pubkey`: kotlin.ByteArray)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_unblock_contact(
+        it,
+        FfiConverterByteArray.lower(`pubkey`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `updateAccountAvatar`(`id`: kotlin.Int, `avatarBytes`: kotlin.ByteArray): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_update_account_avatar(
+        it,
+        FfiConverterInt.lower(`id`),FfiConverterByteArray.lower(`avatarBytes`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `updateAccountInfo`(`id`: kotlin.Int, `info`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_update_account_info(
+        it,
+        FfiConverterInt.lower(`id`),FfiConverterString.lower(`info`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `updateAccountName`(`id`: kotlin.Int, `name`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_update_account_name(
+        it,
+        FfiConverterInt.lower(`id`),FfiConverterString.lower(`name`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `updateContactAvatar`(`id`: kotlin.Long, `avatarBytes`: kotlin.ByteArray): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_update_contact_avatar(
+        it,
+        FfiConverterLong.lower(`id`),FfiConverterByteArray.lower(`avatarBytes`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `updateContactInfo`(`id`: kotlin.Long, `info`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_update_contact_info(
+        it,
+        FfiConverterLong.lower(`id`),FfiConverterString.lower(`info`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `updateGroupChatAvatar`(`chatId`: kotlin.Long, `avatarBytes`: kotlin.ByteArray): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_update_group_chat_avatar(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterByteArray.lower(`avatarBytes`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `updateGroupChatDescription`(`chatId`: kotlin.Long, `description`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_update_group_chat_description(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterString.lower(`description`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `updateGroupChatName`(`chatId`: kotlin.Long, `name`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_update_group_chat_name(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterString.lower(`name`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `updateGroupMessageData`(`chatId`: kotlin.Long, `guid`: kotlin.Long, `data`: kotlin.ByteArray)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_update_group_message_data(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`guid`),FfiConverterByteArray.lower(`data`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `updateGroupMessageServerId`(`chatId`: kotlin.Long, `guid`: kotlin.Long, `serverMsgId`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_update_group_message_server_id(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterLong.lower(`guid`),FfiConverterLong.lower(`serverMsgId`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `updateInviteStatus`(`inviteId`: kotlin.Long, `status`: kotlin.Int)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_update_invite_status(
+        it,
+        FfiConverterLong.lower(`inviteId`),FfiConverterInt.lower(`status`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `updateMemberInfo`(`chatId`: kotlin.Long, `pubkey`: kotlin.ByteArray, `nickname`: kotlin.String?, `info`: kotlin.String?, `avatarBytes`: kotlin.ByteArray?): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_update_member_info(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterByteArray.lower(`pubkey`),FfiConverterOptionalString.lower(`nickname`),FfiConverterOptionalString.lower(`info`),FfiConverterOptionalByteArray.lower(`avatarBytes`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `updateMemberOnline`(`chatId`: kotlin.Long, `pubkey`: kotlin.ByteArray, `online`: kotlin.Boolean, `lastSeen`: kotlin.Long)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_update_member_online(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterByteArray.lower(`pubkey`),FfiConverterBoolean.lower(`online`),FfiConverterLong.lower(`lastSeen`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `updateMembersBulk`(`chatId`: kotlin.Long, `members`: List<MemberUpdate>)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_update_members_bulk(
+        it,
+        FfiConverterLong.lower(`chatId`),FfiConverterSequenceTypeMemberUpdate.lower(`members`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(MimirException::class)override fun `updateMessageData`(`guid`: kotlin.Long, `data`: kotlin.ByteArray)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirstorage_update_message_data(
+        it,
+        FfiConverterLong.lower(`guid`),FfiConverterByteArray.lower(`data`),_status)
+}
+    }
+    
+    
+
+    
+
+    
 
 
-    @Throws(MimirException::class)
-    override fun updateChatInfo(mediatorPubkey: ByteArray, chatId: Long, name: String?, description: String?, avatar: ByteArray?) =
-        callWithHandle {
-            uniffiRustCallWithError(MimirException) { _status ->
-                UniffiLib.uniffi_mimir_fn_method_mediatornode_update_chat_info(
-                    it,
-                    FfiConverterByteArray.lower(mediatorPubkey), FfiConverterLong.lower(chatId), FfiConverterOptionalString.lower(name), FfiConverterOptionalString.lower(description), FfiConverterOptionalByteArray.lower(avatar), _status
-                )
-            }
-        }
-
-
-    /**
-     * Push our pre-encrypted profile blob to the mediator.
-     */
-    @Throws(MimirException::class)
-    override fun updateMemberInfo(mediatorPubkey: ByteArray, chatId: Long, encryptedBlob: ByteArray, timestamp: Long) =
-        callWithHandle {
-            uniffiRustCallWithError(MimirException) { _status ->
-                UniffiLib.uniffi_mimir_fn_method_mediatornode_update_member_info(
-                    it,
-                    FfiConverterByteArray.lower(mediatorPubkey), FfiConverterLong.lower(chatId), FfiConverterByteArray.lower(encryptedBlob), FfiConverterLong.lower(timestamp), _status
-                )
-            }
-        }
-
-
+    
+    
     /**
      * @suppress
      */
     companion object
-
+    
 }
 
 
 /**
  * @suppress
  */
-object FfiConverterTypeMediatorNode : FfiConverter<MediatorNode, Long> {
-    override fun lower(value: MediatorNode): Long {
+public object FfiConverterTypeMimirStorage: FfiConverter<MimirStorage, Long> {
+    override fun lower(value: MimirStorage): Long {
         return value.uniffiCloneHandle()
     }
 
-    override fun lift(value: Long): MediatorNode {
-        return MediatorNode(UniffiWithHandle, value)
+    override fun lift(value: Long): MimirStorage {
+        return MimirStorage(UniffiWithHandle, value)
     }
 
-    override fun read(buf: ByteBuffer): MediatorNode {
+    override fun read(buf: ByteBuffer): MimirStorage {
         return lift(buf.getLong())
     }
 
-    override fun allocationSize(value: MediatorNode) = 8UL
+    override fun allocationSize(value: MimirStorage) = 8UL
 
-    override fun write(value: MediatorNode, buf: ByteBuffer) {
+    override fun write(value: MimirStorage, buf: ByteBuffer) {
         buf.putLong(lower(value))
     }
 }
 
-
-// This template implements a class for working with a Rust struct via a handle
-// to the live Rust struct on the other side of the FFI.
-//
-// There's some subtlety here, because we have to be careful not to operate on a Rust
-// struct after it has been dropped, and because we must expose a public API for freeing
-// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
-//
-//   * Each instance holds an opaque handle to the underlying Rust struct.
-//     Method calls need to read this handle from the object's state and pass it in to
-//     the Rust FFI.
-//
-//   * When an instance is no longer needed, its handle should be passed to a
-//     special destructor function provided by the Rust FFI, which will drop the
-//     underlying Rust struct.
-//
-//   * Given an instance, calling code is expected to call the special
-//     `destroy` method in order to free it after use, either by calling it explicitly
-//     or by using a higher-level helper like the `use` method. Failing to do so risks
-//     leaking the underlying Rust struct.
-//
-//   * We can't assume that calling code will do the right thing, and must be prepared
-//     to handle Kotlin method calls executing concurrently with or even after a call to
-//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
-//
-//   * We must never allow Rust code to operate on the underlying Rust struct after
-//     the destructor has been called, and must never call the destructor more than once.
-//     Doing so may trigger memory unsafety.
-//
-//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
-//     is implemented to call the destructor when the Kotlin object becomes unreachable.
-//     This is done in a background thread. This is not a panacea, and client code should be aware that
-//      1. the thread may starve if some there are objects that have poorly performing
-//     `drop` methods or do significant work in their `drop` methods.
-//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
-//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
-//
-// If we try to implement this with mutual exclusion on access to the handle, there is the
-// possibility of a race between a method call and a concurrent call to `destroy`:
-//
-//    * Thread A starts a method call, reads the value of the handle, but is interrupted
-//      before it can pass the handle over the FFI to Rust.
-//    * Thread B calls `destroy` and frees the underlying Rust struct.
-//    * Thread A resumes, passing the already-read handle value to Rust and triggering
-//      a use-after-free.
-//
-// One possible solution would be to use a `ReadWriteLock`, with each method call taking
-// a read lock (and thus allowed to run concurrently) and the special `destroy` method
-// taking a write lock (and thus blocking on live method calls). However, we aim not to
-// generate methods with any hidden blocking semantics, and a `destroy` method that might
-// block if called incorrectly seems to meet that bar.
-//
-// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
-// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
-// has been called. These are updated according to the following rules:
-//
-//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
-//      The initial value for the flag is false.
-//
-//    * At the start of each method call, we atomically check the counter.
-//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
-//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
-//
-//    * At the end of each method call, we atomically decrement and check the counter.
-//      If it has reached zero then we destroy the underlying Rust struct.
-//
-//    * When `destroy` is called, we atomically flip the flag from false to true.
-//      If the flag was already true we silently fail.
-//      Otherwise we atomically decrement and check the counter.
-//      If it has reached zero then we destroy the underlying Rust struct.
-//
-// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
-// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
-//
-// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
-// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
-// of the underlying Rust code.
-//
-// This makes a cleaner a better alternative to _not_ calling `destroy()` as
-// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
-// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
-// thread may be starved, and the app will leak memory.
-//
-// In this case, `destroy`ing manually may be a better solution.
-//
-// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
-// with Rust peers are reclaimed:
-//
-// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
-// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
-// 3. The memory is reclaimed when the process terminates.
-//
-// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
-//
-
-
-/**
- * Top-level P2P node.  One instance per app lifetime.
- *
- * Constructor starts:
- *   - a Yggdrasil node with `signing_key` and `ygg_peers`
- *   - an accept loop listening on `peer_port` for inbound connections
- *
- * All methods are thread-safe.
- */
-interface PeerNodeInterface {
-
-    /**
-     * Add new peer to connect
-     */
-    fun addPeer(uri: String)
-
-    /**
-     * Announce our current ephemeral Yggdrasil address to all configured trackers.
-     *
-     * Returns immediately; I/O is done in the background.
-     * Call once at startup and periodically to keep the tracker entry alive.
-     */
-    fun announceToTrackers()
-
-    /**
-     * Accept (true) or reject (false) an incoming call from `pubkey`.
-     */
-    fun answerCall(pubkey: ByteArray, accept: Boolean)
-
-    /**
-     * Open an outbound connection to `pubkey`.
-     * Returns immediately; on_contact_connected fires when auth completes.
-     */
-    fun connectToContact(pubkey: ByteArray)
-
-    /**
-     * Close the connection to `pubkey` (if any).
-     */
-    fun disconnectContact(pubkey: ByteArray)
-
-    /**
-     * The 32-byte ephemeral seed used for the Yggdrasil node.
-     * Persist this and pass it back via `ephemeral_key` constructor param
-     * to keep the same routing address across restarts.
-     */
-    fun ephemeralKey(): ByteArray
-
-    /**
-     * Yggdrasil routing-path diagnostics, JSON-encoded.
-     */
-    fun getPathsJson(): String
-
-    /**
-     * Yggdrasil peer-connection diagnostics, JSON-encoded.
-     */
-    fun getPeersJson(): String
-
-    /**
-     * Yggdrasil spanning-tree diagnostics, JSON-encoded.
-     */
-    fun getTreeJson(): String
-
-    /**
-     * Hang up an active or ringing call with `pubkey`.
-     */
-    fun hangupCall(pubkey: ByteArray)
-
-    /**
-     * Our 32-byte Ed25519 public key (= Yggdrasil identity).
-     */
-    fun publicKey(): ByteArray
-
-    /**
-     * Remove one of added peers
-     */
-    fun removePeer(uri: String)
-
-    /**
-     * Request a file from a connected contact.
-     *
-     * `name` is the random filename from the message metadata.
-     * `hash` is the SHA-256 hex hash for verification.
-     * The contact will stream the file back as a FILE_RESPONSE delivered
-     * through `on_message_received` with msg_type = 4001.
-     */
-    fun requestFile(pubkey: ByteArray, guid: Long, name: String, hash: String, size: Long)
-
-    /**
-     * Yggdrasil spanning-tree diagnostics, JSON-encoded.
-     */
-    fun retryPeersNow()
-
-    /**
-     * Send a raw call-packet to `pubkey` during an active call.
-     */
-    fun sendCallPacket(pubkey: ByteArray, `data`: ByteArray)
-
-    /**
-     * Send a contact (friend) request to `pubkey` with an introductory message.
-     * The sender's profile info is automatically attached.
-     */
-    fun sendContactRequest(pubkey: ByteArray, message: String)
-
-    /**
-     * Send a contact response (accept/reject) to `pubkey`.
-     */
-    fun sendContactResponse(pubkey: ByteArray, accepted: Boolean)
-
-    /**
-     * Queue a message for delivery to `pubkey`.
-     * The connection must already exist (was established via connect_to_contact
-     * or an inbound connection triggered on_contact_connected).
-     *
-     * For text (msg_type 0 or 2): pass message content as `data`.
-     * For image/file (msg_type 1 or 3): pass only the JSON metadata as `data`.
-     * The recipient uses `request_file` to download the actual file separately.
-     */
-    fun sendMessage(pubkey: ByteArray, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, msgType: Int, `data`: ByteArray)
-
-    /**
-     * Inform the selector whether the device has general internet connectivity.
-     * false → suppress peer switching, let Yggdrasil reconnect on its own.
-     */
-    fun setNetworkOnline(online: Boolean)
-
-    /**
-     * Replace the list of managed Yggdrasil router peers (priority = slice order).
-     * Metrics are preserved for URIs that remain in the new list.
-     */
-    fun setYggPeers(peers: List<String>)
-
-    /**
-     * Initiate an outgoing call to `pubkey`.
-     */
-    fun startCall(pubkey: ByteArray)
-
-    /**
-     * Stop the node and close all connections.
-     */
-    fun stop()
-
-    /**
-     * Provide network interface info from Android ConnectivityManager.
-     * Enables multicast peer discovery on Android where getifaddrs() is restricted.
-     * Call with an empty list to clear external interfaces.
-     */
-    fun updateNetworkInterfaces(interfaces: List<AndroidNetworkInterface>)
-
-    /**
-     * Block until the active Yggdrasil peer info changes, then return it.
-     * Returns the current state if no change occurs within timeout_ms milliseconds.
-     * Designed for a long-poll loop to keep the notification bar up to date.
-     */
-    fun waitForPeerInfo(timeoutMs: ULong): YggPeerInfo
-
-    companion object
-}
-
-/**
- * Top-level P2P node.  One instance per app lifetime.
- *
- * Constructor starts:
- *   - a Yggdrasil node with `signing_key` and `ygg_peers`
- *   - an accept loop listening on `peer_port` for inbound connections
- *
- * All methods are thread-safe.
- */
-open class PeerNode : Disposable, AutoCloseable, PeerNodeInterface {
-
-    @Suppress("UNUSED_PARAMETER")
-            /**
-             * @suppress
-             */
-    constructor(withHandle: UniffiWithHandle, handle: Long) {
-        this.handle = handle
-        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
-    }
-
-    /**
-     * @suppress
-     *
-     * This constructor can be used to instantiate a fake object. Only used for tests. Any
-     * attempt to actually use an object constructed this way will fail as there is no
-     * connected Rust object.
-     */
-    @Suppress("UNUSED_PARAMETER")
-    constructor(noHandle: NoHandle) {
-        this.handle = 0
-        this.cleanable = null
-    }
-
-    /**
-     * Create and start the node.
-     *
-     * `signing_key`    – 32-byte Ed25519 seed (private key).
-     * `ygg_peers`      – Yggdrasil bootstrap peer URIs.
-     * `peer_port`      – Port used for P2P connections (listen + outbound).
-     * `event_listener` – Receives connection and message events.
-     * `info_provider`  – Supplies and stores contact profile info.
-     */
-    constructor(signingKey: ByteArray, ephemeralKey: ByteArray?, yggPeers: List<String>, peerPort: UShort, trackers: List<String>, multicast: Boolean, eventListener: PeerEventListener, infoProvider: InfoProvider) :
-            this(
-                UniffiWithHandle,
-                uniffiRustCallWithError(MimirException) { _status ->
-                    UniffiLib.uniffi_mimir_fn_constructor_peernode_new(
-
-                        FfiConverterByteArray.lower(signingKey), FfiConverterOptionalByteArray.lower(ephemeralKey), FfiConverterSequenceString.lower(yggPeers), FfiConverterUShort.lower(peerPort), FfiConverterSequenceString.lower(trackers), FfiConverterBoolean.lower(multicast), FfiConverterTypePeerEventListener.lower(eventListener), FfiConverterTypeInfoProvider.lower(infoProvider), _status
-                    )
-                }
-            )
-
-    protected val handle: Long
-    protected val cleanable: UniffiCleaner.Cleanable?
-
-    private val wasDestroyed = AtomicBoolean(false)
-    private val callCounter = AtomicLong(1)
-
-    override fun destroy() {
-        // Only allow a single call to this method.
-        // TODO: maybe we should log a warning if called more than once?
-        if (this.wasDestroyed.compareAndSet(false, true)) {
-            // This decrement always matches the initial count of 1 given at creation time.
-            if (this.callCounter.decrementAndGet() == 0L) {
-                cleanable?.clean()
-            }
-        }
-    }
-
-    @Synchronized
-    override fun close() {
-        this.destroy()
-    }
-
-    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
-        // Check and increment the call counter, to keep the object alive.
-        // This needs a compare-and-set retry loop in case of concurrent updates.
-        do {
-            val c = this.callCounter.get()
-            if (c == 0L) {
-                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
-            }
-            if (c == Long.MAX_VALUE) {
-                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
-            }
-        } while (!this.callCounter.compareAndSet(c, c + 1L))
-        // Now we can safely do the method call without the handle being freed concurrently.
-        try {
-            return block(this.uniffiCloneHandle())
-        } finally {
-            // This decrement always matches the increment we performed above.
-            if (this.callCounter.decrementAndGet() == 0L) {
-                cleanable?.clean()
-            }
-        }
-    }
-
-    // Use a static inner class instead of a closure so as not to accidentally
-    // capture `this` as part of the cleanable's action.
-    private class UniffiCleanAction(private val handle: Long) : Runnable {
-        override fun run() {
-            if (handle == 0.toLong()) {
-                // Fake object created with `NoHandle`, don't try to free.
-                return;
-            }
-            uniffiRustCall { status ->
-                UniffiLib.uniffi_mimir_fn_free_peernode(handle, status)
-            }
-        }
-    }
-
-    /**
-     * @suppress
-     */
-    fun uniffiCloneHandle(): Long {
-        if (handle == 0.toLong()) {
-            throw InternalException("uniffiCloneHandle() called on NoHandle object");
-        }
-        return uniffiRustCall() { status ->
-            UniffiLib.uniffi_mimir_fn_clone_peernode(handle, status)
-        }
-    }
-
-
-    /**
-     * Add new peer to connect
-     */
-    override fun addPeer(uri: String) =
-        callWithHandle {
-            uniffiRustCall() { _status ->
-                UniffiLib.uniffi_mimir_fn_method_peernode_add_peer(
-                    it,
-                    FfiConverterString.lower(uri), _status
-                )
-            }
-        }
-
-
-    /**
-     * Announce our current ephemeral Yggdrasil address to all configured trackers.
-     *
-     * Returns immediately; I/O is done in the background.
-     * Call once at startup and periodically to keep the tracker entry alive.
-     */
-    override fun announceToTrackers() =
-        callWithHandle {
-            uniffiRustCall() { _status ->
-                UniffiLib.uniffi_mimir_fn_method_peernode_announce_to_trackers(
-                    it,
-                    _status
-                )
-            }
-        }
-
-
-    /**
-     * Accept (true) or reject (false) an incoming call from `pubkey`.
-     */
-    @Throws(MimirException::class)
-    override fun answerCall(pubkey: ByteArray, accept: Boolean) =
-        callWithHandle {
-            uniffiRustCallWithError(MimirException) { _status ->
-                UniffiLib.uniffi_mimir_fn_method_peernode_answer_call(
-                    it,
-                    FfiConverterByteArray.lower(pubkey), FfiConverterBoolean.lower(accept), _status
-                )
-            }
-        }
-
-
-    /**
-     * Open an outbound connection to `pubkey`.
-     * Returns immediately; on_contact_connected fires when auth completes.
-     */
-    @Throws(MimirException::class)
-    override fun connectToContact(pubkey: ByteArray) =
-        callWithHandle {
-            uniffiRustCallWithError(MimirException) { _status ->
-                UniffiLib.uniffi_mimir_fn_method_peernode_connect_to_contact(
-                    it,
-                    FfiConverterByteArray.lower(pubkey), _status
-                )
-            }
-        }
-
-
-    /**
-     * Close the connection to `pubkey` (if any).
-     */
-    override fun disconnectContact(pubkey: ByteArray) =
-        callWithHandle {
-            uniffiRustCall() { _status ->
-                UniffiLib.uniffi_mimir_fn_method_peernode_disconnect_contact(
-                    it,
-                    FfiConverterByteArray.lower(pubkey), _status
-                )
-            }
-        }
-
-
-    /**
-     * The 32-byte ephemeral seed used for the Yggdrasil node.
-     * Persist this and pass it back via `ephemeral_key` constructor param
-     * to keep the same routing address across restarts.
-     */
-    override fun ephemeralKey(): ByteArray {
-        return FfiConverterByteArray.lift(
-            callWithHandle {
-                uniffiRustCall() { _status ->
-                    UniffiLib.uniffi_mimir_fn_method_peernode_ephemeral_key(
-                        it,
-                        _status
-                    )
-                }
-            }
-        )
-    }
-
-
-    /**
-     * Yggdrasil routing-path diagnostics, JSON-encoded.
-     */
-    override fun getPathsJson(): String {
-        return FfiConverterString.lift(
-            callWithHandle {
-                uniffiRustCall() { _status ->
-                    UniffiLib.uniffi_mimir_fn_method_peernode_get_paths_json(
-                        it,
-                        _status
-                    )
-                }
-            }
-        )
-    }
-
-
-    /**
-     * Yggdrasil peer-connection diagnostics, JSON-encoded.
-     */
-    override fun getPeersJson(): String {
-        return FfiConverterString.lift(
-            callWithHandle {
-                uniffiRustCall() { _status ->
-                    UniffiLib.uniffi_mimir_fn_method_peernode_get_peers_json(
-                        it,
-                        _status
-                    )
-                }
-            }
-        )
-    }
-
-
-    /**
-     * Yggdrasil spanning-tree diagnostics, JSON-encoded.
-     */
-    override fun getTreeJson(): String {
-        return FfiConverterString.lift(
-            callWithHandle {
-                uniffiRustCall() { _status ->
-                    UniffiLib.uniffi_mimir_fn_method_peernode_get_tree_json(
-                        it,
-                        _status
-                    )
-                }
-            }
-        )
-    }
-
-
-    /**
-     * Hang up an active or ringing call with `pubkey`.
-     */
-    @Throws(MimirException::class)
-    override fun hangupCall(pubkey: ByteArray) =
-        callWithHandle {
-            uniffiRustCallWithError(MimirException) { _status ->
-                UniffiLib.uniffi_mimir_fn_method_peernode_hangup_call(
-                    it,
-                    FfiConverterByteArray.lower(pubkey), _status
-                )
-            }
-        }
-
-
-    /**
-     * Our 32-byte Ed25519 public key (= Yggdrasil identity).
-     */
-    override fun publicKey(): ByteArray {
-        return FfiConverterByteArray.lift(
-            callWithHandle {
-                uniffiRustCall() { _status ->
-                    UniffiLib.uniffi_mimir_fn_method_peernode_public_key(
-                        it,
-                        _status
-                    )
-                }
-            }
-        )
-    }
-
-
-    /**
-     * Remove one of added peers
-     */
-    override fun removePeer(uri: String) =
-        callWithHandle {
-            uniffiRustCall() { _status ->
-                UniffiLib.uniffi_mimir_fn_method_peernode_remove_peer(
-                    it,
-                    FfiConverterString.lower(uri), _status
-                )
-            }
-        }
-
-
-    /**
-     * Request a file from a connected contact.
-     *
-     * `name` is the random filename from the message metadata.
-     * `hash` is the SHA-256 hex hash for verification.
-     * The contact will stream the file back as a FILE_RESPONSE delivered
-     * through `on_message_received` with msg_type = 4001.
-     */
-    @Throws(MimirException::class)
-    override fun requestFile(pubkey: ByteArray, guid: Long, name: String, hash: String, size: Long) =
-        callWithHandle {
-            uniffiRustCallWithError(MimirException) { _status ->
-                UniffiLib.uniffi_mimir_fn_method_peernode_request_file(
-                    it,
-                    FfiConverterByteArray.lower(pubkey), FfiConverterLong.lower(guid), FfiConverterString.lower(name), FfiConverterString.lower(hash), FfiConverterLong.lower(size), _status
-                )
-            }
-        }
-
-
-    /**
-     * Yggdrasil spanning-tree diagnostics, JSON-encoded.
-     */
-    override fun retryPeersNow() =
-        callWithHandle {
-            uniffiRustCall() { _status ->
-                UniffiLib.uniffi_mimir_fn_method_peernode_retry_peers_now(
-                    it,
-                    _status
-                )
-            }
-        }
-
-
-    /**
-     * Send a raw call-packet to `pubkey` during an active call.
-     */
-    @Throws(MimirException::class)
-    override fun sendCallPacket(pubkey: ByteArray, `data`: ByteArray) =
-        callWithHandle {
-            uniffiRustCallWithError(MimirException) { _status ->
-                UniffiLib.uniffi_mimir_fn_method_peernode_send_call_packet(
-                    it,
-                    FfiConverterByteArray.lower(pubkey), FfiConverterByteArray.lower(`data`), _status
-                )
-            }
-        }
-
-
-    /**
-     * Send a contact (friend) request to `pubkey` with an introductory message.
-     * The sender's profile info is automatically attached.
-     */
-    @Throws(MimirException::class)
-    override fun sendContactRequest(pubkey: ByteArray, message: String) =
-        callWithHandle {
-            uniffiRustCallWithError(MimirException) { _status ->
-                UniffiLib.uniffi_mimir_fn_method_peernode_send_contact_request(
-                    it,
-                    FfiConverterByteArray.lower(pubkey), FfiConverterString.lower(message), _status
-                )
-            }
-        }
-
-
-    /**
-     * Send a contact response (accept/reject) to `pubkey`.
-     */
-    @Throws(MimirException::class)
-    override fun sendContactResponse(pubkey: ByteArray, accepted: Boolean) =
-        callWithHandle {
-            uniffiRustCallWithError(MimirException) { _status ->
-                UniffiLib.uniffi_mimir_fn_method_peernode_send_contact_response(
-                    it,
-                    FfiConverterByteArray.lower(pubkey), FfiConverterBoolean.lower(accepted), _status
-                )
-            }
-        }
-
-
-    /**
-     * Queue a message for delivery to `pubkey`.
-     * The connection must already exist (was established via connect_to_contact
-     * or an inbound connection triggered on_contact_connected).
-     *
-     * For text (msg_type 0 or 2): pass message content as `data`.
-     * For image/file (msg_type 1 or 3): pass only the JSON metadata as `data`.
-     * The recipient uses `request_file` to download the actual file separately.
-     */
-    @Throws(MimirException::class)
-    override fun sendMessage(pubkey: ByteArray, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, msgType: Int, `data`: ByteArray) =
-        callWithHandle {
-            uniffiRustCallWithError(MimirException) { _status ->
-                UniffiLib.uniffi_mimir_fn_method_peernode_send_message(
-                    it,
-                    FfiConverterByteArray.lower(pubkey), FfiConverterLong.lower(guid), FfiConverterLong.lower(replyTo), FfiConverterLong.lower(sendTime), FfiConverterLong.lower(editTime), FfiConverterInt.lower(msgType), FfiConverterByteArray.lower(`data`), _status
-                )
-            }
-        }
-
-
-    /**
-     * Inform the selector whether the device has general internet connectivity.
-     * false → suppress peer switching, let Yggdrasil reconnect on its own.
-     */
-    override fun setNetworkOnline(online: Boolean) =
-        callWithHandle {
-            uniffiRustCall() { _status ->
-                UniffiLib.uniffi_mimir_fn_method_peernode_set_network_online(
-                    it,
-                    FfiConverterBoolean.lower(online), _status
-                )
-            }
-        }
-
-
-    /**
-     * Replace the list of managed Yggdrasil router peers (priority = slice order).
-     * Metrics are preserved for URIs that remain in the new list.
-     */
-    override fun setYggPeers(peers: List<String>) =
-        callWithHandle {
-            uniffiRustCall() { _status ->
-                UniffiLib.uniffi_mimir_fn_method_peernode_set_ygg_peers(
-                    it,
-                    FfiConverterSequenceString.lower(peers), _status
-                )
-            }
-        }
-
-
-    /**
-     * Initiate an outgoing call to `pubkey`.
-     */
-    @Throws(MimirException::class)
-    override fun startCall(pubkey: ByteArray) =
-        callWithHandle {
-            uniffiRustCallWithError(MimirException) { _status ->
-                UniffiLib.uniffi_mimir_fn_method_peernode_start_call(
-                    it,
-                    FfiConverterByteArray.lower(pubkey), _status
-                )
-            }
-        }
-
-
-    /**
-     * Stop the node and close all connections.
-     */
-    override fun stop() =
-        callWithHandle {
-            uniffiRustCall() { _status ->
-                UniffiLib.uniffi_mimir_fn_method_peernode_stop(
-                    it,
-                    _status
-                )
-            }
-        }
-
-
-    /**
-     * Provide network interface info from Android ConnectivityManager.
-     * Enables multicast peer discovery on Android where getifaddrs() is restricted.
-     * Call with an empty list to clear external interfaces.
-     */
-    override fun updateNetworkInterfaces(interfaces: List<AndroidNetworkInterface>) =
-        callWithHandle {
-            uniffiRustCall() { _status ->
-                UniffiLib.uniffi_mimir_fn_method_peernode_update_network_interfaces(
-                    it,
-                    FfiConverterSequenceTypeAndroidNetworkInterface.lower(interfaces), _status
-                )
-            }
-        }
-
-
-    /**
-     * Block until the active Yggdrasil peer info changes, then return it.
-     * Returns the current state if no change occurs within timeout_ms milliseconds.
-     * Designed for a long-poll loop to keep the notification bar up to date.
-     */
-    override fun waitForPeerInfo(timeoutMs: ULong): YggPeerInfo {
-        return FfiConverterTypeYggPeerInfo.lift(
-            callWithHandle {
-                uniffiRustCall() { _status ->
-                    UniffiLib.uniffi_mimir_fn_method_peernode_wait_for_peer_info(
-                        it,
-                        FfiConverterULong.lower(timeoutMs), _status
-                    )
-                }
-            }
-        )
-    }
-
-
-    /**
-     * @suppress
-     */
-    companion object
-
-}
-
-
-/**
- * @suppress
- */
-object FfiConverterTypePeerNode : FfiConverter<PeerNode, Long> {
-    override fun lower(value: PeerNode): Long {
-        return value.uniffiCloneHandle()
-    }
-
-    override fun lift(value: Long): PeerNode {
-        return PeerNode(UniffiWithHandle, value)
-    }
-
-    override fun read(buf: ByteBuffer): PeerNode {
-        return lift(buf.getLong())
-    }
-
-    override fun allocationSize(value: PeerNode) = 8UL
-
-    override fun write(value: PeerNode, buf: ByteBuffer) {
-        buf.putLong(lower(value))
-    }
-}
 
 
 /**
  * Network interface info from Android ConnectivityManager.
  * Used for multicast peer discovery on platforms where getifaddrs() is restricted.
  */
-data class AndroidNetworkInterface(
-    var name: String,
-    var index: UInt,
-    var addrs: List<String>
+data class AndroidNetworkInterface (
+    var `name`: kotlin.String
+    , 
+    var `index`: kotlin.UInt
+    , 
+    var `addrs`: List<kotlin.String>
+    
+){
+    
 
-) {
+    
 
-
+    
     companion object
 }
 
 /**
  * @suppress
  */
-object FfiConverterTypeAndroidNetworkInterface : FfiConverterRustBuffer<AndroidNetworkInterface> {
+public object FfiConverterTypeAndroidNetworkInterface: FfiConverterRustBuffer<AndroidNetworkInterface> {
     override fun read(buf: ByteBuffer): AndroidNetworkInterface {
         return AndroidNetworkInterface(
             FfiConverterString.read(buf),
@@ -4311,38 +6233,171 @@ object FfiConverterTypeAndroidNetworkInterface : FfiConverterRustBuffer<AndroidN
     }
 
     override fun allocationSize(value: AndroidNetworkInterface) = (
-            FfiConverterString.allocationSize(value.name) +
-                    FfiConverterUInt.allocationSize(value.index) +
-                    FfiConverterSequenceString.allocationSize(value.addrs)
-            )
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterUInt.allocationSize(value.`index`) +
+            FfiConverterSequenceString.allocationSize(value.`addrs`)
+    )
 
     override fun write(value: AndroidNetworkInterface, buf: ByteBuffer) {
-        FfiConverterString.write(value.name, buf)
-        FfiConverterUInt.write(value.index, buf)
-        FfiConverterSequenceString.write(value.addrs, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterUInt.write(value.`index`, buf)
+            FfiConverterSequenceString.write(value.`addrs`, buf)
     }
 }
 
 
-/**
- * Contact profile info exchanged with peers on every connection.
- */
-data class ContactInfo(
-    var nickname: String,
-    var info: String,
-    var avatar: ByteArray?,
-    var updateTime: Long
 
-) {
+data class AppConfig (
+    var `yggPeers`: List<kotlin.String>
+    , 
+    var `trackers`: List<kotlin.String>
+    , 
+    var `peerPort`: kotlin.UShort
+    , 
+    var `mediatorPort`: kotlin.UShort
+    , 
+    var `filesPort`: kotlin.UShort
+    , 
+    var `autoDownloadContacts`: kotlin.Long
+    , 
+    var `autoDownloadOthers`: kotlin.Long
+    , 
+    var `autoDownloadGroups`: kotlin.Long
+    , 
+    var `multicastEnabled`: kotlin.Boolean
+    , 
+    var `attachmentsDir`: kotlin.String
+    
+){
+    
 
+    
 
+    
     companion object
 }
 
 /**
  * @suppress
  */
-object FfiConverterTypeContactInfo : FfiConverterRustBuffer<ContactInfo> {
+public object FfiConverterTypeAppConfig: FfiConverterRustBuffer<AppConfig> {
+    override fun read(buf: ByteBuffer): AppConfig {
+        return AppConfig(
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AppConfig) = (
+            FfiConverterSequenceString.allocationSize(value.`yggPeers`) +
+            FfiConverterSequenceString.allocationSize(value.`trackers`) +
+            FfiConverterUShort.allocationSize(value.`peerPort`) +
+            FfiConverterUShort.allocationSize(value.`mediatorPort`) +
+            FfiConverterUShort.allocationSize(value.`filesPort`) +
+            FfiConverterLong.allocationSize(value.`autoDownloadContacts`) +
+            FfiConverterLong.allocationSize(value.`autoDownloadOthers`) +
+            FfiConverterLong.allocationSize(value.`autoDownloadGroups`) +
+            FfiConverterBoolean.allocationSize(value.`multicastEnabled`) +
+            FfiConverterString.allocationSize(value.`attachmentsDir`)
+    )
+
+    override fun write(value: AppConfig, buf: ByteBuffer) {
+            FfiConverterSequenceString.write(value.`yggPeers`, buf)
+            FfiConverterSequenceString.write(value.`trackers`, buf)
+            FfiConverterUShort.write(value.`peerPort`, buf)
+            FfiConverterUShort.write(value.`mediatorPort`, buf)
+            FfiConverterUShort.write(value.`filesPort`, buf)
+            FfiConverterLong.write(value.`autoDownloadContacts`, buf)
+            FfiConverterLong.write(value.`autoDownloadOthers`, buf)
+            FfiConverterLong.write(value.`autoDownloadGroups`, buf)
+            FfiConverterBoolean.write(value.`multicastEnabled`, buf)
+            FfiConverterString.write(value.`attachmentsDir`, buf)
+    }
+}
+
+
+
+data class AttachmentSpec (
+    var `filePath`: kotlin.String
+    , 
+    var `originalName`: kotlin.String
+    , 
+    var `mimeType`: kotlin.String
+    , 
+    var `msgType`: kotlin.Int
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAttachmentSpec: FfiConverterRustBuffer<AttachmentSpec> {
+    override fun read(buf: ByteBuffer): AttachmentSpec {
+        return AttachmentSpec(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AttachmentSpec) = (
+            FfiConverterString.allocationSize(value.`filePath`) +
+            FfiConverterString.allocationSize(value.`originalName`) +
+            FfiConverterString.allocationSize(value.`mimeType`) +
+            FfiConverterInt.allocationSize(value.`msgType`)
+    )
+
+    override fun write(value: AttachmentSpec, buf: ByteBuffer) {
+            FfiConverterString.write(value.`filePath`, buf)
+            FfiConverterString.write(value.`originalName`, buf)
+            FfiConverterString.write(value.`mimeType`, buf)
+            FfiConverterInt.write(value.`msgType`, buf)
+    }
+}
+
+
+
+/**
+ * Contact profile info exchanged with peers on every connection.
+ */
+data class ContactInfo (
+    var `nickname`: kotlin.String
+    , 
+    var `info`: kotlin.String
+    , 
+    var `avatar`: kotlin.ByteArray?
+    , 
+    var `updateTime`: kotlin.Long
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeContactInfo: FfiConverterRustBuffer<ContactInfo> {
     override fun read(buf: ByteBuffer): ContactInfo {
         return ContactInfo(
             FfiConverterString.read(buf),
@@ -4353,38 +6408,43 @@ object FfiConverterTypeContactInfo : FfiConverterRustBuffer<ContactInfo> {
     }
 
     override fun allocationSize(value: ContactInfo) = (
-            FfiConverterString.allocationSize(value.nickname) +
-                    FfiConverterString.allocationSize(value.info) +
-                    FfiConverterOptionalByteArray.allocationSize(value.avatar) +
-                    FfiConverterLong.allocationSize(value.updateTime)
-            )
+            FfiConverterString.allocationSize(value.`nickname`) +
+            FfiConverterString.allocationSize(value.`info`) +
+            FfiConverterOptionalByteArray.allocationSize(value.`avatar`) +
+            FfiConverterLong.allocationSize(value.`updateTime`)
+    )
 
     override fun write(value: ContactInfo, buf: ByteBuffer) {
-        FfiConverterString.write(value.nickname, buf)
-        FfiConverterString.write(value.info, buf)
-        FfiConverterOptionalByteArray.write(value.avatar, buf)
-        FfiConverterLong.write(value.updateTime, buf)
+            FfiConverterString.write(value.`nickname`, buf)
+            FfiConverterString.write(value.`info`, buf)
+            FfiConverterOptionalByteArray.write(value.`avatar`, buf)
+            FfiConverterLong.write(value.`updateTime`, buf)
     }
 }
+
 
 
 /**
  * File metadata returned by FilesNode.file_info.
  */
-data class FileInfo(
-    var totalSize: ULong,
-    var messageGuid: Long
+data class FileInfo (
+    var `totalSize`: kotlin.ULong
+    , 
+    var `messageGuid`: kotlin.Long
+    
+){
+    
 
-) {
+    
 
-
+    
     companion object
 }
 
 /**
  * @suppress
  */
-object FfiConverterTypeFileInfo : FfiConverterRustBuffer<FileInfo> {
+public object FfiConverterTypeFileInfo: FfiConverterRustBuffer<FileInfo> {
     override fun read(buf: ByteBuffer): FileInfo {
         return FileInfo(
             FfiConverterULong.read(buf),
@@ -4393,36 +6453,149 @@ object FfiConverterTypeFileInfo : FfiConverterRustBuffer<FileInfo> {
     }
 
     override fun allocationSize(value: FileInfo) = (
-            FfiConverterULong.allocationSize(value.totalSize) +
-                    FfiConverterLong.allocationSize(value.messageGuid)
-            )
+            FfiConverterULong.allocationSize(value.`totalSize`) +
+            FfiConverterLong.allocationSize(value.`messageGuid`)
+    )
 
     override fun write(value: FileInfo, buf: ByteBuffer) {
-        FfiConverterULong.write(value.totalSize, buf)
-        FfiConverterLong.write(value.messageGuid, buf)
+            FfiConverterULong.write(value.`totalSize`, buf)
+            FfiConverterLong.write(value.`messageGuid`, buf)
     }
 }
 
 
-/**
- * Lightweight member entry (pubkey + permissions + online status).
- */
-data class GroupMember(
-    var pubkey: ByteArray,
-    var permissions: UInt,
-    var online: Boolean,
-    var lastSeen: Long
 
-) {
+data class FileItem (
+    var `storageName`: kotlin.String
+    , 
+    var `originalName`: kotlin.String
+    , 
+    var `size`: kotlin.Long
+    , 
+    var `mimeType`: kotlin.String
+    , 
+    var `sendTime`: kotlin.Long
+    , 
+    var `isImage`: kotlin.Boolean
+    , 
+    var `contactId`: kotlin.Long
+    , 
+    var `chatId`: kotlin.Long
+    
+){
+    
 
+    
 
+    
     companion object
 }
 
 /**
  * @suppress
  */
-object FfiConverterTypeGroupMember : FfiConverterRustBuffer<GroupMember> {
+public object FfiConverterTypeFileItem: FfiConverterRustBuffer<FileItem> {
+    override fun read(buf: ByteBuffer): FileItem {
+        return FileItem(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterLong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FileItem) = (
+            FfiConverterString.allocationSize(value.`storageName`) +
+            FfiConverterString.allocationSize(value.`originalName`) +
+            FfiConverterLong.allocationSize(value.`size`) +
+            FfiConverterString.allocationSize(value.`mimeType`) +
+            FfiConverterLong.allocationSize(value.`sendTime`) +
+            FfiConverterBoolean.allocationSize(value.`isImage`) +
+            FfiConverterLong.allocationSize(value.`contactId`) +
+            FfiConverterLong.allocationSize(value.`chatId`)
+    )
+
+    override fun write(value: FileItem, buf: ByteBuffer) {
+            FfiConverterString.write(value.`storageName`, buf)
+            FfiConverterString.write(value.`originalName`, buf)
+            FfiConverterLong.write(value.`size`, buf)
+            FfiConverterString.write(value.`mimeType`, buf)
+            FfiConverterLong.write(value.`sendTime`, buf)
+            FfiConverterBoolean.write(value.`isImage`, buf)
+            FfiConverterLong.write(value.`contactId`, buf)
+            FfiConverterLong.write(value.`chatId`, buf)
+    }
+}
+
+
+
+data class FixStats (
+    var `scanned`: kotlin.UInt
+    , 
+    var `fixed`: kotlin.UInt
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFixStats: FfiConverterRustBuffer<FixStats> {
+    override fun read(buf: ByteBuffer): FixStats {
+        return FixStats(
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FixStats) = (
+            FfiConverterUInt.allocationSize(value.`scanned`) +
+            FfiConverterUInt.allocationSize(value.`fixed`)
+    )
+
+    override fun write(value: FixStats, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`scanned`, buf)
+            FfiConverterUInt.write(value.`fixed`, buf)
+    }
+}
+
+
+
+/**
+ * Lightweight member entry (pubkey + permissions + online status).
+ */
+data class GroupMember (
+    var `pubkey`: kotlin.ByteArray
+    , 
+    var `permissions`: kotlin.UInt
+    , 
+    var `online`: kotlin.Boolean
+    , 
+    var `lastSeen`: kotlin.Long
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeGroupMember: FfiConverterRustBuffer<GroupMember> {
     override fun read(buf: ByteBuffer): GroupMember {
         return GroupMember(
             FfiConverterByteArray.read(buf),
@@ -4433,39 +6606,45 @@ object FfiConverterTypeGroupMember : FfiConverterRustBuffer<GroupMember> {
     }
 
     override fun allocationSize(value: GroupMember) = (
-            FfiConverterByteArray.allocationSize(value.pubkey) +
-                    FfiConverterUInt.allocationSize(value.permissions) +
-                    FfiConverterBoolean.allocationSize(value.online) +
-                    FfiConverterLong.allocationSize(value.lastSeen)
-            )
+            FfiConverterByteArray.allocationSize(value.`pubkey`) +
+            FfiConverterUInt.allocationSize(value.`permissions`) +
+            FfiConverterBoolean.allocationSize(value.`online`) +
+            FfiConverterLong.allocationSize(value.`lastSeen`)
+    )
 
     override fun write(value: GroupMember, buf: ByteBuffer) {
-        FfiConverterByteArray.write(value.pubkey, buf)
-        FfiConverterUInt.write(value.permissions, buf)
-        FfiConverterBoolean.write(value.online, buf)
-        FfiConverterLong.write(value.lastSeen, buf)
+            FfiConverterByteArray.write(value.`pubkey`, buf)
+            FfiConverterUInt.write(value.`permissions`, buf)
+            FfiConverterBoolean.write(value.`online`, buf)
+            FfiConverterLong.write(value.`lastSeen`, buf)
     }
 }
+
 
 
 /**
  * Member entry with encrypted profile blob (from get_members_info).
  */
-data class GroupMemberInfo(
-    var pubkey: ByteArray,
-    var encryptedInfo: ByteArray?,
-    var timestamp: Long
+data class GroupMemberInfo (
+    var `pubkey`: kotlin.ByteArray
+    , 
+    var `encryptedInfo`: kotlin.ByteArray?
+    , 
+    var `timestamp`: kotlin.Long
+    
+){
+    
 
-) {
+    
 
-
+    
     companion object
 }
 
 /**
  * @suppress
  */
-object FfiConverterTypeGroupMemberInfo : FfiConverterRustBuffer<GroupMemberInfo> {
+public object FfiConverterTypeGroupMemberInfo: FfiConverterRustBuffer<GroupMemberInfo> {
     override fun read(buf: ByteBuffer): GroupMemberInfo {
         return GroupMemberInfo(
             FfiConverterByteArray.read(buf),
@@ -4475,39 +6654,47 @@ object FfiConverterTypeGroupMemberInfo : FfiConverterRustBuffer<GroupMemberInfo>
     }
 
     override fun allocationSize(value: GroupMemberInfo) = (
-            FfiConverterByteArray.allocationSize(value.pubkey) +
-                    FfiConverterOptionalByteArray.allocationSize(value.encryptedInfo) +
-                    FfiConverterLong.allocationSize(value.timestamp)
-            )
+            FfiConverterByteArray.allocationSize(value.`pubkey`) +
+            FfiConverterOptionalByteArray.allocationSize(value.`encryptedInfo`) +
+            FfiConverterLong.allocationSize(value.`timestamp`)
+    )
 
     override fun write(value: GroupMemberInfo, buf: ByteBuffer) {
-        FfiConverterByteArray.write(value.pubkey, buf)
-        FfiConverterOptionalByteArray.write(value.encryptedInfo, buf)
-        FfiConverterLong.write(value.timestamp, buf)
+            FfiConverterByteArray.write(value.`pubkey`, buf)
+            FfiConverterOptionalByteArray.write(value.`encryptedInfo`, buf)
+            FfiConverterLong.write(value.`timestamp`, buf)
     }
 }
+
 
 
 /**
  * A group chat message as returned by get_messages_since.
  */
-data class GroupMessage(
-    var messageId: Long,
-    var guid: Long,
-    var timestamp: Long,
-    var author: ByteArray,
-    var `data`: ByteArray
+data class GroupMessage (
+    var `messageId`: kotlin.Long
+    , 
+    var `guid`: kotlin.Long
+    , 
+    var `timestamp`: kotlin.Long
+    , 
+    var `author`: kotlin.ByteArray
+    , 
+    var `data`: kotlin.ByteArray
+    
+){
+    
 
-) {
+    
 
-
+    
     companion object
 }
 
 /**
  * @suppress
  */
-object FfiConverterTypeGroupMessage : FfiConverterRustBuffer<GroupMessage> {
+public object FfiConverterTypeGroupMessage: FfiConverterRustBuffer<GroupMessage> {
     override fun read(buf: ByteBuffer): GroupMessage {
         return GroupMessage(
             FfiConverterLong.read(buf),
@@ -4519,21 +6706,60 @@ object FfiConverterTypeGroupMessage : FfiConverterRustBuffer<GroupMessage> {
     }
 
     override fun allocationSize(value: GroupMessage) = (
-            FfiConverterLong.allocationSize(value.messageId) +
-                    FfiConverterLong.allocationSize(value.guid) +
-                    FfiConverterLong.allocationSize(value.timestamp) +
-                    FfiConverterByteArray.allocationSize(value.author) +
-                    FfiConverterByteArray.allocationSize(value.`data`)
-            )
+            FfiConverterLong.allocationSize(value.`messageId`) +
+            FfiConverterLong.allocationSize(value.`guid`) +
+            FfiConverterLong.allocationSize(value.`timestamp`) +
+            FfiConverterByteArray.allocationSize(value.`author`) +
+            FfiConverterByteArray.allocationSize(value.`data`)
+    )
 
     override fun write(value: GroupMessage, buf: ByteBuffer) {
-        FfiConverterLong.write(value.messageId, buf)
-        FfiConverterLong.write(value.guid, buf)
-        FfiConverterLong.write(value.timestamp, buf)
-        FfiConverterByteArray.write(value.author, buf)
-        FfiConverterByteArray.write(value.`data`, buf)
+            FfiConverterLong.write(value.`messageId`, buf)
+            FfiConverterLong.write(value.`guid`, buf)
+            FfiConverterLong.write(value.`timestamp`, buf)
+            FfiConverterByteArray.write(value.`author`, buf)
+            FfiConverterByteArray.write(value.`data`, buf)
     }
 }
+
+
+
+data class KeyPair (
+    var `privateKey`: kotlin.ByteArray
+    , 
+    var `publicKey`: kotlin.ByteArray
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeKeyPair: FfiConverterRustBuffer<KeyPair> {
+    override fun read(buf: ByteBuffer): KeyPair {
+        return KeyPair(
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: KeyPair) = (
+            FfiConverterByteArray.allocationSize(value.`privateKey`) +
+            FfiConverterByteArray.allocationSize(value.`publicKey`)
+    )
+
+    override fun write(value: KeyPair, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`privateKey`, buf)
+            FfiConverterByteArray.write(value.`publicKey`, buf)
+    }
+}
+
 
 
 /**
@@ -4541,20 +6767,24 @@ object FfiConverterTypeGroupMessage : FfiConverterRustBuffer<GroupMessage> {
  * Kotlin encrypts (nickname + info + avatar) with the chat shared key
  * and returns the ciphertext so Rust can transmit it to the mediator.
  */
-data class MemberInfoData(
-    var encryptedBlob: ByteArray,
-    var timestamp: Long
+data class MemberInfoData (
+    var `encryptedBlob`: kotlin.ByteArray
+    , 
+    var `timestamp`: kotlin.Long
+    
+){
+    
 
-) {
+    
 
-
+    
     companion object
 }
 
 /**
  * @suppress
  */
-object FfiConverterTypeMemberInfoData : FfiConverterRustBuffer<MemberInfoData> {
+public object FfiConverterTypeMemberInfoData: FfiConverterRustBuffer<MemberInfoData> {
     override fun read(buf: ByteBuffer): MemberInfoData {
         return MemberInfoData(
             FfiConverterByteArray.read(buf),
@@ -4563,36 +6793,921 @@ object FfiConverterTypeMemberInfoData : FfiConverterRustBuffer<MemberInfoData> {
     }
 
     override fun allocationSize(value: MemberInfoData) = (
-            FfiConverterByteArray.allocationSize(value.encryptedBlob) +
-                    FfiConverterLong.allocationSize(value.timestamp)
-            )
+            FfiConverterByteArray.allocationSize(value.`encryptedBlob`) +
+            FfiConverterLong.allocationSize(value.`timestamp`)
+    )
 
     override fun write(value: MemberInfoData, buf: ByteBuffer) {
-        FfiConverterByteArray.write(value.encryptedBlob, buf)
-        FfiConverterLong.write(value.timestamp, buf)
+            FfiConverterByteArray.write(value.`encryptedBlob`, buf)
+            FfiConverterLong.write(value.`timestamp`, buf)
     }
 }
 
 
-/**
- * Active Yggdrasil router peer and its quality metrics.
- * Returned by PeerNode.wait_for_peer_info.
- */
-data class YggPeerInfo(
-    var uri: String?,
-    var cost: UInt,
-    var failures: UInt
 
-) {
+data class MemberUpdate (
+    var `pubkey`: kotlin.ByteArray
+    , 
+    var `permissions`: kotlin.UInt
+    , 
+    var `online`: kotlin.Boolean
+    , 
+    var `lastSeen`: kotlin.Long
+    
+){
+    
 
+    
 
+    
     companion object
 }
 
 /**
  * @suppress
  */
-object FfiConverterTypeYggPeerInfo : FfiConverterRustBuffer<YggPeerInfo> {
+public object FfiConverterTypeMemberUpdate: FfiConverterRustBuffer<MemberUpdate> {
+    override fun read(buf: ByteBuffer): MemberUpdate {
+        return MemberUpdate(
+            FfiConverterByteArray.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterLong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MemberUpdate) = (
+            FfiConverterByteArray.allocationSize(value.`pubkey`) +
+            FfiConverterUInt.allocationSize(value.`permissions`) +
+            FfiConverterBoolean.allocationSize(value.`online`) +
+            FfiConverterLong.allocationSize(value.`lastSeen`)
+    )
+
+    override fun write(value: MemberUpdate, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`pubkey`, buf)
+            FfiConverterUInt.write(value.`permissions`, buf)
+            FfiConverterBoolean.write(value.`online`, buf)
+            FfiConverterLong.write(value.`lastSeen`, buf)
+    }
+}
+
+
+
+data class PeerAddress (
+    var `address`: kotlin.String
+    , 
+    var `clientId`: kotlin.Int
+    , 
+    var `priority`: kotlin.Int
+    , 
+    var `expiration`: kotlin.Long
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePeerAddress: FfiConverterRustBuffer<PeerAddress> {
+    override fun read(buf: ByteBuffer): PeerAddress {
+        return PeerAddress(
+            FfiConverterString.read(buf),
+            FfiConverterInt.read(buf),
+            FfiConverterInt.read(buf),
+            FfiConverterLong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: PeerAddress) = (
+            FfiConverterString.allocationSize(value.`address`) +
+            FfiConverterInt.allocationSize(value.`clientId`) +
+            FfiConverterInt.allocationSize(value.`priority`) +
+            FfiConverterLong.allocationSize(value.`expiration`)
+    )
+
+    override fun write(value: PeerAddress, buf: ByteBuffer) {
+            FfiConverterString.write(value.`address`, buf)
+            FfiConverterInt.write(value.`clientId`, buf)
+            FfiConverterInt.write(value.`priority`, buf)
+            FfiConverterLong.write(value.`expiration`, buf)
+    }
+}
+
+
+
+data class Reaction (
+    var `emoji`: kotlin.String
+    , 
+    var `count`: kotlin.UInt
+    , 
+    var `senders`: List<kotlin.Long>
+    , 
+    var `userReacted`: kotlin.Boolean
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeReaction: FfiConverterRustBuffer<Reaction> {
+    override fun read(buf: ByteBuffer): Reaction {
+        return Reaction(
+            FfiConverterString.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterSequenceLong.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: Reaction) = (
+            FfiConverterString.allocationSize(value.`emoji`) +
+            FfiConverterUInt.allocationSize(value.`count`) +
+            FfiConverterSequenceLong.allocationSize(value.`senders`) +
+            FfiConverterBoolean.allocationSize(value.`userReacted`)
+    )
+
+    override fun write(value: Reaction, buf: ByteBuffer) {
+            FfiConverterString.write(value.`emoji`, buf)
+            FfiConverterUInt.write(value.`count`, buf)
+            FfiConverterSequenceLong.write(value.`senders`, buf)
+            FfiConverterBoolean.write(value.`userReacted`, buf)
+    }
+}
+
+
+
+data class ReactionTarget (
+    var `reactionGuid`: kotlin.Long
+    , 
+    var `targetGuid`: kotlin.Long
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeReactionTarget: FfiConverterRustBuffer<ReactionTarget> {
+    override fun read(buf: ByteBuffer): ReactionTarget {
+        return ReactionTarget(
+            FfiConverterLong.read(buf),
+            FfiConverterLong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ReactionTarget) = (
+            FfiConverterLong.allocationSize(value.`reactionGuid`) +
+            FfiConverterLong.allocationSize(value.`targetGuid`)
+    )
+
+    override fun write(value: ReactionTarget, buf: ByteBuffer) {
+            FfiConverterLong.write(value.`reactionGuid`, buf)
+            FfiConverterLong.write(value.`targetGuid`, buf)
+    }
+}
+
+
+
+data class StoredAccount (
+    var `name`: kotlin.String
+    , 
+    var `info`: kotlin.String
+    , 
+    var `avatar`: kotlin.String
+    , 
+    var `pubkey`: kotlin.ByteArray
+    , 
+    var `clientId`: kotlin.Int
+    , 
+    var `updatedAt`: kotlin.Long
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeStoredAccount: FfiConverterRustBuffer<StoredAccount> {
+    override fun read(buf: ByteBuffer): StoredAccount {
+        return StoredAccount(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterInt.read(buf),
+            FfiConverterLong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: StoredAccount) = (
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`info`) +
+            FfiConverterString.allocationSize(value.`avatar`) +
+            FfiConverterByteArray.allocationSize(value.`pubkey`) +
+            FfiConverterInt.allocationSize(value.`clientId`) +
+            FfiConverterLong.allocationSize(value.`updatedAt`)
+    )
+
+    override fun write(value: StoredAccount, buf: ByteBuffer) {
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`info`, buf)
+            FfiConverterString.write(value.`avatar`, buf)
+            FfiConverterByteArray.write(value.`pubkey`, buf)
+            FfiConverterInt.write(value.`clientId`, buf)
+            FfiConverterLong.write(value.`updatedAt`, buf)
+    }
+}
+
+
+
+data class StoredContact (
+    var `id`: kotlin.Long
+    , 
+    var `pubkey`: kotlin.ByteArray
+    , 
+    var `name`: kotlin.String
+    , 
+    var `info`: kotlin.String
+    , 
+    var `avatar`: kotlin.String
+    , 
+    var `updatedAt`: kotlin.Long
+    , 
+    var `renamed`: kotlin.Boolean
+    , 
+    var `lastSeen`: kotlin.Long
+    , 
+    var `muted`: kotlin.Boolean
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeStoredContact: FfiConverterRustBuffer<StoredContact> {
+    override fun read(buf: ByteBuffer): StoredContact {
+        return StoredContact(
+            FfiConverterLong.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: StoredContact) = (
+            FfiConverterLong.allocationSize(value.`id`) +
+            FfiConverterByteArray.allocationSize(value.`pubkey`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`info`) +
+            FfiConverterString.allocationSize(value.`avatar`) +
+            FfiConverterLong.allocationSize(value.`updatedAt`) +
+            FfiConverterBoolean.allocationSize(value.`renamed`) +
+            FfiConverterLong.allocationSize(value.`lastSeen`) +
+            FfiConverterBoolean.allocationSize(value.`muted`)
+    )
+
+    override fun write(value: StoredContact, buf: ByteBuffer) {
+            FfiConverterLong.write(value.`id`, buf)
+            FfiConverterByteArray.write(value.`pubkey`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`info`, buf)
+            FfiConverterString.write(value.`avatar`, buf)
+            FfiConverterLong.write(value.`updatedAt`, buf)
+            FfiConverterBoolean.write(value.`renamed`, buf)
+            FfiConverterLong.write(value.`lastSeen`, buf)
+            FfiConverterBoolean.write(value.`muted`, buf)
+    }
+}
+
+
+
+data class StoredContactRequest (
+    var `id`: kotlin.Long
+    , 
+    var `pubkey`: kotlin.ByteArray
+    , 
+    var `message`: kotlin.String
+    , 
+    var `nickname`: kotlin.String
+    , 
+    var `info`: kotlin.String
+    , 
+    var `avatar`: kotlin.String
+    , 
+    var `time`: kotlin.Long
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeStoredContactRequest: FfiConverterRustBuffer<StoredContactRequest> {
+    override fun read(buf: ByteBuffer): StoredContactRequest {
+        return StoredContactRequest(
+            FfiConverterLong.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterLong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: StoredContactRequest) = (
+            FfiConverterLong.allocationSize(value.`id`) +
+            FfiConverterByteArray.allocationSize(value.`pubkey`) +
+            FfiConverterString.allocationSize(value.`message`) +
+            FfiConverterString.allocationSize(value.`nickname`) +
+            FfiConverterString.allocationSize(value.`info`) +
+            FfiConverterString.allocationSize(value.`avatar`) +
+            FfiConverterLong.allocationSize(value.`time`)
+    )
+
+    override fun write(value: StoredContactRequest, buf: ByteBuffer) {
+            FfiConverterLong.write(value.`id`, buf)
+            FfiConverterByteArray.write(value.`pubkey`, buf)
+            FfiConverterString.write(value.`message`, buf)
+            FfiConverterString.write(value.`nickname`, buf)
+            FfiConverterString.write(value.`info`, buf)
+            FfiConverterString.write(value.`avatar`, buf)
+            FfiConverterLong.write(value.`time`, buf)
+    }
+}
+
+
+
+data class StoredDraft (
+    var `chatType`: kotlin.Int
+    , 
+    var `chatId`: kotlin.Long
+    , 
+    var `text`: kotlin.String?
+    , 
+    var `mediaUri`: kotlin.String?
+    , 
+    var `mediaType`: kotlin.Int
+    , 
+    var `timestamp`: kotlin.Long
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeStoredDraft: FfiConverterRustBuffer<StoredDraft> {
+    override fun read(buf: ByteBuffer): StoredDraft {
+        return StoredDraft(
+            FfiConverterInt.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterInt.read(buf),
+            FfiConverterLong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: StoredDraft) = (
+            FfiConverterInt.allocationSize(value.`chatType`) +
+            FfiConverterLong.allocationSize(value.`chatId`) +
+            FfiConverterOptionalString.allocationSize(value.`text`) +
+            FfiConverterOptionalString.allocationSize(value.`mediaUri`) +
+            FfiConverterInt.allocationSize(value.`mediaType`) +
+            FfiConverterLong.allocationSize(value.`timestamp`)
+    )
+
+    override fun write(value: StoredDraft, buf: ByteBuffer) {
+            FfiConverterInt.write(value.`chatType`, buf)
+            FfiConverterLong.write(value.`chatId`, buf)
+            FfiConverterOptionalString.write(value.`text`, buf)
+            FfiConverterOptionalString.write(value.`mediaUri`, buf)
+            FfiConverterInt.write(value.`mediaType`, buf)
+            FfiConverterLong.write(value.`timestamp`, buf)
+    }
+}
+
+
+
+data class StoredGroupChat (
+    var `chatId`: kotlin.Long
+    , 
+    var `name`: kotlin.String
+    , 
+    var `description`: kotlin.String
+    , 
+    var `avatar`: kotlin.String
+    , 
+    var `mediatorPubkey`: kotlin.ByteArray
+    , 
+    var `ownerPubkey`: kotlin.ByteArray
+    , 
+    var `sharedKey`: kotlin.ByteArray
+    , 
+    var `createdAt`: kotlin.Long
+    , 
+    var `updatedAt`: kotlin.Long
+    , 
+    var `lastMessageTime`: kotlin.Long
+    , 
+    var `lastMsgId`: kotlin.Long
+    , 
+    var `unreadCount`: kotlin.Int
+    , 
+    var `muted`: kotlin.Boolean
+    , 
+    var `readOnly`: kotlin.Boolean
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeStoredGroupChat: FfiConverterRustBuffer<StoredGroupChat> {
+    override fun read(buf: ByteBuffer): StoredGroupChat {
+        return StoredGroupChat(
+            FfiConverterLong.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterInt.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: StoredGroupChat) = (
+            FfiConverterLong.allocationSize(value.`chatId`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`description`) +
+            FfiConverterString.allocationSize(value.`avatar`) +
+            FfiConverterByteArray.allocationSize(value.`mediatorPubkey`) +
+            FfiConverterByteArray.allocationSize(value.`ownerPubkey`) +
+            FfiConverterByteArray.allocationSize(value.`sharedKey`) +
+            FfiConverterLong.allocationSize(value.`createdAt`) +
+            FfiConverterLong.allocationSize(value.`updatedAt`) +
+            FfiConverterLong.allocationSize(value.`lastMessageTime`) +
+            FfiConverterLong.allocationSize(value.`lastMsgId`) +
+            FfiConverterInt.allocationSize(value.`unreadCount`) +
+            FfiConverterBoolean.allocationSize(value.`muted`) +
+            FfiConverterBoolean.allocationSize(value.`readOnly`)
+    )
+
+    override fun write(value: StoredGroupChat, buf: ByteBuffer) {
+            FfiConverterLong.write(value.`chatId`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`description`, buf)
+            FfiConverterString.write(value.`avatar`, buf)
+            FfiConverterByteArray.write(value.`mediatorPubkey`, buf)
+            FfiConverterByteArray.write(value.`ownerPubkey`, buf)
+            FfiConverterByteArray.write(value.`sharedKey`, buf)
+            FfiConverterLong.write(value.`createdAt`, buf)
+            FfiConverterLong.write(value.`updatedAt`, buf)
+            FfiConverterLong.write(value.`lastMessageTime`, buf)
+            FfiConverterLong.write(value.`lastMsgId`, buf)
+            FfiConverterInt.write(value.`unreadCount`, buf)
+            FfiConverterBoolean.write(value.`muted`, buf)
+            FfiConverterBoolean.write(value.`readOnly`, buf)
+    }
+}
+
+
+
+data class StoredGroupMessage (
+    var `id`: kotlin.Long
+    , 
+    var `chatId`: kotlin.Long
+    , 
+    var `msgId`: kotlin.Long
+    , 
+    var `guid`: kotlin.Long
+    , 
+    var `senderId`: kotlin.Long
+    , 
+    var `incoming`: kotlin.Boolean
+    , 
+    var `sendTime`: kotlin.Long
+    , 
+    var `msgType`: kotlin.Int
+    , 
+    var `system`: kotlin.Boolean
+    , 
+    var `data`: kotlin.ByteArray?
+    , 
+    var `delivered`: kotlin.Boolean
+    , 
+    var `read`: kotlin.Boolean
+    , 
+    var `replyTo`: kotlin.Long
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeStoredGroupMessage: FfiConverterRustBuffer<StoredGroupMessage> {
+    override fun read(buf: ByteBuffer): StoredGroupMessage {
+        return StoredGroupMessage(
+            FfiConverterLong.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterInt.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalByteArray.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterLong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: StoredGroupMessage) = (
+            FfiConverterLong.allocationSize(value.`id`) +
+            FfiConverterLong.allocationSize(value.`chatId`) +
+            FfiConverterLong.allocationSize(value.`msgId`) +
+            FfiConverterLong.allocationSize(value.`guid`) +
+            FfiConverterLong.allocationSize(value.`senderId`) +
+            FfiConverterBoolean.allocationSize(value.`incoming`) +
+            FfiConverterLong.allocationSize(value.`sendTime`) +
+            FfiConverterInt.allocationSize(value.`msgType`) +
+            FfiConverterBoolean.allocationSize(value.`system`) +
+            FfiConverterOptionalByteArray.allocationSize(value.`data`) +
+            FfiConverterBoolean.allocationSize(value.`delivered`) +
+            FfiConverterBoolean.allocationSize(value.`read`) +
+            FfiConverterLong.allocationSize(value.`replyTo`)
+    )
+
+    override fun write(value: StoredGroupMessage, buf: ByteBuffer) {
+            FfiConverterLong.write(value.`id`, buf)
+            FfiConverterLong.write(value.`chatId`, buf)
+            FfiConverterLong.write(value.`msgId`, buf)
+            FfiConverterLong.write(value.`guid`, buf)
+            FfiConverterLong.write(value.`senderId`, buf)
+            FfiConverterBoolean.write(value.`incoming`, buf)
+            FfiConverterLong.write(value.`sendTime`, buf)
+            FfiConverterInt.write(value.`msgType`, buf)
+            FfiConverterBoolean.write(value.`system`, buf)
+            FfiConverterOptionalByteArray.write(value.`data`, buf)
+            FfiConverterBoolean.write(value.`delivered`, buf)
+            FfiConverterBoolean.write(value.`read`, buf)
+            FfiConverterLong.write(value.`replyTo`, buf)
+    }
+}
+
+
+
+data class StoredInvite (
+    var `id`: kotlin.Long
+    , 
+    var `chatId`: kotlin.Long
+    , 
+    var `fromPubkey`: kotlin.ByteArray
+    , 
+    var `timestamp`: kotlin.Long
+    , 
+    var `chatName`: kotlin.String
+    , 
+    var `chatDescription`: kotlin.String
+    , 
+    var `chatAvatar`: kotlin.String
+    , 
+    var `encryptedData`: kotlin.ByteArray
+    , 
+    var `status`: kotlin.Int
+    , 
+    var `mediatorPubkey`: kotlin.ByteArray
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeStoredInvite: FfiConverterRustBuffer<StoredInvite> {
+    override fun read(buf: ByteBuffer): StoredInvite {
+        return StoredInvite(
+            FfiConverterLong.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterInt.read(buf),
+            FfiConverterByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: StoredInvite) = (
+            FfiConverterLong.allocationSize(value.`id`) +
+            FfiConverterLong.allocationSize(value.`chatId`) +
+            FfiConverterByteArray.allocationSize(value.`fromPubkey`) +
+            FfiConverterLong.allocationSize(value.`timestamp`) +
+            FfiConverterString.allocationSize(value.`chatName`) +
+            FfiConverterString.allocationSize(value.`chatDescription`) +
+            FfiConverterString.allocationSize(value.`chatAvatar`) +
+            FfiConverterByteArray.allocationSize(value.`encryptedData`) +
+            FfiConverterInt.allocationSize(value.`status`) +
+            FfiConverterByteArray.allocationSize(value.`mediatorPubkey`)
+    )
+
+    override fun write(value: StoredInvite, buf: ByteBuffer) {
+            FfiConverterLong.write(value.`id`, buf)
+            FfiConverterLong.write(value.`chatId`, buf)
+            FfiConverterByteArray.write(value.`fromPubkey`, buf)
+            FfiConverterLong.write(value.`timestamp`, buf)
+            FfiConverterString.write(value.`chatName`, buf)
+            FfiConverterString.write(value.`chatDescription`, buf)
+            FfiConverterString.write(value.`chatAvatar`, buf)
+            FfiConverterByteArray.write(value.`encryptedData`, buf)
+            FfiConverterInt.write(value.`status`, buf)
+            FfiConverterByteArray.write(value.`mediatorPubkey`, buf)
+    }
+}
+
+
+
+data class StoredMember (
+    var `id`: kotlin.Long
+    , 
+    var `chatId`: kotlin.Long
+    , 
+    var `pubkey`: kotlin.String
+    , 
+    var `nickname`: kotlin.String
+    , 
+    var `info`: kotlin.String
+    , 
+    var `avatar`: kotlin.String
+    , 
+    var `permissions`: kotlin.Int
+    , 
+    var `joinedAt`: kotlin.Long
+    , 
+    var `updatedAt`: kotlin.Long
+    , 
+    var `banned`: kotlin.Boolean
+    , 
+    var `online`: kotlin.Boolean
+    , 
+    var `gone`: kotlin.Boolean
+    , 
+    var `lastSeen`: kotlin.Long
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeStoredMember: FfiConverterRustBuffer<StoredMember> {
+    override fun read(buf: ByteBuffer): StoredMember {
+        return StoredMember(
+            FfiConverterLong.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterInt.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterLong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: StoredMember) = (
+            FfiConverterLong.allocationSize(value.`id`) +
+            FfiConverterLong.allocationSize(value.`chatId`) +
+            FfiConverterString.allocationSize(value.`pubkey`) +
+            FfiConverterString.allocationSize(value.`nickname`) +
+            FfiConverterString.allocationSize(value.`info`) +
+            FfiConverterString.allocationSize(value.`avatar`) +
+            FfiConverterInt.allocationSize(value.`permissions`) +
+            FfiConverterLong.allocationSize(value.`joinedAt`) +
+            FfiConverterLong.allocationSize(value.`updatedAt`) +
+            FfiConverterBoolean.allocationSize(value.`banned`) +
+            FfiConverterBoolean.allocationSize(value.`online`) +
+            FfiConverterBoolean.allocationSize(value.`gone`) +
+            FfiConverterLong.allocationSize(value.`lastSeen`)
+    )
+
+    override fun write(value: StoredMember, buf: ByteBuffer) {
+            FfiConverterLong.write(value.`id`, buf)
+            FfiConverterLong.write(value.`chatId`, buf)
+            FfiConverterString.write(value.`pubkey`, buf)
+            FfiConverterString.write(value.`nickname`, buf)
+            FfiConverterString.write(value.`info`, buf)
+            FfiConverterString.write(value.`avatar`, buf)
+            FfiConverterInt.write(value.`permissions`, buf)
+            FfiConverterLong.write(value.`joinedAt`, buf)
+            FfiConverterLong.write(value.`updatedAt`, buf)
+            FfiConverterBoolean.write(value.`banned`, buf)
+            FfiConverterBoolean.write(value.`online`, buf)
+            FfiConverterBoolean.write(value.`gone`, buf)
+            FfiConverterLong.write(value.`lastSeen`, buf)
+    }
+}
+
+
+
+data class StoredMessage (
+    var `id`: kotlin.Long
+    , 
+    var `contactId`: kotlin.Long
+    , 
+    var `guid`: kotlin.Long
+    , 
+    var `replyTo`: kotlin.Long
+    , 
+    var `incoming`: kotlin.Boolean
+    , 
+    var `delivered`: kotlin.Boolean
+    , 
+    var `read`: kotlin.Boolean
+    , 
+    var `sendTime`: kotlin.Long
+    , 
+    var `editTime`: kotlin.Long
+    , 
+    var `msgType`: kotlin.Int
+    , 
+    var `data`: kotlin.ByteArray?
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeStoredMessage: FfiConverterRustBuffer<StoredMessage> {
+    override fun read(buf: ByteBuffer): StoredMessage {
+        return StoredMessage(
+            FfiConverterLong.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterInt.read(buf),
+            FfiConverterOptionalByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: StoredMessage) = (
+            FfiConverterLong.allocationSize(value.`id`) +
+            FfiConverterLong.allocationSize(value.`contactId`) +
+            FfiConverterLong.allocationSize(value.`guid`) +
+            FfiConverterLong.allocationSize(value.`replyTo`) +
+            FfiConverterBoolean.allocationSize(value.`incoming`) +
+            FfiConverterBoolean.allocationSize(value.`delivered`) +
+            FfiConverterBoolean.allocationSize(value.`read`) +
+            FfiConverterLong.allocationSize(value.`sendTime`) +
+            FfiConverterLong.allocationSize(value.`editTime`) +
+            FfiConverterInt.allocationSize(value.`msgType`) +
+            FfiConverterOptionalByteArray.allocationSize(value.`data`)
+    )
+
+    override fun write(value: StoredMessage, buf: ByteBuffer) {
+            FfiConverterLong.write(value.`id`, buf)
+            FfiConverterLong.write(value.`contactId`, buf)
+            FfiConverterLong.write(value.`guid`, buf)
+            FfiConverterLong.write(value.`replyTo`, buf)
+            FfiConverterBoolean.write(value.`incoming`, buf)
+            FfiConverterBoolean.write(value.`delivered`, buf)
+            FfiConverterBoolean.write(value.`read`, buf)
+            FfiConverterLong.write(value.`sendTime`, buf)
+            FfiConverterLong.write(value.`editTime`, buf)
+            FfiConverterInt.write(value.`msgType`, buf)
+            FfiConverterOptionalByteArray.write(value.`data`, buf)
+    }
+}
+
+
+
+/**
+ * Active Yggdrasil router peer and its quality metrics.
+ * Returned by PeerNode.wait_for_peer_info.
+ */
+data class YggPeerInfo (
+    var `uri`: kotlin.String?
+    , 
+    var `cost`: kotlin.UInt
+    , 
+    var `failures`: kotlin.UInt
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeYggPeerInfo: FfiConverterRustBuffer<YggPeerInfo> {
     override fun read(buf: ByteBuffer): YggPeerInfo {
         return YggPeerInfo(
             FfiConverterOptionalString.read(buf),
@@ -4602,26 +7717,30 @@ object FfiConverterTypeYggPeerInfo : FfiConverterRustBuffer<YggPeerInfo> {
     }
 
     override fun allocationSize(value: YggPeerInfo) = (
-            FfiConverterOptionalString.allocationSize(value.uri) +
-                    FfiConverterUInt.allocationSize(value.cost) +
-                    FfiConverterUInt.allocationSize(value.failures)
-            )
+            FfiConverterOptionalString.allocationSize(value.`uri`) +
+            FfiConverterUInt.allocationSize(value.`cost`) +
+            FfiConverterUInt.allocationSize(value.`failures`)
+    )
 
     override fun write(value: YggPeerInfo, buf: ByteBuffer) {
-        FfiConverterOptionalString.write(value.uri, buf)
-        FfiConverterUInt.write(value.cost, buf)
-        FfiConverterUInt.write(value.failures, buf)
+            FfiConverterOptionalString.write(value.`uri`, buf)
+            FfiConverterUInt.write(value.`cost`, buf)
+            FfiConverterUInt.write(value.`failures`, buf)
     }
 }
 
 
-enum class CallStatus {
 
+
+enum class CallStatus {
+    
     IDLE,
     CALLING,
     RECEIVING,
     IN_CALL,
     HANGUP;
+
+    
 
 
     companion object
@@ -4631,7 +7750,7 @@ enum class CallStatus {
 /**
  * @suppress
  */
-object FfiConverterTypeCallStatus : FfiConverterRustBuffer<CallStatus> {
+public object FfiConverterTypeCallStatus: FfiConverterRustBuffer<CallStatus> {
     override fun read(buf: ByteBuffer) = try {
         CallStatus.values()[buf.getInt() - 1]
     } catch (e: IndexOutOfBoundsException) {
@@ -4646,18 +7765,23 @@ object FfiConverterTypeCallStatus : FfiConverterRustBuffer<CallStatus> {
 }
 
 
-sealed class MimirException(message: String) : Exception(message) {
 
-    class Connection(message: String) : MimirException(message)
 
-    class Auth(message: String) : MimirException(message)
 
-    class Protocol(message: String) : MimirException(message)
 
-    class Crypto(message: String) : MimirException(message)
 
-    class Io(message: String) : MimirException(message)
-
+sealed class MimirException(message: String): kotlin.Exception(message) {
+        
+        class Connection(message: String) : MimirException(message)
+        
+        class Auth(message: String) : MimirException(message)
+        
+        class Protocol(message: String) : MimirException(message)
+        
+        class Crypto(message: String) : MimirException(message)
+        
+        class Io(message: String) : MimirException(message)
+        
 
     companion object ErrorHandler : UniffiRustCallStatusErrorHandler<MimirException> {
         override fun lift(error_buf: RustBuffer.ByValue): MimirException = FfiConverterTypeMimirError.lift(error_buf)
@@ -4667,10 +7791,10 @@ sealed class MimirException(message: String) : Exception(message) {
 /**
  * @suppress
  */
-object FfiConverterTypeMimirError : FfiConverterRustBuffer<MimirException> {
+public object FfiConverterTypeMimirError : FfiConverterRustBuffer<MimirException> {
     override fun read(buf: ByteBuffer): MimirException {
-
-        return when (buf.getInt()) {
+        
+            return when(buf.getInt()) {
             1 -> MimirException.Connection(FfiConverterString.read(buf))
             2 -> MimirException.Auth(FfiConverterString.read(buf))
             3 -> MimirException.Protocol(FfiConverterString.read(buf))
@@ -4678,7 +7802,7 @@ object FfiConverterTypeMimirError : FfiConverterRustBuffer<MimirException> {
             5 -> MimirException.Io(FfiConverterString.read(buf))
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
         }
-
+        
     }
 
     override fun allocationSize(value: MimirException): ULong {
@@ -4686,27 +7810,23 @@ object FfiConverterTypeMimirError : FfiConverterRustBuffer<MimirException> {
     }
 
     override fun write(value: MimirException, buf: ByteBuffer) {
-        when (value) {
+        when(value) {
             is MimirException.Connection -> {
                 buf.putInt(1)
                 Unit
             }
-
             is MimirException.Auth -> {
                 buf.putInt(2)
                 Unit
             }
-
             is MimirException.Protocol -> {
                 buf.putInt(3)
                 Unit
             }
-
             is MimirException.Crypto -> {
                 buf.putInt(4)
                 Unit
             }
-
             is MimirException.Io -> {
                 buf.putInt(5)
                 Unit
@@ -4717,426 +7837,538 @@ object FfiConverterTypeMimirError : FfiConverterRustBuffer<MimirException> {
 }
 
 
+
 /**
- * Receives file server upload/download events.
- * All callbacks are invoked from Rust async tasks — must return quickly.
+ * Parsed mediator system message. The random anti-replay padding is dropped.
  */
-interface FilesEventListener {
+sealed class SystemMessage {
+    
+    data class UserAdded(
+        val `target`: kotlin.ByteArray, 
+        val `actor`: kotlin.ByteArray) : SystemMessage()
+        
+    {
+        
 
-    fun onUploadProgress(fileHash: ByteArray, messageGuid: Long, bytesSent: ULong, totalBytes: ULong)
+        companion object
+    }
+    
+    data class UserLeft(
+        val `user`: kotlin.ByteArray) : SystemMessage()
+        
+    {
+        
 
-    fun onUploadComplete(fileHash: ByteArray, messageGuid: Long)
+        companion object
+    }
+    
+    data class UserBanned(
+        val `target`: kotlin.ByteArray, 
+        val `actor`: kotlin.ByteArray) : SystemMessage()
+        
+    {
+        
 
-    fun onUploadError(fileHash: ByteArray, messageGuid: Long, error: String)
+        companion object
+    }
+    
+    data class ChatDeleted(
+        val `actor`: kotlin.ByteArray) : SystemMessage()
+        
+    {
+        
 
-    fun onDownloadProgress(fileHash: ByteArray, messageGuid: Long, bytesReceived: ULong, totalBytes: ULong)
+        companion object
+    }
+    
+    data class ChatInfoChanged(
+        val `actor`: kotlin.ByteArray, 
+        val `name`: kotlin.String?, 
+        val `description`: kotlin.String?, 
+        val `avatar`: kotlin.ByteArray?) : SystemMessage()
+        
+    {
+        
 
-    fun onDownloadComplete(fileHash: ByteArray, messageGuid: Long, filePath: String)
+        companion object
+    }
+    
+    data class PermsChanged(
+        val `target`: kotlin.ByteArray, 
+        val `newPermissions`: kotlin.UByte, 
+        val `actor`: kotlin.ByteArray) : SystemMessage()
+        
+    {
+        
 
-    fun onDownloadError(fileHash: ByteArray, messageGuid: Long, error: String)
+        companion object
+    }
+    
+    data class MessageDeleted(
+        val `guid`: kotlin.Long, 
+        val `deleter`: kotlin.ByteArray) : SystemMessage()
+        
+    {
+        
+
+        companion object
+    }
+    
+    data class Unknown(
+        val `eventCode`: kotlin.UByte, 
+        val `data`: kotlin.ByteArray) : SystemMessage()
+        
+    {
+        
+
+        companion object
+    }
+    
+
+    
+
+    
+    
+
 
     companion object
 }
 
-
-// Put the implementation in an object so we don't pollute the top-level namespace
-internal object uniffiCallbackInterfaceFilesEventListener {
-    internal object onUploadProgress : UniffiCallbackInterfaceFilesEventListenerMethod0 {
-        override fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, bytesSent: Long, totalBytes: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypeFilesEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onUploadProgress(
-                    FfiConverterByteArray.lift(fileHash),
-                    FfiConverterLong.lift(messageGuid),
-                    FfiConverterULong.lift(bytesSent),
-                    FfiConverterULong.lift(totalBytes),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object onUploadComplete : UniffiCallbackInterfaceFilesEventListenerMethod1 {
-        override fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypeFilesEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onUploadComplete(
-                    FfiConverterByteArray.lift(fileHash),
-                    FfiConverterLong.lift(messageGuid),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object onUploadError : UniffiCallbackInterfaceFilesEventListenerMethod2 {
-        override fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, error: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypeFilesEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onUploadError(
-                    FfiConverterByteArray.lift(fileHash),
-                    FfiConverterLong.lift(messageGuid),
-                    FfiConverterString.lift(error),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object onDownloadProgress : UniffiCallbackInterfaceFilesEventListenerMethod3 {
-        override fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, bytesReceived: Long, totalBytes: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypeFilesEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onDownloadProgress(
-                    FfiConverterByteArray.lift(fileHash),
-                    FfiConverterLong.lift(messageGuid),
-                    FfiConverterULong.lift(bytesReceived),
-                    FfiConverterULong.lift(totalBytes),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object onDownloadComplete : UniffiCallbackInterfaceFilesEventListenerMethod4 {
-        override fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, filePath: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypeFilesEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onDownloadComplete(
-                    FfiConverterByteArray.lift(fileHash),
-                    FfiConverterLong.lift(messageGuid),
-                    FfiConverterString.lift(filePath),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object onDownloadError : UniffiCallbackInterfaceFilesEventListenerMethod5 {
-        override fun callback(uniffiHandle: Long, fileHash: RustBuffer.ByValue, messageGuid: Long, error: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypeFilesEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onDownloadError(
-                    FfiConverterByteArray.lift(fileHash),
-                    FfiConverterLong.lift(messageGuid),
-                    FfiConverterString.lift(error),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object uniffiFree : UniffiCallbackInterfaceFree {
-        override fun callback(handle: Long) {
-            FfiConverterTypeFilesEventListener.handleMap.remove(handle)
-        }
-    }
-
-    internal object uniffiClone : UniffiCallbackInterfaceClone {
-        override fun callback(handle: Long): Long {
-            return FfiConverterTypeFilesEventListener.handleMap.clone(handle)
-        }
-    }
-
-    internal var vtable = UniffiVTableCallbackInterfaceFilesEventListener.UniffiByValue(
-        uniffiFree,
-        uniffiClone,
-        onUploadProgress,
-        onUploadComplete,
-        onUploadError,
-        onDownloadProgress,
-        onDownloadComplete,
-        onDownloadError,
-    )
-
-    // Registers the foreign callback with the Rust side.
-    // This method is generated for each callback interface.
-    internal fun register(lib: UniffiLib) {
-        lib.uniffi_mimir_fn_init_callback_vtable_fileseventlistener(vtable)
-    }
-}
-
 /**
- * The ffiConverter which transforms the Callbacks in to handles to pass to Rust.
- *
  * @suppress
  */
-object FfiConverterTypeFilesEventListener : FfiConverterCallbackInterface<FilesEventListener>()
+public object FfiConverterTypeSystemMessage : FfiConverterRustBuffer<SystemMessage>{
+    override fun read(buf: ByteBuffer): SystemMessage {
+        return when(buf.getInt()) {
+            1 -> SystemMessage.UserAdded(
+                FfiConverterByteArray.read(buf),
+                FfiConverterByteArray.read(buf),
+                )
+            2 -> SystemMessage.UserLeft(
+                FfiConverterByteArray.read(buf),
+                )
+            3 -> SystemMessage.UserBanned(
+                FfiConverterByteArray.read(buf),
+                FfiConverterByteArray.read(buf),
+                )
+            4 -> SystemMessage.ChatDeleted(
+                FfiConverterByteArray.read(buf),
+                )
+            5 -> SystemMessage.ChatInfoChanged(
+                FfiConverterByteArray.read(buf),
+                FfiConverterOptionalString.read(buf),
+                FfiConverterOptionalString.read(buf),
+                FfiConverterOptionalByteArray.read(buf),
+                )
+            6 -> SystemMessage.PermsChanged(
+                FfiConverterByteArray.read(buf),
+                FfiConverterUByte.read(buf),
+                FfiConverterByteArray.read(buf),
+                )
+            7 -> SystemMessage.MessageDeleted(
+                FfiConverterLong.read(buf),
+                FfiConverterByteArray.read(buf),
+                )
+            8 -> SystemMessage.Unknown(
+                FfiConverterUByte.read(buf),
+                FfiConverterByteArray.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: SystemMessage) = when(value) {
+        is SystemMessage.UserAdded -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterByteArray.allocationSize(value.`target`)
+                + FfiConverterByteArray.allocationSize(value.`actor`)
+            )
+        }
+        is SystemMessage.UserLeft -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterByteArray.allocationSize(value.`user`)
+            )
+        }
+        is SystemMessage.UserBanned -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterByteArray.allocationSize(value.`target`)
+                + FfiConverterByteArray.allocationSize(value.`actor`)
+            )
+        }
+        is SystemMessage.ChatDeleted -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterByteArray.allocationSize(value.`actor`)
+            )
+        }
+        is SystemMessage.ChatInfoChanged -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterByteArray.allocationSize(value.`actor`)
+                + FfiConverterOptionalString.allocationSize(value.`name`)
+                + FfiConverterOptionalString.allocationSize(value.`description`)
+                + FfiConverterOptionalByteArray.allocationSize(value.`avatar`)
+            )
+        }
+        is SystemMessage.PermsChanged -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterByteArray.allocationSize(value.`target`)
+                + FfiConverterUByte.allocationSize(value.`newPermissions`)
+                + FfiConverterByteArray.allocationSize(value.`actor`)
+            )
+        }
+        is SystemMessage.MessageDeleted -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterLong.allocationSize(value.`guid`)
+                + FfiConverterByteArray.allocationSize(value.`deleter`)
+            )
+        }
+        is SystemMessage.Unknown -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterUByte.allocationSize(value.`eventCode`)
+                + FfiConverterByteArray.allocationSize(value.`data`)
+            )
+        }
+    }
+
+    override fun write(value: SystemMessage, buf: ByteBuffer) {
+        when(value) {
+            is SystemMessage.UserAdded -> {
+                buf.putInt(1)
+                FfiConverterByteArray.write(value.`target`, buf)
+                FfiConverterByteArray.write(value.`actor`, buf)
+                Unit
+            }
+            is SystemMessage.UserLeft -> {
+                buf.putInt(2)
+                FfiConverterByteArray.write(value.`user`, buf)
+                Unit
+            }
+            is SystemMessage.UserBanned -> {
+                buf.putInt(3)
+                FfiConverterByteArray.write(value.`target`, buf)
+                FfiConverterByteArray.write(value.`actor`, buf)
+                Unit
+            }
+            is SystemMessage.ChatDeleted -> {
+                buf.putInt(4)
+                FfiConverterByteArray.write(value.`actor`, buf)
+                Unit
+            }
+            is SystemMessage.ChatInfoChanged -> {
+                buf.putInt(5)
+                FfiConverterByteArray.write(value.`actor`, buf)
+                FfiConverterOptionalString.write(value.`name`, buf)
+                FfiConverterOptionalString.write(value.`description`, buf)
+                FfiConverterOptionalByteArray.write(value.`avatar`, buf)
+                Unit
+            }
+            is SystemMessage.PermsChanged -> {
+                buf.putInt(6)
+                FfiConverterByteArray.write(value.`target`, buf)
+                FfiConverterUByte.write(value.`newPermissions`, buf)
+                FfiConverterByteArray.write(value.`actor`, buf)
+                Unit
+            }
+            is SystemMessage.MessageDeleted -> {
+                buf.putInt(7)
+                FfiConverterLong.write(value.`guid`, buf)
+                FfiConverterByteArray.write(value.`deleter`, buf)
+                Unit
+            }
+            is SystemMessage.Unknown -> {
+                buf.putInt(8)
+                FfiConverterUByte.write(value.`eventCode`, buf)
+                FfiConverterByteArray.write(value.`data`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
 
 
-/**
- * Provides local user info and stores contact info received from contacts.
- * All methods are called from Rust connection tasks — must not block long.
- */
-interface InfoProvider {
 
+
+
+
+
+public interface AppEventListener {
+    
+    fun `onConnectivityChanged`(`isOnline`: kotlin.Boolean)
+    
+    fun `onMessageReceived`(`contactId`: kotlin.Long, `messageId`: kotlin.Long, `msgType`: kotlin.Int, `replyTo`: kotlin.Long)
+    
+    fun `onMessageDelivered`(`contactPubkey`: kotlin.ByteArray, `guid`: kotlin.Long)
+    
+    fun `onContactConnected`(`pubkey`: kotlin.ByteArray)
+    
+    fun `onContactDisconnected`(`pubkey`: kotlin.ByteArray, `dead`: kotlin.Boolean)
+    
+    fun `onGroupMessageReceived`(`chatId`: kotlin.Long, `messageId`: kotlin.Long, `msgType`: kotlin.Int, `replyTo`: kotlin.Long)
+    
+    fun `onGroupMessageDeleted`(`chatId`: kotlin.Long, `guid`: kotlin.Long)
+    
+    fun `onGroupMessageDelivered`(`chatId`: kotlin.Long, `guid`: kotlin.Long)
+    
     /**
-     * Return our current contact info if it was updated after `since_time`,
-     * or null if nothing changed (so we skip sending an update).
+     * Outgoing message has been persisted locally — fires after the DB insert
+     * but before file-server upload / peer / mediator dispatch. Lets the UI
+     * render the row immediately in a "sending…" state. For P2P, target_id
+     * is contact_id; for group, it's chat_id.
      */
-    fun getMyInfo(sinceTime: Long): ContactInfo?
-
-    /**
-     * Return the last known update timestamp for a contact's info.
-     * Used to send an efficient info request ("only send if newer than X").
-     */
-    fun getContactUpdateTime(pubkey: ByteArray): Long
-
-    /**
-     * Called when a contact sent us their updated contact info.
-     */
-    fun updateContactInfo(pubkey: ByteArray, info: ContactInfo)
-
-    /**
-     * Return the directory path where file attachments are stored.
-     * Used when a received message includes a file payload to be saved.
-     */
-    fun getFilesDir(): String
-
-    /**
-     * Return permission flags for a contact.
-     * 0 = unknown/stranger (only contact requests allowed),
-     * 1 = contact (full messaging allowed).
-     */
-    fun getContactFlags(pubkey: ByteArray): Int
-
+    fun `onOutgoingMessageStored`(`isGroup`: kotlin.Boolean, `targetId`: kotlin.Long, `messageId`: kotlin.Long)
+    
+    fun `onGroupChatStatus`(`chatId`: kotlin.Long, `status`: kotlin.String)
+    
+    fun `onGroupInviteReceived`(`inviteId`: kotlin.Long, `chatId`: kotlin.Long, `fromPubkey`: kotlin.ByteArray)
+    
+    fun `onGroupMembersChanged`(`chatId`: kotlin.Long)
+    
+    fun `onGroupMemberOnline`(`chatId`: kotlin.Long, `pubkey`: kotlin.ByteArray, `online`: kotlin.Boolean)
+    
+    fun `onIncomingCall`(`pubkey`: kotlin.ByteArray)
+    
+    fun `onCallStatusChanged`(`status`: CallStatus, `pubkey`: kotlin.ByteArray?)
+    
+    fun `onCallPacket`(`pubkey`: kotlin.ByteArray, `data`: kotlin.ByteArray)
+    
+    fun `onFileProgress`(`guid`: kotlin.Long, `bytesDone`: kotlin.Long, `totalBytes`: kotlin.Long, `isUpload`: kotlin.Boolean)
+    
+    fun `onFileReceived`(`pubkey`: kotlin.ByteArray, `guid`: kotlin.Long, `metaJson`: kotlin.String, `filePath`: kotlin.String)
+    
+    fun `onFileDownloaded`(`chatId`: kotlin.Long, `guid`: kotlin.Long, `filePath`: kotlin.String)
+    
+    fun `onContactRequestReceived`(`requestId`: kotlin.Long)
+    
+    fun `onContactResponse`(`pubkey`: kotlin.ByteArray, `accepted`: kotlin.Boolean)
+    
+    fun `onTrackerAnnounce`(`ok`: kotlin.Boolean, `ttl`: kotlin.Int)
+    
     companion object
 }
 
 
-// Put the implementation in an object so we don't pollute the top-level namespace
-internal object uniffiCallbackInterfaceInfoProvider {
-    internal object getMyInfo : UniffiCallbackInterfaceInfoProviderMethod0 {
-        override fun callback(uniffiHandle: Long, sinceTime: Long, uniffiOutReturn: RustBuffer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypeInfoProvider.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.getMyInfo(
-                    FfiConverterLong.lift(sinceTime),
-                )
-            }
-            val writeReturn = { value: ContactInfo? -> uniffiOutReturn.setValue(FfiConverterOptionalTypeContactInfo.lower(value)) }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object getContactUpdateTime : UniffiCallbackInterfaceInfoProviderMethod1 {
-        override fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, uniffiOutReturn: LongByReference, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypeInfoProvider.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.getContactUpdateTime(
-                    FfiConverterByteArray.lift(pubkey),
-                )
-            }
-            val writeReturn = { value: Long -> uniffiOutReturn.setValue(FfiConverterLong.lower(value)) }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object updateContactInfo : UniffiCallbackInterfaceInfoProviderMethod2 {
-        override fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, info: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypeInfoProvider.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.updateContactInfo(
-                    FfiConverterByteArray.lift(pubkey),
-                    FfiConverterTypeContactInfo.lift(info),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object getFilesDir : UniffiCallbackInterfaceInfoProviderMethod3 {
-        override fun callback(uniffiHandle: Long, uniffiOutReturn: RustBuffer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypeInfoProvider.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.getFilesDir(
-                )
-            }
-            val writeReturn = { value: String -> uniffiOutReturn.setValue(FfiConverterString.lower(value)) }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object getContactFlags : UniffiCallbackInterfaceInfoProviderMethod4 {
-        override fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, uniffiOutReturn: IntByReference, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypeInfoProvider.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.getContactFlags(
-                    FfiConverterByteArray.lift(pubkey),
-                )
-            }
-            val writeReturn = { value: Int -> uniffiOutReturn.setValue(FfiConverterInt.lower(value)) }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object uniffiFree : UniffiCallbackInterfaceFree {
-        override fun callback(handle: Long) {
-            FfiConverterTypeInfoProvider.handleMap.remove(handle)
-        }
-    }
-
-    internal object uniffiClone : UniffiCallbackInterfaceClone {
-        override fun callback(handle: Long): Long {
-            return FfiConverterTypeInfoProvider.handleMap.clone(handle)
-        }
-    }
-
-    internal var vtable = UniffiVTableCallbackInterfaceInfoProvider.UniffiByValue(
-        uniffiFree,
-        uniffiClone,
-        getMyInfo,
-        getContactUpdateTime,
-        updateContactInfo,
-        getFilesDir,
-        getContactFlags,
-    )
-
-    // Registers the foreign callback with the Rust side.
-    // This method is generated for each callback interface.
-    internal fun register(lib: UniffiLib) {
-        lib.uniffi_mimir_fn_init_callback_vtable_infoprovider(vtable)
-    }
-}
-
-/**
- * The ffiConverter which transforms the Callbacks in to handles to pass to Rust.
- *
- * @suppress
- */
-object FfiConverterTypeInfoProvider : FfiConverterCallbackInterface<InfoProvider>()
-
-
-/**
- * Receives mediator (group-chat server) events.
- * All callbacks are invoked from Rust async tasks — must return quickly.
- *
- * Note: encryption of message blobs is handled by the caller (Kotlin/Swift).
- * Rust passes encrypted bytes through unchanged.
- */
-interface MediatorEventListener {
-
-    /**
-     * About to dial and authenticate with a mediator.
-     */
-    fun onConnecting(mediatorPubkey: ByteArray)
-
-    /**
-     * Authenticated connection established to this mediator.
-     */
-    fun onConnected(mediatorPubkey: ByteArray)
-
-    /**
-     * Subscription to `chat_id` confirmed.
-     * `last_message_id` is the highest message ID on the mediator for this chat.
-     * If it exceeds your local last ID, call `get_messages_since` to catch up.
-     * For a first-time join use `since_id = 0` to fetch the full history.
-     */
-    fun onSubscribed(mediatorPubkey: ByteArray, chatId: Long, lastMessageId: Long)
-
-    /**
-     * An encrypted group chat message arrived from the mediator push.
-     */
-    fun onPushMessage(chatId: Long, messageId: Long, guid: Long, timestamp: Long, author: ByteArray, `data`: ByteArray)
-
-    /**
-     * A mediator-generated system message arrived (always unencrypted).
-     * body[0] is the event code; see SYS_* constants in the protocol.
-     */
-    fun onSystemMessage(chatId: Long, messageId: Long, guid: Long, timestamp: Long, body: ByteArray)
-
-    /**
-     * A group chat invitation arrived.
-     * `encrypted_data` is the AES-wrapped shared key for the recipient.
-     * `mediator_pubkey` identifies which mediator delivered this invite.
-     */
-    fun onPushInvite(inviteId: Long, chatId: Long, fromPubkey: ByteArray, timestamp: Long, chatName: String, chatDesc: String, chatAvatar: ByteArray?, encryptedData: ByteArray, mediatorPubkey: ByteArray)
-
-    /**
-     * Mediator asks us to (re-)send our encrypted member profile.
-     * Return MemberInfoData if our info is newer than last_update, else null.
-     */
-    fun onMemberInfoRequest(chatId: Long, lastUpdate: Long): MemberInfoData?
-
-    /**
-     * Mediator broadcast: a member's encrypted profile was updated.
-     */
-    fun onMemberInfoUpdate(chatId: Long, memberPubkey: ByteArray, encryptedInfo: ByteArray?, timestamp: Long)
-
-    /**
-     * Mediator broadcast: a member came online or went offline.
-     */
-    fun onMemberOnlineStatusChanged(chatId: Long, memberPubkey: ByteArray, isOnline: Boolean, timestamp: Long)
-
-    /**
-     * Connection to this mediator ended.
-     */
-    fun onDisconnected(mediatorPubkey: ByteArray)
-
-    companion object
-}
-
 
 // Put the implementation in an object so we don't pollute the top-level namespace
-internal object uniffiCallbackInterfaceMediatorEventListener {
-    internal object onConnecting : UniffiCallbackInterfaceMediatorEventListenerMethod0 {
-        override fun callback(uniffiHandle: Long, mediatorPubkey: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypeMediatorEventListener.handleMap.get(uniffiHandle)
+internal object uniffiCallbackInterfaceAppEventListener {
+    internal object `onConnectivityChanged`: UniffiCallbackInterfaceAppEventListenerMethod0 {
+        override fun callback(`uniffiHandle`: Long,`isOnline`: Byte,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
-                uniffiObj.onConnecting(
-                    FfiConverterByteArray.lift(mediatorPubkey),
+                uniffiObj.`onConnectivityChanged`(
+                    FfiConverterBoolean.lift(`isOnline`),
                 )
             }
             val writeReturn = { _: Unit -> Unit }
             uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
         }
     }
-
-    internal object onConnected : UniffiCallbackInterfaceMediatorEventListenerMethod1 {
-        override fun callback(uniffiHandle: Long, mediatorPubkey: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypeMediatorEventListener.handleMap.get(uniffiHandle)
+    internal object `onMessageReceived`: UniffiCallbackInterfaceAppEventListenerMethod1 {
+        override fun callback(`uniffiHandle`: Long,`contactId`: Long,`messageId`: Long,`msgType`: Int,`replyTo`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
-                uniffiObj.onConnected(
-                    FfiConverterByteArray.lift(mediatorPubkey),
+                uniffiObj.`onMessageReceived`(
+                    FfiConverterLong.lift(`contactId`),
+                    FfiConverterLong.lift(`messageId`),
+                    FfiConverterInt.lift(`msgType`),
+                    FfiConverterLong.lift(`replyTo`),
                 )
             }
             val writeReturn = { _: Unit -> Unit }
             uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
         }
     }
-
-    internal object onSubscribed : UniffiCallbackInterfaceMediatorEventListenerMethod2 {
-        override fun callback(uniffiHandle: Long, mediatorPubkey: RustBuffer.ByValue, chatId: Long, lastMessageId: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypeMediatorEventListener.handleMap.get(uniffiHandle)
+    internal object `onMessageDelivered`: UniffiCallbackInterfaceAppEventListenerMethod2 {
+        override fun callback(`uniffiHandle`: Long,`contactPubkey`: RustBuffer.ByValue,`guid`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
-                uniffiObj.onSubscribed(
-                    FfiConverterByteArray.lift(mediatorPubkey),
-                    FfiConverterLong.lift(chatId),
-                    FfiConverterLong.lift(lastMessageId),
+                uniffiObj.`onMessageDelivered`(
+                    FfiConverterByteArray.lift(`contactPubkey`),
+                    FfiConverterLong.lift(`guid`),
                 )
             }
             val writeReturn = { _: Unit -> Unit }
             uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
         }
     }
-
-    internal object onPushMessage : UniffiCallbackInterfaceMediatorEventListenerMethod3 {
-        override fun callback(uniffiHandle: Long, chatId: Long, messageId: Long, guid: Long, timestamp: Long, author: RustBuffer.ByValue, `data`: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypeMediatorEventListener.handleMap.get(uniffiHandle)
+    internal object `onContactConnected`: UniffiCallbackInterfaceAppEventListenerMethod3 {
+        override fun callback(`uniffiHandle`: Long,`pubkey`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
-                uniffiObj.onPushMessage(
-                    FfiConverterLong.lift(chatId),
-                    FfiConverterLong.lift(messageId),
-                    FfiConverterLong.lift(guid),
-                    FfiConverterLong.lift(timestamp),
-                    FfiConverterByteArray.lift(author),
+                uniffiObj.`onContactConnected`(
+                    FfiConverterByteArray.lift(`pubkey`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onContactDisconnected`: UniffiCallbackInterfaceAppEventListenerMethod4 {
+        override fun callback(`uniffiHandle`: Long,`pubkey`: RustBuffer.ByValue,`dead`: Byte,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onContactDisconnected`(
+                    FfiConverterByteArray.lift(`pubkey`),
+                    FfiConverterBoolean.lift(`dead`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onGroupMessageReceived`: UniffiCallbackInterfaceAppEventListenerMethod5 {
+        override fun callback(`uniffiHandle`: Long,`chatId`: Long,`messageId`: Long,`msgType`: Int,`replyTo`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onGroupMessageReceived`(
+                    FfiConverterLong.lift(`chatId`),
+                    FfiConverterLong.lift(`messageId`),
+                    FfiConverterInt.lift(`msgType`),
+                    FfiConverterLong.lift(`replyTo`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onGroupMessageDeleted`: UniffiCallbackInterfaceAppEventListenerMethod6 {
+        override fun callback(`uniffiHandle`: Long,`chatId`: Long,`guid`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onGroupMessageDeleted`(
+                    FfiConverterLong.lift(`chatId`),
+                    FfiConverterLong.lift(`guid`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onGroupMessageDelivered`: UniffiCallbackInterfaceAppEventListenerMethod7 {
+        override fun callback(`uniffiHandle`: Long,`chatId`: Long,`guid`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onGroupMessageDelivered`(
+                    FfiConverterLong.lift(`chatId`),
+                    FfiConverterLong.lift(`guid`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onOutgoingMessageStored`: UniffiCallbackInterfaceAppEventListenerMethod8 {
+        override fun callback(`uniffiHandle`: Long,`isGroup`: Byte,`targetId`: Long,`messageId`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onOutgoingMessageStored`(
+                    FfiConverterBoolean.lift(`isGroup`),
+                    FfiConverterLong.lift(`targetId`),
+                    FfiConverterLong.lift(`messageId`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onGroupChatStatus`: UniffiCallbackInterfaceAppEventListenerMethod9 {
+        override fun callback(`uniffiHandle`: Long,`chatId`: Long,`status`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onGroupChatStatus`(
+                    FfiConverterLong.lift(`chatId`),
+                    FfiConverterString.lift(`status`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onGroupInviteReceived`: UniffiCallbackInterfaceAppEventListenerMethod10 {
+        override fun callback(`uniffiHandle`: Long,`inviteId`: Long,`chatId`: Long,`fromPubkey`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onGroupInviteReceived`(
+                    FfiConverterLong.lift(`inviteId`),
+                    FfiConverterLong.lift(`chatId`),
+                    FfiConverterByteArray.lift(`fromPubkey`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onGroupMembersChanged`: UniffiCallbackInterfaceAppEventListenerMethod11 {
+        override fun callback(`uniffiHandle`: Long,`chatId`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onGroupMembersChanged`(
+                    FfiConverterLong.lift(`chatId`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onGroupMemberOnline`: UniffiCallbackInterfaceAppEventListenerMethod12 {
+        override fun callback(`uniffiHandle`: Long,`chatId`: Long,`pubkey`: RustBuffer.ByValue,`online`: Byte,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onGroupMemberOnline`(
+                    FfiConverterLong.lift(`chatId`),
+                    FfiConverterByteArray.lift(`pubkey`),
+                    FfiConverterBoolean.lift(`online`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onIncomingCall`: UniffiCallbackInterfaceAppEventListenerMethod13 {
+        override fun callback(`uniffiHandle`: Long,`pubkey`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onIncomingCall`(
+                    FfiConverterByteArray.lift(`pubkey`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onCallStatusChanged`: UniffiCallbackInterfaceAppEventListenerMethod14 {
+        override fun callback(`uniffiHandle`: Long,`status`: RustBuffer.ByValue,`pubkey`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onCallStatusChanged`(
+                    FfiConverterTypeCallStatus.lift(`status`),
+                    FfiConverterOptionalByteArray.lift(`pubkey`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onCallPacket`: UniffiCallbackInterfaceAppEventListenerMethod15 {
+        override fun callback(`uniffiHandle`: Long,`pubkey`: RustBuffer.ByValue,`data`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onCallPacket`(
+                    FfiConverterByteArray.lift(`pubkey`),
                     FfiConverterByteArray.lift(`data`),
                 )
             }
@@ -5144,17 +8376,82 @@ internal object uniffiCallbackInterfaceMediatorEventListener {
             uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
         }
     }
-
-    internal object onSystemMessage : UniffiCallbackInterfaceMediatorEventListenerMethod4 {
-        override fun callback(uniffiHandle: Long, chatId: Long, messageId: Long, guid: Long, timestamp: Long, body: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypeMediatorEventListener.handleMap.get(uniffiHandle)
+    internal object `onFileProgress`: UniffiCallbackInterfaceAppEventListenerMethod16 {
+        override fun callback(`uniffiHandle`: Long,`guid`: Long,`bytesDone`: Long,`totalBytes`: Long,`isUpload`: Byte,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
-                uniffiObj.onSystemMessage(
-                    FfiConverterLong.lift(chatId),
-                    FfiConverterLong.lift(messageId),
-                    FfiConverterLong.lift(guid),
-                    FfiConverterLong.lift(timestamp),
-                    FfiConverterByteArray.lift(body),
+                uniffiObj.`onFileProgress`(
+                    FfiConverterLong.lift(`guid`),
+                    FfiConverterLong.lift(`bytesDone`),
+                    FfiConverterLong.lift(`totalBytes`),
+                    FfiConverterBoolean.lift(`isUpload`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onFileReceived`: UniffiCallbackInterfaceAppEventListenerMethod17 {
+        override fun callback(`uniffiHandle`: Long,`pubkey`: RustBuffer.ByValue,`guid`: Long,`metaJson`: RustBuffer.ByValue,`filePath`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onFileReceived`(
+                    FfiConverterByteArray.lift(`pubkey`),
+                    FfiConverterLong.lift(`guid`),
+                    FfiConverterString.lift(`metaJson`),
+                    FfiConverterString.lift(`filePath`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onFileDownloaded`: UniffiCallbackInterfaceAppEventListenerMethod18 {
+        override fun callback(`uniffiHandle`: Long,`chatId`: Long,`guid`: Long,`filePath`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onFileDownloaded`(
+                    FfiConverterLong.lift(`chatId`),
+                    FfiConverterLong.lift(`guid`),
+                    FfiConverterString.lift(`filePath`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onContactRequestReceived`: UniffiCallbackInterfaceAppEventListenerMethod19 {
+        override fun callback(`uniffiHandle`: Long,`requestId`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onContactRequestReceived`(
+                    FfiConverterLong.lift(`requestId`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onContactResponse`: UniffiCallbackInterfaceAppEventListenerMethod20 {
+        override fun callback(`uniffiHandle`: Long,`pubkey`: RustBuffer.ByValue,`accepted`: Byte,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onContactResponse`(
+                    FfiConverterByteArray.lift(`pubkey`),
+                    FfiConverterBoolean.lift(`accepted`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onTrackerAnnounce`: UniffiCallbackInterfaceAppEventListenerMethod21 {
+        override fun callback(`uniffiHandle`: Long,`ok`: Byte,`ttl`: Int,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onTrackerAnnounce`(
+                    FfiConverterBoolean.lift(`ok`),
+                    FfiConverterInt.lift(`ttl`),
                 )
             }
             val writeReturn = { _: Unit -> Unit }
@@ -5162,117 +8459,49 @@ internal object uniffiCallbackInterfaceMediatorEventListener {
         }
     }
 
-    internal object onPushInvite : UniffiCallbackInterfaceMediatorEventListenerMethod5 {
-        override fun callback(uniffiHandle: Long, inviteId: Long, chatId: Long, fromPubkey: RustBuffer.ByValue, timestamp: Long, chatName: RustBuffer.ByValue, chatDesc: RustBuffer.ByValue, chatAvatar: RustBuffer.ByValue, encryptedData: RustBuffer.ByValue, mediatorPubkey: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypeMediatorEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onPushInvite(
-                    FfiConverterLong.lift(inviteId),
-                    FfiConverterLong.lift(chatId),
-                    FfiConverterByteArray.lift(fromPubkey),
-                    FfiConverterLong.lift(timestamp),
-                    FfiConverterString.lift(chatName),
-                    FfiConverterString.lift(chatDesc),
-                    FfiConverterOptionalByteArray.lift(chatAvatar),
-                    FfiConverterByteArray.lift(encryptedData),
-                    FfiConverterByteArray.lift(mediatorPubkey),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object onMemberInfoRequest : UniffiCallbackInterfaceMediatorEventListenerMethod6 {
-        override fun callback(uniffiHandle: Long, chatId: Long, lastUpdate: Long, uniffiOutReturn: RustBuffer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypeMediatorEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onMemberInfoRequest(
-                    FfiConverterLong.lift(chatId),
-                    FfiConverterLong.lift(lastUpdate),
-                )
-            }
-            val writeReturn = { value: MemberInfoData? -> uniffiOutReturn.setValue(FfiConverterOptionalTypeMemberInfoData.lower(value)) }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object onMemberInfoUpdate : UniffiCallbackInterfaceMediatorEventListenerMethod7 {
-        override fun callback(uniffiHandle: Long, chatId: Long, memberPubkey: RustBuffer.ByValue, encryptedInfo: RustBuffer.ByValue, timestamp: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypeMediatorEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onMemberInfoUpdate(
-                    FfiConverterLong.lift(chatId),
-                    FfiConverterByteArray.lift(memberPubkey),
-                    FfiConverterOptionalByteArray.lift(encryptedInfo),
-                    FfiConverterLong.lift(timestamp),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object onMemberOnlineStatusChanged : UniffiCallbackInterfaceMediatorEventListenerMethod8 {
-        override fun callback(uniffiHandle: Long, chatId: Long, memberPubkey: RustBuffer.ByValue, isOnline: Byte, timestamp: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypeMediatorEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onMemberOnlineStatusChanged(
-                    FfiConverterLong.lift(chatId),
-                    FfiConverterByteArray.lift(memberPubkey),
-                    FfiConverterBoolean.lift(isOnline),
-                    FfiConverterLong.lift(timestamp),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object onDisconnected : UniffiCallbackInterfaceMediatorEventListenerMethod9 {
-        override fun callback(uniffiHandle: Long, mediatorPubkey: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypeMediatorEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onDisconnected(
-                    FfiConverterByteArray.lift(mediatorPubkey),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object uniffiFree : UniffiCallbackInterfaceFree {
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
         override fun callback(handle: Long) {
-            FfiConverterTypeMediatorEventListener.handleMap.remove(handle)
+            FfiConverterTypeAppEventListener.handleMap.remove(handle)
         }
     }
 
-    internal object uniffiClone : UniffiCallbackInterfaceClone {
+    internal object uniffiClone: UniffiCallbackInterfaceClone {
         override fun callback(handle: Long): Long {
-            return FfiConverterTypeMediatorEventListener.handleMap.clone(handle)
+            return FfiConverterTypeAppEventListener.handleMap.clone(handle)
         }
     }
 
-    internal var vtable = UniffiVTableCallbackInterfaceMediatorEventListener.UniffiByValue(
+    internal var vtable = UniffiVTableCallbackInterfaceAppEventListener.UniffiByValue(
         uniffiFree,
         uniffiClone,
-        onConnecting,
-        onConnected,
-        onSubscribed,
-        onPushMessage,
-        onSystemMessage,
-        onPushInvite,
-        onMemberInfoRequest,
-        onMemberInfoUpdate,
-        onMemberOnlineStatusChanged,
-        onDisconnected,
+        `onConnectivityChanged`,
+        `onMessageReceived`,
+        `onMessageDelivered`,
+        `onContactConnected`,
+        `onContactDisconnected`,
+        `onGroupMessageReceived`,
+        `onGroupMessageDeleted`,
+        `onGroupMessageDelivered`,
+        `onOutgoingMessageStored`,
+        `onGroupChatStatus`,
+        `onGroupInviteReceived`,
+        `onGroupMembersChanged`,
+        `onGroupMemberOnline`,
+        `onIncomingCall`,
+        `onCallStatusChanged`,
+        `onCallPacket`,
+        `onFileProgress`,
+        `onFileReceived`,
+        `onFileDownloaded`,
+        `onContactRequestReceived`,
+        `onContactResponse`,
+        `onTrackerAnnounce`,
     )
 
     // Registers the foreign callback with the Rust side.
     // This method is generated for each callback interface.
     internal fun register(lib: UniffiLib) {
-        lib.uniffi_mimir_fn_init_callback_vtable_mediatoreventlistener(vtable)
+        lib.uniffi_mimir_fn_init_callback_vtable_appeventlistener(vtable)
     }
 }
 
@@ -5281,380 +8510,55 @@ internal object uniffiCallbackInterfaceMediatorEventListener {
  *
  * @suppress
  */
-object FfiConverterTypeMediatorEventListener : FfiConverterCallbackInterface<MediatorEventListener>()
+public object FfiConverterTypeAppEventListener: FfiConverterCallbackInterface<AppEventListener>()
 
 
-/**
- * Receives P2P networking events. All callbacks are invoked from Rust
- * connection tasks and must return quickly.
- */
-interface PeerEventListener {
-
-    /**
-     * Yggdrasil overlay network came online (first peer) or went offline (last peer).
-     */
-    fun onConnectivityChanged(isOnline: Boolean)
-
-    /**
-     * Mutual authentication succeeded; contact is ready to exchange messages.
-     */
-    fun onContactConnected(pubkey: ByteArray, address: String)
-
-    /**
-     * Connection to contact closed.
-     * `dead_contact` = true if we detected the contact was unreachable (no pong).
-     */
-    fun onContactDisconnected(pubkey: ByteArray, address: String, deadContact: Boolean)
-
-    /**
-     * A text/file message arrived from `pubkey`.
-     *
-     * For text (msg_type == 0 or 2): `data` is the message content.
-     * For image/file (msg_type == 1 or 3): `data` is the JSON metadata only
-     * (no file bytes).  Use `request_file` to download the actual file.
-     * For file response (msg_type == 4001): `data` is the wire payload —
-     * [metaJsonSize(4 BE)][metaJson][fileBytes] — save the file to disk.
-     */
-    fun onMessageReceived(pubkey: ByteArray, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, msgType: Int, `data`: ByteArray)
-
-    /**
-     * The contact acknowledged receipt of our message with the given guid.
-     */
-    fun onMessageDelivered(pubkey: ByteArray, guid: Long)
-
-    /**
-     * Contact is calling us.
-     */
-    fun onIncomingCall(pubkey: ByteArray)
-
-    /**
-     * Call state changed (Calling, InCall, Hangup, …).
-     * `pubkey` is null only for Idle status.
-     */
-    fun onCallStatusChanged(status: CallStatus, pubkey: ByteArray?)
-
-    /**
-     * Raw audio packet from contact during an active call.
-     * Passed through directly to the audio subsystem (stays in Kotlin/Swift
-     * until audio moves to Rust in a later phase).
-     */
-    fun onCallPacket(pubkey: ByteArray, `data`: ByteArray)
-
-    /**
-     * A large file/image is being received over the data stream.
-     * Fired after each chunk; `bytes_received` increases until it equals `total_bytes`.
-     */
-    fun onFileReceiveProgress(pubkey: ByteArray, guid: Long, bytesReceived: Long, totalBytes: Long)
-
-    /**
-     * A large file/image is being sent over the data stream.
-     * Fired after each chunk; `bytes_sent` increases until it equals `total_bytes`.
-     */
-    fun onFileSendProgress(pubkey: ByteArray, guid: Long, bytesSent: Long, totalBytes: Long)
-
-    /**
-     * A file has been fully received and streamed to disk.
-     * `meta_json` is the JSON metadata from the stream header.
-     * `file_path` is the absolute path to the temp file on disk.
-     * The receiver should move/rename the file to its final location.
-     */
-    fun onFileReceived(pubkey: ByteArray, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, msgType: Int, metaJson: String, filePath: String)
-
-    /**
-     * A contact (friend) request arrived from a remote user.
-     * Includes the sender's profile info so it can be displayed in the UI.
-     */
-    fun onContactRequest(pubkey: ByteArray, message: String, nickname: String, info: String, avatar: ByteArray?)
-
-    /**
-     * A contact response arrived (accepted or rejected our request).
-     */
-    fun onContactResponse(pubkey: ByteArray, accepted: Boolean)
-
-    /**
-     * Tracker announce completed.
-     * `ok` = true if at least one tracker accepted the announce.
-     * `ttl` = TTL in seconds returned by the tracker (0 on failure).
-     */
-    fun onTrackerAnnounce(ok: Boolean, ttl: Int)
-
-    companion object
-}
-
-
-// Put the implementation in an object so we don't pollute the top-level namespace
-internal object uniffiCallbackInterfacePeerEventListener {
-    internal object onConnectivityChanged : UniffiCallbackInterfacePeerEventListenerMethod0 {
-        override fun callback(uniffiHandle: Long, isOnline: Byte, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypePeerEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onConnectivityChanged(
-                    FfiConverterBoolean.lift(isOnline),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object onContactConnected : UniffiCallbackInterfacePeerEventListenerMethod1 {
-        override fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, address: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypePeerEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onContactConnected(
-                    FfiConverterByteArray.lift(pubkey),
-                    FfiConverterString.lift(address),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object onContactDisconnected : UniffiCallbackInterfacePeerEventListenerMethod2 {
-        override fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, address: RustBuffer.ByValue, deadContact: Byte, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypePeerEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onContactDisconnected(
-                    FfiConverterByteArray.lift(pubkey),
-                    FfiConverterString.lift(address),
-                    FfiConverterBoolean.lift(deadContact),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object onMessageReceived : UniffiCallbackInterfacePeerEventListenerMethod3 {
-        override fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, msgType: Int, `data`: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypePeerEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onMessageReceived(
-                    FfiConverterByteArray.lift(pubkey),
-                    FfiConverterLong.lift(guid),
-                    FfiConverterLong.lift(replyTo),
-                    FfiConverterLong.lift(sendTime),
-                    FfiConverterLong.lift(editTime),
-                    FfiConverterInt.lift(msgType),
-                    FfiConverterByteArray.lift(`data`),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object onMessageDelivered : UniffiCallbackInterfacePeerEventListenerMethod4 {
-        override fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, guid: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypePeerEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onMessageDelivered(
-                    FfiConverterByteArray.lift(pubkey),
-                    FfiConverterLong.lift(guid),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object onIncomingCall : UniffiCallbackInterfacePeerEventListenerMethod5 {
-        override fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypePeerEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onIncomingCall(
-                    FfiConverterByteArray.lift(pubkey),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object onCallStatusChanged : UniffiCallbackInterfacePeerEventListenerMethod6 {
-        override fun callback(uniffiHandle: Long, status: RustBuffer.ByValue, pubkey: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypePeerEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onCallStatusChanged(
-                    FfiConverterTypeCallStatus.lift(status),
-                    FfiConverterOptionalByteArray.lift(pubkey),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object onCallPacket : UniffiCallbackInterfacePeerEventListenerMethod7 {
-        override fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, `data`: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypePeerEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onCallPacket(
-                    FfiConverterByteArray.lift(pubkey),
-                    FfiConverterByteArray.lift(`data`),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object onFileReceiveProgress : UniffiCallbackInterfacePeerEventListenerMethod8 {
-        override fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, guid: Long, bytesReceived: Long, totalBytes: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypePeerEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onFileReceiveProgress(
-                    FfiConverterByteArray.lift(pubkey),
-                    FfiConverterLong.lift(guid),
-                    FfiConverterLong.lift(bytesReceived),
-                    FfiConverterLong.lift(totalBytes),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object onFileSendProgress : UniffiCallbackInterfacePeerEventListenerMethod9 {
-        override fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, guid: Long, bytesSent: Long, totalBytes: Long, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypePeerEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onFileSendProgress(
-                    FfiConverterByteArray.lift(pubkey),
-                    FfiConverterLong.lift(guid),
-                    FfiConverterLong.lift(bytesSent),
-                    FfiConverterLong.lift(totalBytes),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object onFileReceived : UniffiCallbackInterfacePeerEventListenerMethod10 {
-        override fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, guid: Long, replyTo: Long, sendTime: Long, editTime: Long, msgType: Int, metaJson: RustBuffer.ByValue, filePath: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypePeerEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onFileReceived(
-                    FfiConverterByteArray.lift(pubkey),
-                    FfiConverterLong.lift(guid),
-                    FfiConverterLong.lift(replyTo),
-                    FfiConverterLong.lift(sendTime),
-                    FfiConverterLong.lift(editTime),
-                    FfiConverterInt.lift(msgType),
-                    FfiConverterString.lift(metaJson),
-                    FfiConverterString.lift(filePath),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object onContactRequest : UniffiCallbackInterfacePeerEventListenerMethod11 {
-        override fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, message: RustBuffer.ByValue, nickname: RustBuffer.ByValue, info: RustBuffer.ByValue, avatar: RustBuffer.ByValue, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypePeerEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onContactRequest(
-                    FfiConverterByteArray.lift(pubkey),
-                    FfiConverterString.lift(message),
-                    FfiConverterString.lift(nickname),
-                    FfiConverterString.lift(info),
-                    FfiConverterOptionalByteArray.lift(avatar),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object onContactResponse : UniffiCallbackInterfacePeerEventListenerMethod12 {
-        override fun callback(uniffiHandle: Long, pubkey: RustBuffer.ByValue, accepted: Byte, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypePeerEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onContactResponse(
-                    FfiConverterByteArray.lift(pubkey),
-                    FfiConverterBoolean.lift(accepted),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object onTrackerAnnounce : UniffiCallbackInterfacePeerEventListenerMethod13 {
-        override fun callback(uniffiHandle: Long, ok: Byte, ttl: Int, uniffiOutReturn: Pointer, uniffiCallStatus: UniffiRustCallStatus) {
-            val uniffiObj = FfiConverterTypePeerEventListener.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.onTrackerAnnounce(
-                    FfiConverterBoolean.lift(ok),
-                    FfiConverterInt.lift(ttl),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-
-    internal object uniffiFree : UniffiCallbackInterfaceFree {
-        override fun callback(handle: Long) {
-            FfiConverterTypePeerEventListener.handleMap.remove(handle)
-        }
-    }
-
-    internal object uniffiClone : UniffiCallbackInterfaceClone {
-        override fun callback(handle: Long): Long {
-            return FfiConverterTypePeerEventListener.handleMap.clone(handle)
-        }
-    }
-
-    internal var vtable = UniffiVTableCallbackInterfacePeerEventListener.UniffiByValue(
-        uniffiFree,
-        uniffiClone,
-        onConnectivityChanged,
-        onContactConnected,
-        onContactDisconnected,
-        onMessageReceived,
-        onMessageDelivered,
-        onIncomingCall,
-        onCallStatusChanged,
-        onCallPacket,
-        onFileReceiveProgress,
-        onFileSendProgress,
-        onFileReceived,
-        onContactRequest,
-        onContactResponse,
-        onTrackerAnnounce,
-    )
-
-    // Registers the foreign callback with the Rust side.
-    // This method is generated for each callback interface.
-    internal fun register(lib: UniffiLib) {
-        lib.uniffi_mimir_fn_init_callback_vtable_peereventlistener(vtable)
-    }
-}
-
-/**
- * The ffiConverter which transforms the Callbacks in to handles to pass to Rust.
- *
- * @suppress
- */
-object FfiConverterTypePeerEventListener : FfiConverterCallbackInterface<PeerEventListener>()
 
 
 /**
  * @suppress
  */
-object FfiConverterOptionalString : FfiConverterRustBuffer<String?> {
-    override fun read(buf: ByteBuffer): String? {
+public object FfiConverterOptionalLong: FfiConverterRustBuffer<kotlin.Long?> {
+    override fun read(buf: ByteBuffer): kotlin.Long? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterLong.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.Long?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterLong.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.Long?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterLong.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalString: FfiConverterRustBuffer<kotlin.String?> {
+    override fun read(buf: ByteBuffer): kotlin.String? {
         if (buf.get().toInt() == 0) {
             return null
         }
         return FfiConverterString.read(buf)
     }
 
-    override fun allocationSize(value: String?): ULong {
+    override fun allocationSize(value: kotlin.String?): ULong {
         if (value == null) {
             return 1UL
         } else {
@@ -5662,7 +8566,7 @@ object FfiConverterOptionalString : FfiConverterRustBuffer<String?> {
         }
     }
 
-    override fun write(value: String?, buf: ByteBuffer) {
+    override fun write(value: kotlin.String?, buf: ByteBuffer) {
         if (value == null) {
             buf.put(0)
         } else {
@@ -5673,18 +8577,20 @@ object FfiConverterOptionalString : FfiConverterRustBuffer<String?> {
 }
 
 
+
+
 /**
  * @suppress
  */
-object FfiConverterOptionalByteArray : FfiConverterRustBuffer<ByteArray?> {
-    override fun read(buf: ByteBuffer): ByteArray? {
+public object FfiConverterOptionalByteArray: FfiConverterRustBuffer<kotlin.ByteArray?> {
+    override fun read(buf: ByteBuffer): kotlin.ByteArray? {
         if (buf.get().toInt() == 0) {
             return null
         }
         return FfiConverterByteArray.read(buf)
     }
 
-    override fun allocationSize(value: ByteArray?): ULong {
+    override fun allocationSize(value: kotlin.ByteArray?): ULong {
         if (value == null) {
             return 1UL
         } else {
@@ -5692,7 +8598,7 @@ object FfiConverterOptionalByteArray : FfiConverterRustBuffer<ByteArray?> {
         }
     }
 
-    override fun write(value: ByteArray?, buf: ByteBuffer) {
+    override fun write(value: kotlin.ByteArray?, buf: ByteBuffer) {
         if (value == null) {
             buf.put(0)
         } else {
@@ -5703,84 +8609,310 @@ object FfiConverterOptionalByteArray : FfiConverterRustBuffer<ByteArray?> {
 }
 
 
+
+
 /**
  * @suppress
  */
-object FfiConverterOptionalTypeContactInfo : FfiConverterRustBuffer<ContactInfo?> {
-    override fun read(buf: ByteBuffer): ContactInfo? {
+public object FfiConverterOptionalTypeAttachmentSpec: FfiConverterRustBuffer<AttachmentSpec?> {
+    override fun read(buf: ByteBuffer): AttachmentSpec? {
         if (buf.get().toInt() == 0) {
             return null
         }
-        return FfiConverterTypeContactInfo.read(buf)
+        return FfiConverterTypeAttachmentSpec.read(buf)
     }
 
-    override fun allocationSize(value: ContactInfo?): ULong {
+    override fun allocationSize(value: AttachmentSpec?): ULong {
         if (value == null) {
             return 1UL
         } else {
-            return 1UL + FfiConverterTypeContactInfo.allocationSize(value)
+            return 1UL + FfiConverterTypeAttachmentSpec.allocationSize(value)
         }
     }
 
-    override fun write(value: ContactInfo?, buf: ByteBuffer) {
+    override fun write(value: AttachmentSpec?, buf: ByteBuffer) {
         if (value == null) {
             buf.put(0)
         } else {
             buf.put(1)
-            FfiConverterTypeContactInfo.write(value, buf)
+            FfiConverterTypeAttachmentSpec.write(value, buf)
         }
     }
 }
 
 
+
+
 /**
  * @suppress
  */
-object FfiConverterOptionalTypeMemberInfoData : FfiConverterRustBuffer<MemberInfoData?> {
-    override fun read(buf: ByteBuffer): MemberInfoData? {
+public object FfiConverterOptionalTypeReactionTarget: FfiConverterRustBuffer<ReactionTarget?> {
+    override fun read(buf: ByteBuffer): ReactionTarget? {
         if (buf.get().toInt() == 0) {
             return null
         }
-        return FfiConverterTypeMemberInfoData.read(buf)
+        return FfiConverterTypeReactionTarget.read(buf)
     }
 
-    override fun allocationSize(value: MemberInfoData?): ULong {
+    override fun allocationSize(value: ReactionTarget?): ULong {
         if (value == null) {
             return 1UL
         } else {
-            return 1UL + FfiConverterTypeMemberInfoData.allocationSize(value)
+            return 1UL + FfiConverterTypeReactionTarget.allocationSize(value)
         }
     }
 
-    override fun write(value: MemberInfoData?, buf: ByteBuffer) {
+    override fun write(value: ReactionTarget?, buf: ByteBuffer) {
         if (value == null) {
             buf.put(0)
         } else {
             buf.put(1)
-            FfiConverterTypeMemberInfoData.write(value, buf)
+            FfiConverterTypeReactionTarget.write(value, buf)
         }
     }
 }
 
 
+
+
 /**
  * @suppress
  */
-object FfiConverterSequenceString : FfiConverterRustBuffer<List<String>> {
-    override fun read(buf: ByteBuffer): List<String> {
+public object FfiConverterOptionalTypeStoredAccount: FfiConverterRustBuffer<StoredAccount?> {
+    override fun read(buf: ByteBuffer): StoredAccount? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeStoredAccount.read(buf)
+    }
+
+    override fun allocationSize(value: StoredAccount?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeStoredAccount.allocationSize(value)
+        }
+    }
+
+    override fun write(value: StoredAccount?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeStoredAccount.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeStoredContact: FfiConverterRustBuffer<StoredContact?> {
+    override fun read(buf: ByteBuffer): StoredContact? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeStoredContact.read(buf)
+    }
+
+    override fun allocationSize(value: StoredContact?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeStoredContact.allocationSize(value)
+        }
+    }
+
+    override fun write(value: StoredContact?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeStoredContact.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeStoredDraft: FfiConverterRustBuffer<StoredDraft?> {
+    override fun read(buf: ByteBuffer): StoredDraft? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeStoredDraft.read(buf)
+    }
+
+    override fun allocationSize(value: StoredDraft?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeStoredDraft.allocationSize(value)
+        }
+    }
+
+    override fun write(value: StoredDraft?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeStoredDraft.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeStoredGroupChat: FfiConverterRustBuffer<StoredGroupChat?> {
+    override fun read(buf: ByteBuffer): StoredGroupChat? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeStoredGroupChat.read(buf)
+    }
+
+    override fun allocationSize(value: StoredGroupChat?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeStoredGroupChat.allocationSize(value)
+        }
+    }
+
+    override fun write(value: StoredGroupChat?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeStoredGroupChat.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeStoredMember: FfiConverterRustBuffer<StoredMember?> {
+    override fun read(buf: ByteBuffer): StoredMember? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeStoredMember.read(buf)
+    }
+
+    override fun allocationSize(value: StoredMember?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeStoredMember.allocationSize(value)
+        }
+    }
+
+    override fun write(value: StoredMember?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeStoredMember.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeStoredMessage: FfiConverterRustBuffer<StoredMessage?> {
+    override fun read(buf: ByteBuffer): StoredMessage? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeStoredMessage.read(buf)
+    }
+
+    override fun allocationSize(value: StoredMessage?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeStoredMessage.allocationSize(value)
+        }
+    }
+
+    override fun write(value: StoredMessage?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeStoredMessage.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceLong: FfiConverterRustBuffer<List<kotlin.Long>> {
+    override fun read(buf: ByteBuffer): List<kotlin.Long> {
         val len = buf.getInt()
-        return List<String>(len) {
+        return List<kotlin.Long>(len) {
+            FfiConverterLong.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.Long>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterLong.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.Long>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterLong.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.String>> {
+    override fun read(buf: ByteBuffer): List<kotlin.String> {
+        val len = buf.getInt()
+        return List<kotlin.String>(len) {
             FfiConverterString.read(buf)
         }
     }
 
-    override fun allocationSize(value: List<String>): ULong {
+    override fun allocationSize(value: List<kotlin.String>): ULong {
         val sizeForLength = 4UL
         val sizeForItems = value.map { FfiConverterString.allocationSize(it) }.sum()
         return sizeForLength + sizeForItems
     }
 
-    override fun write(value: List<String>, buf: ByteBuffer) {
+    override fun write(value: List<kotlin.String>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterString.write(it, buf)
@@ -5789,10 +8921,40 @@ object FfiConverterSequenceString : FfiConverterRustBuffer<List<String>> {
 }
 
 
+
+
 /**
  * @suppress
  */
-object FfiConverterSequenceTypeAndroidNetworkInterface : FfiConverterRustBuffer<List<AndroidNetworkInterface>> {
+public object FfiConverterSequenceByteArray: FfiConverterRustBuffer<List<kotlin.ByteArray>> {
+    override fun read(buf: ByteBuffer): List<kotlin.ByteArray> {
+        val len = buf.getInt()
+        return List<kotlin.ByteArray>(len) {
+            FfiConverterByteArray.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.ByteArray>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterByteArray.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.ByteArray>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterByteArray.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeAndroidNetworkInterface: FfiConverterRustBuffer<List<AndroidNetworkInterface>> {
     override fun read(buf: ByteBuffer): List<AndroidNetworkInterface> {
         val len = buf.getInt()
         return List<AndroidNetworkInterface>(len) {
@@ -5815,164 +8977,464 @@ object FfiConverterSequenceTypeAndroidNetworkInterface : FfiConverterRustBuffer<
 }
 
 
-/**
- * @suppress
- */
-object FfiConverterSequenceTypeGroupMember : FfiConverterRustBuffer<List<GroupMember>> {
-    override fun read(buf: ByteBuffer): List<GroupMember> {
-        val len = buf.getInt()
-        return List<GroupMember>(len) {
-            FfiConverterTypeGroupMember.read(buf)
-        }
-    }
-
-    override fun allocationSize(value: List<GroupMember>): ULong {
-        val sizeForLength = 4UL
-        val sizeForItems = value.map { FfiConverterTypeGroupMember.allocationSize(it) }.sum()
-        return sizeForLength + sizeForItems
-    }
-
-    override fun write(value: List<GroupMember>, buf: ByteBuffer) {
-        buf.putInt(value.size)
-        value.iterator().forEach {
-            FfiConverterTypeGroupMember.write(it, buf)
-        }
-    }
-}
 
 
 /**
  * @suppress
  */
-object FfiConverterSequenceTypeGroupMemberInfo : FfiConverterRustBuffer<List<GroupMemberInfo>> {
-    override fun read(buf: ByteBuffer): List<GroupMemberInfo> {
+public object FfiConverterSequenceTypeFileItem: FfiConverterRustBuffer<List<FileItem>> {
+    override fun read(buf: ByteBuffer): List<FileItem> {
         val len = buf.getInt()
-        return List<GroupMemberInfo>(len) {
-            FfiConverterTypeGroupMemberInfo.read(buf)
+        return List<FileItem>(len) {
+            FfiConverterTypeFileItem.read(buf)
         }
     }
 
-    override fun allocationSize(value: List<GroupMemberInfo>): ULong {
+    override fun allocationSize(value: List<FileItem>): ULong {
         val sizeForLength = 4UL
-        val sizeForItems = value.map { FfiConverterTypeGroupMemberInfo.allocationSize(it) }.sum()
+        val sizeForItems = value.map { FfiConverterTypeFileItem.allocationSize(it) }.sum()
         return sizeForLength + sizeForItems
     }
 
-    override fun write(value: List<GroupMemberInfo>, buf: ByteBuffer) {
+    override fun write(value: List<FileItem>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
-            FfiConverterTypeGroupMemberInfo.write(it, buf)
+            FfiConverterTypeFileItem.write(it, buf)
         }
     }
 }
+
+
 
 
 /**
  * @suppress
  */
-object FfiConverterSequenceTypeGroupMessage : FfiConverterRustBuffer<List<GroupMessage>> {
-    override fun read(buf: ByteBuffer): List<GroupMessage> {
+public object FfiConverterSequenceTypeMemberUpdate: FfiConverterRustBuffer<List<MemberUpdate>> {
+    override fun read(buf: ByteBuffer): List<MemberUpdate> {
         val len = buf.getInt()
-        return List<GroupMessage>(len) {
-            FfiConverterTypeGroupMessage.read(buf)
+        return List<MemberUpdate>(len) {
+            FfiConverterTypeMemberUpdate.read(buf)
         }
     }
 
-    override fun allocationSize(value: List<GroupMessage>): ULong {
+    override fun allocationSize(value: List<MemberUpdate>): ULong {
         val sizeForLength = 4UL
-        val sizeForItems = value.map { FfiConverterTypeGroupMessage.allocationSize(it) }.sum()
+        val sizeForItems = value.map { FfiConverterTypeMemberUpdate.allocationSize(it) }.sum()
         return sizeForLength + sizeForItems
     }
 
-    override fun write(value: List<GroupMessage>, buf: ByteBuffer) {
+    override fun write(value: List<MemberUpdate>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
-            FfiConverterTypeGroupMessage.write(it, buf)
+            FfiConverterTypeMemberUpdate.write(it, buf)
         }
     }
 }
 
-/**
- * Decrypt a message produced by encrypt_message.
- * Input: [nonce(12)][ciphertext][tag(16)]
- */
-@Throws(MimirException::class)
-fun decryptMessage(encrypted: ByteArray, sharedKey: ByteArray): ByteArray {
-    return FfiConverterByteArray.lift(
-        uniffiRustCallWithError(MimirException) { _status ->
-            UniffiLib.uniffi_mimir_fn_func_decrypt_message(
 
-                FfiConverterByteArray.lower(encrypted), FfiConverterByteArray.lower(sharedKey), _status
-            )
-        }
-    )
-}
 
 
 /**
- * Decrypt a shared key produced by encrypt_shared_key.
- * `seed` is the 32-byte Ed25519 signing-key seed of the recipient.
+ * @suppress
  */
-@Throws(MimirException::class)
-fun decryptSharedKey(encrypted: ByteArray, seed: ByteArray): ByteArray {
-    return FfiConverterByteArray.lift(
-        uniffiRustCallWithError(MimirException) { _status ->
-            UniffiLib.uniffi_mimir_fn_func_decrypt_shared_key(
-
-                FfiConverterByteArray.lower(encrypted), FfiConverterByteArray.lower(seed), _status
-            )
+public object FfiConverterSequenceTypePeerAddress: FfiConverterRustBuffer<List<PeerAddress>> {
+    override fun read(buf: ByteBuffer): List<PeerAddress> {
+        val len = buf.getInt()
+        return List<PeerAddress>(len) {
+            FfiConverterTypePeerAddress.read(buf)
         }
-    )
+    }
+
+    override fun allocationSize(value: List<PeerAddress>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypePeerAddress.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<PeerAddress>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypePeerAddress.write(it, buf)
+        }
+    }
 }
+
+
 
 
 /**
- * Encrypt `plaintext` with `shared_key`.
- * Output: [nonce(12)][ciphertext][tag(16)]
+ * @suppress
  */
-@Throws(MimirException::class)
-fun encryptMessage(plaintext: ByteArray, sharedKey: ByteArray): ByteArray {
-    return FfiConverterByteArray.lift(
-        uniffiRustCallWithError(MimirException) { _status ->
-            UniffiLib.uniffi_mimir_fn_func_encrypt_message(
-
-                FfiConverterByteArray.lower(plaintext), FfiConverterByteArray.lower(sharedKey), _status
-            )
+public object FfiConverterSequenceTypeReaction: FfiConverterRustBuffer<List<Reaction>> {
+    override fun read(buf: ByteBuffer): List<Reaction> {
+        val len = buf.getInt()
+        return List<Reaction>(len) {
+            FfiConverterTypeReaction.read(buf)
         }
-    )
+    }
+
+    override fun allocationSize(value: List<Reaction>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeReaction.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<Reaction>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeReaction.write(it, buf)
+        }
+    }
 }
+
+
 
 
 /**
- * Encrypt `shared_key` for `recipient_ed25519_pubkey` (ECIES).
- * Output: [eph_pubkey(32)][nonce(12)][ciphertext][tag(16)]
+ * @suppress
  */
-@Throws(MimirException::class)
-fun encryptSharedKey(sharedKey: ByteArray, recipientEd25519Pubkey: ByteArray): ByteArray {
-    return FfiConverterByteArray.lift(
-        uniffiRustCallWithError(MimirException) { _status ->
-            UniffiLib.uniffi_mimir_fn_func_encrypt_shared_key(
-
-                FfiConverterByteArray.lower(sharedKey), FfiConverterByteArray.lower(recipientEd25519Pubkey), _status
-            )
+public object FfiConverterSequenceTypeStoredContact: FfiConverterRustBuffer<List<StoredContact>> {
+    override fun read(buf: ByteBuffer): List<StoredContact> {
+        val len = buf.getInt()
+        return List<StoredContact>(len) {
+            FfiConverterTypeStoredContact.read(buf)
         }
-    )
+    }
+
+    override fun allocationSize(value: List<StoredContact>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeStoredContact.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<StoredContact>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeStoredContact.write(it, buf)
+        }
+    }
 }
+
+
 
 
 /**
- * Generate a random 32-byte shared key for a new group chat.
+ * @suppress
  */
-fun generateSharedKey(): ByteArray {
-    return FfiConverterByteArray.lift(
-        uniffiRustCall() { _status ->
-            UniffiLib.uniffi_mimir_fn_func_generate_shared_key(
-
-                _status
-            )
+public object FfiConverterSequenceTypeStoredContactRequest: FfiConverterRustBuffer<List<StoredContactRequest>> {
+    override fun read(buf: ByteBuffer): List<StoredContactRequest> {
+        val len = buf.getInt()
+        return List<StoredContactRequest>(len) {
+            FfiConverterTypeStoredContactRequest.read(buf)
         }
-    )
+    }
+
+    override fun allocationSize(value: List<StoredContactRequest>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeStoredContactRequest.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<StoredContactRequest>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeStoredContactRequest.write(it, buf)
+        }
+    }
 }
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeStoredGroupChat: FfiConverterRustBuffer<List<StoredGroupChat>> {
+    override fun read(buf: ByteBuffer): List<StoredGroupChat> {
+        val len = buf.getInt()
+        return List<StoredGroupChat>(len) {
+            FfiConverterTypeStoredGroupChat.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<StoredGroupChat>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeStoredGroupChat.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<StoredGroupChat>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeStoredGroupChat.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeStoredGroupMessage: FfiConverterRustBuffer<List<StoredGroupMessage>> {
+    override fun read(buf: ByteBuffer): List<StoredGroupMessage> {
+        val len = buf.getInt()
+        return List<StoredGroupMessage>(len) {
+            FfiConverterTypeStoredGroupMessage.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<StoredGroupMessage>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeStoredGroupMessage.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<StoredGroupMessage>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeStoredGroupMessage.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeStoredInvite: FfiConverterRustBuffer<List<StoredInvite>> {
+    override fun read(buf: ByteBuffer): List<StoredInvite> {
+        val len = buf.getInt()
+        return List<StoredInvite>(len) {
+            FfiConverterTypeStoredInvite.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<StoredInvite>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeStoredInvite.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<StoredInvite>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeStoredInvite.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeStoredMember: FfiConverterRustBuffer<List<StoredMember>> {
+    override fun read(buf: ByteBuffer): List<StoredMember> {
+        val len = buf.getInt()
+        return List<StoredMember>(len) {
+            FfiConverterTypeStoredMember.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<StoredMember>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeStoredMember.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<StoredMember>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeStoredMember.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeStoredMessage: FfiConverterRustBuffer<List<StoredMessage>> {
+    override fun read(buf: ByteBuffer): List<StoredMessage> {
+        val len = buf.getInt()
+        return List<StoredMessage>(len) {
+            FfiConverterTypeStoredMessage.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<StoredMessage>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeStoredMessage.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<StoredMessage>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeStoredMessage.write(it, buf)
+        }
+    }
+}
+        /**
+         * Decrypt a message produced by encrypt_message.
+         * Input: [nonce(12)][ciphertext][tag(16)]
+         */
+    @Throws(MimirException::class) fun `decryptMessage`(`encrypted`: kotlin.ByteArray, `sharedKey`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_func_decrypt_message(
+    
+        FfiConverterByteArray.lower(`encrypted`),FfiConverterByteArray.lower(`sharedKey`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Decrypt a shared key produced by encrypt_shared_key.
+         * `seed` is the 32-byte Ed25519 signing-key seed of the recipient.
+         */
+    @Throws(MimirException::class) fun `decryptSharedKey`(`encrypted`: kotlin.ByteArray, `seed`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_func_decrypt_shared_key(
+    
+        FfiConverterByteArray.lower(`encrypted`),FfiConverterByteArray.lower(`seed`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Get default config with built-in peer list.
+         */ fun `defaultConfig`(): AppConfig {
+            return FfiConverterTypeAppConfig.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_func_default_config(
+    
+        _status)
+}
+    )
+    }
+    
+
+        /**
+         * Encrypt `plaintext` with `shared_key`.
+         * Output: [nonce(12)][ciphertext][tag(16)]
+         */
+    @Throws(MimirException::class) fun `encryptMessage`(`plaintext`: kotlin.ByteArray, `sharedKey`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_func_encrypt_message(
+    
+        FfiConverterByteArray.lower(`plaintext`),FfiConverterByteArray.lower(`sharedKey`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Encrypt `shared_key` for `recipient_ed25519_pubkey` (ECIES).
+         * Output: [eph_pubkey(32)][nonce(12)][ciphertext][tag(16)]
+         */
+    @Throws(MimirException::class) fun `encryptSharedKey`(`sharedKey`: kotlin.ByteArray, `recipientEd25519Pubkey`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_func_encrypt_shared_key(
+    
+        FfiConverterByteArray.lower(`sharedKey`),FfiConverterByteArray.lower(`recipientEd25519Pubkey`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Generate a new random Ed25519 key pair.
+         */ fun `generateKeypair`(): KeyPair {
+            return FfiConverterTypeKeyPair.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_func_generate_keypair(
+    
+        _status)
+}
+    )
+    }
+    
+
+        /**
+         * Generate a random 32-byte shared key for a new group chat.
+         */ fun `generateSharedKey`(): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_func_generate_shared_key(
+    
+        _status)
+}
+    )
+    }
+    
+
+        /**
+         * Derive a key pair from a 32-byte seed (deterministic).
+         */
+    @Throws(MimirException::class) fun `keypairFromSeed`(`seed`: kotlin.ByteArray): KeyPair {
+            return FfiConverterTypeKeyPair.lift(
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_func_keypair_from_seed(
+    
+        FfiConverterByteArray.lower(`seed`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Load config from <data_dir>/config.json, or return defaults.
+         */ fun `loadConfig`(`dataDir`: kotlin.String): AppConfig {
+            return FfiConverterTypeAppConfig.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_func_load_config(
+    
+        FfiConverterString.lower(`dataDir`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Parse a raw system message body (as delivered by on_system_message).
+         * data[0] is the event code; returns Unknown for unrecognized codes.
+         */
+    @Throws(MimirException::class) fun `parseSystemMessage`(`data`: kotlin.ByteArray): SystemMessage {
+            return FfiConverterTypeSystemMessage.lift(
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_func_parse_system_message(
+    
+        FfiConverterByteArray.lower(`data`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Save config to <data_dir>/config.json.
+         */
+    @Throws(MimirException::class) fun `saveConfig`(`dataDir`: kotlin.String, `config`: AppConfig)
+        = 
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_func_save_config(
+    
+        FfiConverterString.lower(`dataDir`),FfiConverterTypeAppConfig.lower(`config`),_status)
+}
+    
     
 
 

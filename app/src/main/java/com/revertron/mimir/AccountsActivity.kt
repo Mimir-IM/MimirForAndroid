@@ -13,16 +13,15 @@ import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.Toolbar
 import com.revertron.mimir.BaseChatActivity.Companion.PICK_IMAGE_REQUEST_CODE
-import com.revertron.mimir.storage.AccountInfo
-import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
-import java.io.File
+import uniffi.mimir.StoredAccount
+import java.io.ByteArrayOutputStream
 import java.net.URLEncoder
 
 class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
 
     val accountNumber = 1 //TODO make multi account
-    lateinit var accountInfo: AccountInfo
+    lateinit var accountInfo: StoredAccount
     lateinit var myNameEdit: AppCompatEditText
     lateinit var myDescriptionEdit: AppCompatEditText
 
@@ -35,9 +34,9 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         toolbar.setOnMenuItemClickListener(this)
 
-        accountInfo = getStorage().getAccountInfo(accountNumber, 0L)!!
+        accountInfo = getStorage().getAccount(accountNumber)!!
         var name = accountInfo.name
-        val public = Hex.toHexString((accountInfo.keyPair.public as Ed25519PublicKeyParameters).encoded).uppercase()
+        val public = Hex.toHexString(accountInfo.pubkey).uppercase()
 
         val avatarView = findViewById<AppCompatImageView>(R.id.avatar)
         if (accountInfo.avatar.isNotEmpty()) {
@@ -102,7 +101,7 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
 
     override fun onStop() {
         val newName = myNameEdit.text.toString()
-        getStorage().updateName(accountNumber, newName)
+        getStorage().updateAccountName(accountNumber, newName)
         val newDescription = myDescriptionEdit.text.toString()
         getStorage().updateAccountInfo(accountNumber, newDescription)
         super.onStop()
@@ -129,26 +128,24 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
             Thread {
                 val bmp = loadSquareAvatar(this.applicationContext, selectedPictureUri, 256)
                 if (bmp != null) {
-                    val avatarsDir = File(filesDir, "avatars")
-                    if (!avatarsDir.exists()) {
-                        avatarsDir.mkdirs()
+                    // Preserve alpha (PNG) when the source had transparency; otherwise
+                    // use JPEG for tighter compression. Bytes go straight to Rust —
+                    // it writes its own canonical copy under <data_dir>/avatars/.
+                    val bos = ByteArrayOutputStream()
+                    if (bmp.hasAlpha()) {
+                        bmp.compress(Bitmap.CompressFormat.PNG, 100, bos)
+                    } else {
+                        bmp.compress(Bitmap.CompressFormat.JPEG, 95, bos)
                     }
-                    val fileName = accountInfo.avatar.ifEmpty {
-                        randomString(16) + ".jpg"
-                    }
-
-                    // TODO support avatars with opacity like PNG
-                    val f = File(avatarsDir, fileName)
-                    f.outputStream().use {
-                        bmp.compress(Bitmap.CompressFormat.JPEG, 95, it)
-                    }
-                    getStorage().updateAvatar(accountNumber, fileName)
-                    runOnUiThread({
+                    getStorage().updateAccountAvatar(accountNumber, bos.toByteArray())
+                    runOnUiThread {
                         val avatarView = findViewById<AppCompatImageView>(R.id.avatar)
                         avatarView.setImageBitmap(bmp)
-                    })
+                    }
                 } else {
-                    Toast.makeText(this, R.string.error_loading_avatar_picture, Toast.LENGTH_LONG).show()
+                    runOnUiThread {
+                        Toast.makeText(this, R.string.error_loading_avatar_picture, Toast.LENGTH_LONG).show()
+                    }
                 }
             }.start()
         }

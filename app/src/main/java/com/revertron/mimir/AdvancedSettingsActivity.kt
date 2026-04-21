@@ -135,10 +135,9 @@ class AdvancedSettingsActivity : BaseActivity(), SettingsAdapter.Listener {
         // Run the fix in a background thread
         Thread {
             try {
-                val storage = App.app.storage
-                val result = storage.fixCorruptedGroupMessages()
-                val fixedCount = result.first
-                val scannedCount = result.second
+                val stats = getStorage().fixCorruptedGroupMessages()
+                val fixedCount = stats.fixed.toInt()
+                val scannedCount = stats.scanned.toInt()
 
                 // Show result on UI thread
                 runOnUiThread {
@@ -183,10 +182,11 @@ class AdvancedSettingsActivity : BaseActivity(), SettingsAdapter.Listener {
         // Run the cleanup in a background thread
         Thread {
             try {
-                val storage = App.app.storage
-
-                // 1. Get all valid filenames from database
-                val validFileNames = storage.getAllMediaFileNames()
+                // Any file referenced by a message (P2P or group, image or file)
+                // is not an orphan. Everything else in files/ can be reclaimed.
+                val validFileNames = getStorage().getAllFileItems()
+                    .map { it.storageName }
+                    .toSet()
 
                 // 2. Scan files directory and cache directory
                 val filesDir = File(filesDir, "files")

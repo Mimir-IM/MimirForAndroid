@@ -35,7 +35,6 @@ import com.revertron.mimir.AudioPlaybackService
 import com.revertron.mimir.ConnectionService
 import com.revertron.mimir.R
 import com.revertron.mimir.getAvatarColor
-import com.revertron.mimir.storage.SqlStorage
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.File
@@ -46,7 +45,7 @@ import androidx.core.net.toUri
 import kotlin.math.abs
 
 class MessageAdapter(
-    private val storage: SqlStorage,
+    private val provider: MessageProvider,
     private val chatId: Long,
     private val groupChat: Boolean,
     private val contactName: String,
@@ -242,12 +241,7 @@ class MessageAdapter(
     /** Cache: guid → adapter position, to avoid O(n) scans on every progress tick. */
     private val guidPositionCache = mutableMapOf<Long, Int>()
 
-    private val messageIds = if (groupChat) {
-        storage.getGroupMessageIds(chatId).toMutableList()
-    } else {
-        // For 1-on-1 chats, chatId is actually the userId
-        storage.getMessageIds(chatId).toMutableList()
-    }
+    private val messageIds = provider.getMessageIds(chatId, groupChat).toMutableList()
 
     // Cached nicknames and avatars
     private val users: HashMap<Long, Pair<String, Drawable?>?> = HashMap()
@@ -382,11 +376,7 @@ class MessageAdapter(
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val message = if (groupChat) {
-            storage.getGroupMessage(chatId, messageIds[position].first)
-        } else {
-            storage.getMessage(messageIds[position].first)
-        } ?: return
+        val message = provider.getMessage(chatId, messageIds[position].first, groupChat) ?: return
 
         holder.message.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSize.toFloat())
         holder.replyToText.setTextSize(TypedValue.COMPLEX_UNIT_SP, (fontSize - 2).toFloat())
@@ -395,10 +385,9 @@ class MessageAdapter(
             if (message.incoming) {
                 holder.avatar?.visibility = View.VISIBLE
                 val user = users.getOrPut(message.contact, {
-                    // TODO make default values
-                    storage.getMemberInfo(message.contact, chatId, 48, 6)
+                    provider.getMemberDisplayInfo(message.contact, chatId, 48, 6)
                 })
-                val pubKey = storage.getMemberPubkey(message.contact, chatId)
+                val pubKey = provider.getMemberPubkey(message.contact, chatId)
                 val avatarColor = if (pubKey != null) {
                     getAvatarColor(pubKey)
                 } else {
@@ -443,9 +432,10 @@ class MessageAdapter(
             holder.avatar?.visibility = View.GONE
         }
 
-        // Get message text first
-        val messageText = if (groupChat) {
-            message.getText(holder.itemView.context, storage, chatId)
+        // Get message text (system messages need provider-side parsing + member lookup)
+        val messageText = if (message.type == 1000 && message.data != null) {
+            provider.formatSystemMessage(holder.itemView.context, chatId, message.data)
+                ?: holder.itemView.context.getString(R.string.system_message)
         } else {
             message.getText(holder.itemView.context)
         }
@@ -462,7 +452,7 @@ class MessageAdapter(
 
         holder.message.visibility = View.VISIBLE
         holder.message.setCompoundDrawables(null, null, null ,null)
-        holder.sent.visibility = if (message.incoming) View.GONE else View.VISIBLE
+        holder.sent.visibility = if (message.incoming || message.type == 1000) View.GONE else View.VISIBLE
 
         when (message.type) {
             1 -> {
@@ -656,11 +646,7 @@ class MessageAdapter(
         }
 
         if (message.replyTo != 0L) {
-            val replyToMessage = if (groupChat) {
-                storage.getGroupMessage(chatId, message.replyTo, true)
-            } else {
-                storage.getMessage(message.replyTo, true)
-            }
+            val replyToMessage = provider.getMessageByGuid(chatId, message.replyTo, groupChat)
             if (replyToMessage != null) {
                 holder.replyToPanel.visibility = View.VISIBLE
                 holder.replyToPanel.tag = replyToMessage.id
@@ -669,7 +655,7 @@ class MessageAdapter(
 
                 val authorName = if (groupChat) {
                     if (replyToMessage.incoming) {
-                        val user = storage.getMemberInfo(replyToMessage.contact, chatId, 48, 6)
+                        val user = provider.getMemberDisplayInfo(replyToMessage.contact, chatId, 48, 6)
                         user?.first ?: unknown
                     } else {
                         myName
@@ -708,79 +694,46 @@ class MessageAdapter(
         } else {
             messageLayoutParams.updateMargins(top = 0)
         }
-        if (!groupChat) {
-            storage.setMessageRead(chatId, message.id, true)
-        } else {
-            storage.setGroupMessageRead(chatId, message.id, true)
-        }
+        provider.setMessageRead(chatId, message.id, groupChat)
 
-        // Mark unseen reactions as seen for outgoing messages when they're displayed
-        if (!message.incoming && message.reactions.isNotEmpty()) {
-            val markedCount = if (!groupChat) {
-                storage.markReactionsAsSeenForMessage(chatId, message.guid)
-            } else {
-                storage.markGroupReactionsAsSeenForMessage(chatId, message.guid)
-            }
-            if (markedCount > 0) {
-                onReactionsMarkedSeen?.invoke()
-            }
+        // Mark reactions targeting this outgoing message as seen when it's visible.
+        if (!message.incoming && message.guid != 0L) {
+            val marked = provider.markReactionsAsSeenForMessage(chatId, message.guid, groupChat)
+            if (marked > 0) onReactionsMarkedSeen?.invoke()
         }
-
     }
 
     /**
      * Displays reactions for a message as emoji chips in the reactions row.
      */
-    private fun displayReactions(holder: ViewHolder, message: SqlStorage.Message) {
-        val reactions = message.reactions
-
+    private fun displayReactions(holder: ViewHolder, message: DisplayMessage) {
+        val row = holder.reactionsRow
+        row.removeAllViews()
+        val reactions = provider.getReactionsForMessage(chatId, message.guid, groupChat)
         if (reactions.isEmpty()) {
-            holder.reactionsRow.visibility = View.GONE
+            row.visibility = View.GONE
             return
         }
-
-        holder.reactionsRow.removeAllViews()
-        holder.reactionsRow.visibility = View.VISIBLE
-
+        row.visibility = View.VISIBLE
         val context = holder.itemView.context
         val density = context.resources.displayMetrics.density
-
+        val marginEnd = (4 * density).toInt()
         for (reaction in reactions) {
-            val emojiChar = reaction.emoji
-            val displayText = if (reaction.count > 1) {
-                "$emojiChar ${reaction.count}"
-            } else {
-                emojiChar
-            }
-
-            val textView = AppCompatTextView(context).apply {
-                text = displayText
-                textSize = fontSize.toFloat() - 2f
-                setPadding(
-                    (8 * density).toInt(),
-                    (4 * density).toInt(),
-                    (8 * density).toInt(),
-                    (4 * density).toInt()
-                )
+            val chip = AppCompatTextView(context).apply {
+                text = if (reaction.count > 1) "${reaction.emoji} ${reaction.count}" else reaction.emoji
+                textSize = 13f
                 setBackgroundResource(
                     if (reaction.userReacted) R.drawable.reaction_background_selected
                     else R.drawable.reaction_background
                 )
-
-                // Add margin between reaction chips
-                val params = LinearLayout.LayoutParams(
+                val lp = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    marginEnd = (4 * density).toInt()
-                }
-                layoutParams = params
-
-                // Store reaction info for click handling
-                tag = reaction.emoji
+                )
+                lp.marginEnd = marginEnd
+                layoutParams = lp
             }
-
-            holder.reactionsRow.addView(textView)
+            row.addView(chip)
         }
     }
 
@@ -826,13 +779,15 @@ class MessageAdapter(
         }
     }
 
-    fun notifyMessageChanged(messageId: Long) {
-        for ((index, message) in messageIds.withIndex()) {
-            if (message.first == messageId) {
-                messageIds.removeAt(index)
-                notifyItemChanged(index)
-                break
-            }
+    /**
+     * Rebinds the row for the message with the given GUID. Used when reactions change:
+     * invalidates the reactions cache so the row re-aggregates on next bind.
+     */
+    fun notifyMessageChanged(targetGuid: Long) {
+        provider.invalidateReactionsCache(chatId, groupChat)
+        val position = getMessageGuidPosition(targetGuid)
+        if (position >= 0) {
+            notifyItemChanged(position)
         }
     }
 
@@ -862,12 +817,8 @@ class MessageAdapter(
     }
 
     fun getMessageGuidPosition(guid: Long): Int {
-        // Look up the message ID from GUID using storage
-        val messageId = if (groupChat) {
-            storage.getGroupMessage(chatId, guid, byGuid = true)?.id
-        } else {
-            storage.getMessage(guid, byGuid = true)?.id
-        } ?: return -1
+        // Look up the message ID from GUID
+        val messageId = provider.getMessageByGuid(chatId, guid, groupChat)?.id ?: return -1
 
         // Find position in messageIds list
         for ((index, message) in messageIds.withIndex()) {
@@ -894,11 +845,7 @@ class MessageAdapter(
         users.remove(memberId)
         // Find and refresh all messages from this member
         for ((index, message) in messageIds.withIndex()) {
-            val msg = if (groupChat) {
-                storage.getGroupMessage(chatId, message.first)
-            } else {
-                storage.getMessage(message.first)
-            }
+            val msg = provider.getMessage(chatId, message.first, groupChat)
             if (msg?.contact == memberId) {
                 notifyItemChanged(index)
             }
@@ -950,11 +897,7 @@ class MessageAdapter(
             return
         }
         for (index in messageIds.indices.reversed()) {
-            val msg = if (groupChat) {
-                storage.getGroupMessage(chatId, messageIds[index].first)
-            } else {
-                storage.getMessage(messageIds[index].first)
-            } ?: continue
+            val msg = provider.getMessage(chatId, messageIds[index].first, groupChat) ?: continue
             if (msg.guid == guid) {
                 guidPositionCache[guid] = index
                 notifyItemChanged(index)
@@ -982,11 +925,7 @@ class MessageAdapter(
 
         // Cache miss — scan by guid
         for (index in messageIds.indices.reversed()) {
-            val msg = if (groupChat) {
-                storage.getGroupMessage(chatId, messageIds[index].first)
-            } else {
-                storage.getMessage(messageIds[index].first)
-            } ?: continue
+            val msg = provider.getMessage(chatId, messageIds[index].first, groupChat) ?: continue
             if (msg.guid == guid) {
                 guidPositionCache[guid] = index
                 notifyItemChanged(index)

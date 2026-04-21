@@ -9,7 +9,6 @@ import androidx.appcompat.widget.Toolbar
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.ChatListItem
 import com.revertron.mimir.ui.ContactsAdapter
 import org.bouncycastle.util.encoders.Hex
@@ -32,7 +31,7 @@ import org.bouncycastle.util.encoders.Hex
  * }
  * ```
  */
-class ContactSelectorActivity : BaseActivity(), View.OnClickListener, StorageListener {
+class ContactSelectorActivity : BaseActivity(), View.OnClickListener {
 
     companion object {
         const val TAG = "ContactSelectorActivity"
@@ -86,7 +85,19 @@ class ContactSelectorActivity : BaseActivity(), View.OnClickListener, StorageLis
     }
 
     private fun loadContacts() {
-        val allContacts = (application as App).storage.getContactList()
+        val chatItems = getFilteredContactItems()
+        adapter = ContactsAdapter(chatItems, this, null)
+        recyclerView.adapter = adapter
+    }
+
+    private fun refreshContacts() {
+        val chatItems = getFilteredContactItems()
+        adapter.setContacts(chatItems)
+    }
+
+    private fun getFilteredContactItems(): List<ChatListItem> {
+        val storage = getStorage()
+        val allContacts = storage.getContacts()
 
         // Filter out contacts if filter list provided
         val contacts = if (filterPubkeys != null) {
@@ -99,47 +110,21 @@ class ContactSelectorActivity : BaseActivity(), View.OnClickListener, StorageLis
         }
 
         // Convert to ChatListItem
-        val chatItems = contacts.map { contact ->
+        return contacts.map { contact ->
+            val avatarDrawable = loadRoundedAvatar(this, contact.avatar.ifEmpty { null }, 48, 6)
+            val lastMessage = storage.getLastMessage(contact.id)
+            val lastMsgText = lastMessage?.data?.let { String(it) }
+
             ChatListItem.ContactItem(
                 id = contact.id,
                 pubkey = contact.pubkey,
                 name = contact.name,
-                lastMessage = contact.lastMessage,
-                unreadCount = contact.unread,
-                avatar = contact.avatar
+                lastMessageText = lastMsgText,
+                lastMessageTime = lastMessage?.sendTime ?: 0,
+                unreadCount = storage.getUnreadCount(contact.id),
+                avatar = avatarDrawable
             )
         }
-
-        adapter = ContactsAdapter(chatItems, this, null)
-        recyclerView.adapter = adapter
-    }
-
-    private fun refreshContacts() {
-        val allContacts = (application as App).storage.getContactList()
-
-        // Filter out contacts if filter list provided
-        val contacts = if (filterPubkeys != null) {
-            allContacts.filter { contact ->
-                val pubkeyHex = org.bouncycastle.util.encoders.Hex.toHexString(contact.pubkey)
-                !filterPubkeys!!.contains(pubkeyHex)
-            }
-        } else {
-            allContacts
-        }
-
-        // Convert to ChatListItem
-        val chatItems = contacts.map { contact ->
-            ChatListItem.ContactItem(
-                id = contact.id,
-                pubkey = contact.pubkey,
-                name = contact.name,
-                lastMessage = contact.lastMessage,
-                unreadCount = contact.unread,
-                avatar = contact.avatar
-            )
-        }
-
-        adapter.setContacts(chatItems)
     }
 
     override fun onClick(view: View) {
@@ -167,21 +152,4 @@ class ContactSelectorActivity : BaseActivity(), View.OnClickListener, StorageLis
         }
     }
 
-    // StorageListener methods - refresh on contact changes
-    override fun onContactAdded(id: Long) {
-        runOnUiThread { refreshContacts() }
-    }
-
-    override fun onContactRemoved(id: Long, pubkey: ByteArray?) {
-        runOnUiThread { refreshContacts() }
-    }
-
-    override fun onContactChanged(id: Long) {
-        runOnUiThread { refreshContacts() }
-    }
-
-    override fun onMessageSent(id: Long, contactId: Long, type: Int, replyTo: Long) {}
-    override fun onMessageDelivered(id: Long, delivered: Boolean) {}
-    override fun onMessageRead(id: Long, contactId: Long) {}
-    override fun onMessageReceived(id: Long, contactId: Long, type: Int, replyTo: Long): Boolean = false
 }

@@ -184,8 +184,8 @@ class GroupChatEditActivity : BaseActivity() {
 
         // Load avatar from database
         val chatInfo = getStorage().getGroupChat(chatId)
-        if (chatInfo?.avatarPath != null && chatInfo.avatarPath.isNotEmpty()) {
-            val avatar = getStorage().getGroupChatAvatar(chatId, 128, 8)
+        if (chatInfo?.avatar != null && chatInfo.avatar.isNotEmpty()) {
+            val avatar = loadRoundedAvatar(this, chatInfo.avatar, 128, 8)
             avatarImage.setImageDrawable(avatar)
             avatarImage.setPadding(0, 0, 0, 0)
         }

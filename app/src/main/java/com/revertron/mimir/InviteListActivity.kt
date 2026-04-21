@@ -8,11 +8,10 @@ import androidx.appcompat.widget.Toolbar
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.revertron.mimir.storage.GroupInvite
-import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.InvitesAdapter
+import uniffi.mimir.StoredInvite
 
-class InviteListActivity : BaseActivity(), View.OnClickListener, StorageListener {
+class InviteListActivity : BaseActivity(), View.OnClickListener {
 
     companion object {
         const val TAG = "InviteListActivity"
@@ -27,8 +26,6 @@ class InviteListActivity : BaseActivity(), View.OnClickListener, StorageListener
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = getString(R.string.group_invites)
 
-        getStorage().listeners.add(this)
-
         val recycler = findViewById<RecyclerView>(R.id.invites_list)
         recycler.addItemDecoration(DividerItemDecoration(baseContext, RecyclerView.VERTICAL))
     }
@@ -36,11 +33,6 @@ class InviteListActivity : BaseActivity(), View.OnClickListener, StorageListener
     override fun onResume() {
         super.onResume()
         refreshInvites()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        getStorage().listeners.remove(this)
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
@@ -54,18 +46,18 @@ class InviteListActivity : BaseActivity(), View.OnClickListener, StorageListener
     }
 
     override fun onClick(v: View?) {
-        if (v != null && v.tag is GroupInvite) {
-            val invite = v.tag as GroupInvite
-            // Open GroupInviteActivity
+        if (v != null && v.tag is StoredInvite) {
+            val invite = v.tag as StoredInvite
             val intent = Intent(this, GroupInviteActivity::class.java).apply {
                 putExtra("invite_id", invite.id)
                 putExtra("chat_id", invite.chatId)
-                putExtra("from_pubkey", invite.sender)
+                putExtra("from_pubkey", invite.fromPubkey)
                 putExtra("chat_name", invite.chatName)
                 putExtra("chat_description", invite.chatDescription)
-                putExtra("chat_avatar_path", invite.chatAvatarPath)
+                putExtra("chat_avatar_path", invite.chatAvatar)
                 putExtra("encrypted_data", invite.encryptedData)
                 putExtra("timestamp", invite.timestamp)
+                putExtra("mediator_pubkey", invite.mediatorPubkey)
             }
             startActivity(intent)
             @Suppress("DEPRECATION")
@@ -73,15 +65,9 @@ class InviteListActivity : BaseActivity(), View.OnClickListener, StorageListener
         }
     }
 
-    override fun onGroupInviteReceived(inviteId: Long, chatId: Long, fromPubkey: ByteArray) {
-        runOnUiThread {
-            refreshInvites()
-        }
-    }
-
     private fun refreshInvites() {
         val recycler = findViewById<RecyclerView>(R.id.invites_list)
-        val invites = getStorage().getPendingGroupInvites()
+        val invites = getStorage().getPendingInvites()
 
         if (recycler.adapter == null) {
             val adapter = InvitesAdapter(invites, this)

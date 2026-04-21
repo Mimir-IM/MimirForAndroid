@@ -10,16 +10,14 @@ import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.R
 import com.revertron.mimir.formatLastSeen
 import com.revertron.mimir.getAvatarColor
-import com.revertron.mimir.storage.GroupMemberInfo
-import com.revertron.mimir.storage.SqlStorage
-import org.bouncycastle.util.encoders.Hex
+import com.revertron.mimir.loadRoundedAvatar
+import uniffi.mimir.StoredMember
 
 class GroupMemberAdapter(
     private val chatId: Long,
     private val ownerPubkey: ByteArray,
     private val currentUserPubkey: ByteArray,
-    private val storage: SqlStorage,
-    private var members: List<GroupMemberInfo>,
+    private var members: List<StoredMember>,
     private val onClick: View.OnClickListener?,
     private val onLongClick: View.OnLongClickListener?
 ) : RecyclerView.Adapter<GroupMemberAdapter.ViewHolder>() {
@@ -58,9 +56,9 @@ class GroupMemberAdapter(
         val member = members[position]
         val context = holder.itemView.context
 
-        // Set member name
-        val pubKey = Hex.toHexString(member.pubkey).take(8)
-        val displayName = member.nickname?.ifEmpty { null } ?: pubKey
+        // Set member name (pubkey is already hex string in StoredMember)
+        val pubKeyShort = member.pubkey.take(8)
+        val displayName = member.nickname.ifEmpty { pubKeyShort }
         holder.memberName.text = displayName
 
         // Show online status or last seen timestamp
@@ -99,17 +97,17 @@ class GroupMemberAdapter(
             }
         }
 
-        holder.memberPubkey.text = pubKey
+        holder.memberPubkey.text = pubKeyShort
 
-        // Load avatar
-        val avatar = storage.getGroupMemberAvatar(chatId, member.pubkey, 48, 6)
-        if (avatar != null) {
+        // Load avatar from file path
+        val avatarDrawable = loadRoundedAvatar(context, member.avatar.ifEmpty { null }, 48, 6)
+        if (avatarDrawable != null) {
             holder.avatar.clearColorFilter()
-            holder.avatar.setImageDrawable(avatar)
+            holder.avatar.setImageDrawable(avatarDrawable)
         } else {
             // Use default avatar with color based on pubkey
             holder.avatar.setImageResource(R.drawable.button_rounded_white)
-            val avatarColor = getAvatarColor(member.pubkey)
+            val avatarColor = getAvatarColor(member.pubkey.toByteArray())
             holder.avatar.setColorFilter(avatarColor, PorterDuff.Mode.MULTIPLY)
         }
 
@@ -118,7 +116,7 @@ class GroupMemberAdapter(
 
     override fun getItemCount(): Int = members.size
 
-    fun updateMembers(newMembers: List<GroupMemberInfo>) {
+    fun updateMembers(newMembers: List<StoredMember>) {
         members = newMembers
         notifyDataSetChanged()
     }

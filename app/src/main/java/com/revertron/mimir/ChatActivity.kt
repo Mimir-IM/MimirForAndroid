@@ -23,9 +23,11 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.net.MSG_TYPE_REACTION
 import com.revertron.mimir.net.PeerStatus
-import com.revertron.mimir.storage.SqlStorage
+import com.revertron.mimir.ui.ChatListItem
 import com.revertron.mimir.ui.Contact
+import com.revertron.mimir.ui.DisplayMessage
 import com.revertron.mimir.ui.MessageAdapter
+import com.revertron.mimir.ui.MimirMessageProvider
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import java.io.File
@@ -40,11 +42,17 @@ class ChatActivity : BaseChatActivity() {
 
     private lateinit var contact: Contact
     private var isSavedMessages = false
+    private val messageProvider by lazy { MimirMessageProvider(getStorage(), this) }
 
     private val peerStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent) {
             if (intent.action == "ACTION_PEER_STATUS") {
-                val status: PeerStatus = intent.getSerializableExtra("status") as PeerStatus
+                val statusExtra = intent.getSerializableExtra("status")
+                val status: PeerStatus = when (statusExtra) {
+                    is PeerStatus -> statusExtra
+                    is Int -> PeerStatus.entries[statusExtra]
+                    else -> return
+                }
                 val from = intent.getStringExtra("contact")
                 if (from != null && contact.pubkey.contentEquals(Hex.decode(from))) {
                     showOnlineState(status)
@@ -101,8 +109,8 @@ class ChatActivity : BaseChatActivity() {
 
         if (isSavedMessages) {
             // For saved messages, use special ID and current user's pubkey
-            id = SqlStorage.SAVED_MESSAGES_CONTACT_ID
-            pubkey = getStorage().getMyPubKey()
+            id = ChatListItem.SAVED_MESSAGES_CONTACT_ID
+            pubkey = getStorage().getAccount(1)?.pubkey ?: ByteArray(0)
         } else {
             // Normal contact flow
             pubkey = intent.getByteArrayExtra("pubkey").apply { if (this == null) finish() }!!
@@ -112,9 +120,9 @@ class ChatActivity : BaseChatActivity() {
         val avatarPic = if (isSavedMessages) {
             ContextCompat.getDrawable(this, R.drawable.ic_saved_messages)
         } else {
-            getStorage().getContactAvatar(id)
+            getStorage().getContact(id)?.avatar?.let { loadRoundedAvatar(this, it) }
         }
-        contact = Contact(id, pubkey, name, null, 0, avatarPic)
+        contact = Contact(id, pubkey, name, avatarPic)
 
         super.onCreate(savedInstanceState)
 
@@ -181,7 +189,7 @@ class ChatActivity : BaseChatActivity() {
 
     override fun getChatId(): Long {
         return if (isSavedMessages) {
-            SqlStorage.SAVED_MESSAGES_CONTACT_ID
+            ChatListItem.SAVED_MESSAGES_CONTACT_ID
         } else {
             contact.id
         }
@@ -195,7 +203,7 @@ class ChatActivity : BaseChatActivity() {
 
     override fun createMessageAdapter(fontSize: Int): MessageAdapter {
         return MessageAdapter(
-            getStorage(),
+            messageProvider,
             contact.id,
             groupChat = false,
             contact.name,
@@ -210,7 +218,7 @@ class ChatActivity : BaseChatActivity() {
     }
 
     override fun getFirstUnreadMessageId(): Long? {
-        return getStorage().getFirstUnreadMessageId(contact.id)
+        return getStorage().getFirstUnreadId(contact.id)
     }
 
     override fun deleteMessageByIdOrGuid(messageId: Long, guid: Long) {
@@ -223,17 +231,15 @@ class ChatActivity : BaseChatActivity() {
     }
 
     override fun getMessageForReply(messageId: Long): Pair<String, String>? {
-        val message = getStorage().getMessage(messageId, true)
-        return if (message != null) {
-            val authorName = if (message.incoming) contact.name else myName
-            Pair(authorName, message.getText(this))
-        } else {
-            null
-        }
+        val stored = getStorage().getMessage(messageId) ?: return null
+        val message = DisplayMessage.from(stored)
+        val authorName = if (message.incoming) contact.name else myName
+        return Pair(authorName, message.getText(this))
     }
 
-    override fun getMessageFromStorage(messageId: Long): SqlStorage.Message? {
-        return getStorage().getMessage(messageId, byGuid = false)
+    override fun getMessageFromStorage(messageId: Long): DisplayMessage? {
+        val stored = getStorage().getMessage(messageId) ?: return null
+        return DisplayMessage.from(stored)
     }
 
     override fun handleReaction(targetGuid: Long, emoji: String, currentEmoji: String?) {
@@ -252,15 +258,15 @@ class ChatActivity : BaseChatActivity() {
 
         // Store reaction locally (type = 10)
         getStorage().addMessage(
-            contact = contact.pubkey,
+            contactPubkey = contact.pubkey,
             guid = guid,
             replyTo = targetGuid,
             incoming = false,
             delivered = false,
             sendTime = sendTime,
             editTime = 0L,
-            type = 10,
-            message = reactionData.toByteArray()
+            msgType = 10,
+            data = reactionData.toByteArray()
         )
 
         // Send reaction to peer via ConnectionService
@@ -272,48 +278,90 @@ class ChatActivity : BaseChatActivity() {
         intent.putExtra("message", reactionData)
         startService(intent)
 
-        // Refresh the message list to show updated reactions
-        adapter.notifyDataSetChanged()
+        // Refresh the target message to show the updated reactions row
+        adapter.notifyMessageChanged(targetGuid)
     }
 
     override fun getUserCurrentReaction(targetGuid: Long): String? {
-        return getStorage().getUserReactionForMessage(contact.id, targetGuid)
+        return messageProvider.getUserReaction(contact.id, targetGuid, false)
     }
 
     override fun getUnseenReactionsCount(): Int {
-        return getStorage().getUnseenReactionsCount(contact.id)
+        return getStorage().getUnseenReactionsCount(contact.id).toInt()
     }
 
     override fun scrollToFirstUnseenReaction(): Boolean {
-        val reaction = getStorage().getFirstUnseenReaction(contact.id) ?: return false
-        val (reactionGuid, targetMessageGuid) = reaction
-
-        // Find position of the target message
-        val position = adapter.getMessageGuidPosition(targetMessageGuid)
-        if (position >= 0) {
-            recyclerView.smoothScrollToPosition(position)
-        }
-
-        // Mark the reaction as seen
-        getStorage().markReactionAsSeen(contact.id, reactionGuid)
-
+        val target = getStorage().getFirstUnseenReaction(contact.id) ?: return false
+        val position = adapter.getMessageGuidPosition(target.targetGuid)
+        if (position < 0) return false
+        recyclerView.smoothScrollToPosition(position)
+        getStorage().markReactionAsSeen(contact.id, target.reactionGuid)
+        adapter.notifyMessageChanged(target.targetGuid)
         return true
     }
 
     override fun sendMessage(text: String, replyTo: Long) {
-        val intent = Intent(this, ConnectionService::class.java)
-        intent.putExtra("command", "send")
-        intent.putExtra("pubkey", contact.pubkey)
-        intent.putExtra("replyTo", replyTo)
-        if (attachmentJson != null) {
-            intent.putExtra("type", attachmentType) // 1 = image, 3 = file
-            attachmentJson!!.put("text", text)
-            intent.putExtra("message", attachmentJson.toString())
-            clearAttachment()
-        } else {
-            intent.putExtra("message", text)
+        val app = App.app.mimirApp ?: run {
+            Log.w(TAG, "sendMessage: MimirApp not ready yet")
+            return
         }
-        startService(intent)
+        // Detach the staged attachment on the UI thread so the trailing
+        // clearAttachment() call can't delete the temp file out from under
+        // the async send.
+        val staged = takeAttachmentForSending()
+        Thread {
+            try {
+                // The row is inserted in Phase 1 inside Rust and the
+                // on_outgoing_message_stored callback already broadcast
+                // ACTION_MESSAGE_SENT — the adapter has the pending row before
+                // this thread has started on the upload/dispatch work.
+                app.sendContactMessage(contact.pubkey, replyTo, text, staged?.spec)
+            } catch (e: Exception) {
+                Log.e(TAG, "sendContactMessage failed: ${e.message}", e)
+                // Best-effort auto-reconnect on failure — same fallback as before.
+                try { app.connectToContact(contact.pubkey) } catch (_: Exception) {}
+            } finally {
+                // Composer-owned blobs get cleaned up here regardless of send result;
+                // forwarded attachments (stagedFile == null) stay on disk.
+                staged?.stagedFile?.delete()
+            }
+        }.start()
+    }
+
+    private val messageReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            intent ?: return
+            when (intent.action) {
+                "ACTION_MESSAGE_SENT" -> {
+                    val msgId = intent.getLongExtra("message_id", 0)
+                    val contactId = intent.getLongExtra("contact_id", 0)
+                    val type = intent.getIntExtra("type", 0)
+                    val replyTo = intent.getLongExtra("reply_to", 0L)
+                    if (contactId == contact.id) {
+                        onMessageSent(msgId, contactId, type, replyTo)
+                    }
+                }
+                "ACTION_MESSAGE_RECEIVED" -> {
+                    val msgId = intent.getLongExtra("message_id", 0)
+                    val contactId = intent.getLongExtra("contact_id", 0)
+                    val msgType = intent.getIntExtra("msg_type", 0)
+                    val replyTo = intent.getLongExtra("reply_to", 0L)
+                    if (contactId == contact.id) {
+                        onMessageReceived(msgId, contactId, msgType, replyTo)
+                    }
+                }
+                "ACTION_MESSAGE_DELIVERED" -> {
+                    val pubkey = intent.getByteArrayExtra("pubkey") ?: return
+                    val guid = intent.getLongExtra("guid", 0)
+                    if (contact.pubkey.contentEquals(pubkey)) {
+                        val msg = getStorage().getMessageByGuid(guid)
+                        if (msg != null) {
+                            onMessageDelivered(msg.id, true)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     override fun setupBroadcastReceivers() {
@@ -332,6 +380,12 @@ class ChatActivity : BaseChatActivity() {
             addAction("ACTION_FILE_UPLOADED")
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(fileDownloadReceiver, fileFilter)
+        val msgFilter = IntentFilter().apply {
+            addAction("ACTION_MESSAGE_SENT")
+            addAction("ACTION_MESSAGE_RECEIVED")
+            addAction("ACTION_MESSAGE_DELIVERED")
+        }
+        LocalBroadcastManager.getInstance(this).registerReceiver(messageReceiver, msgFilter)
     }
 
     override fun onToolbarClick() {
@@ -456,9 +510,9 @@ class ChatActivity : BaseChatActivity() {
         intent.putExtra("pubkey", contact.pubkey)
         startService(intent)
 
-        val storage = (application as App).storage
+        val storage = getStorage()
         val contactId = storage.getContactId(contact.pubkey)
-        val name = storage.getContactName(contactId)
+        val name = storage.getContact(contactId)?.name ?: contact.name
 
         val callIntent = Intent(this, CallActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
@@ -491,7 +545,7 @@ class ChatActivity : BaseChatActivity() {
     private fun removeContact() {
         Thread {
             try {
-                getStorage().removeContactAndChat(contact.id)
+                getStorage().removeContact(contact.id)
                 Log.i(TAG, "Removed contact ${contact.id}")
                 runOnUiThread { finish() }
             } catch (e: Exception) {
@@ -518,25 +572,17 @@ class ChatActivity : BaseChatActivity() {
     private fun clearHistory() {
         Thread {
             try {
-                // 1. Clear messages from database and get attachment files
-                val attachmentFiles = getStorage().clearContactHistory(contact.id)
-
-                // 2. Delete attachment files
+                val attachments = getStorage().clearContactHistory(contact.id)
                 val filesDir = File(filesDir, "files")
-                val cacheDir = File(cacheDir, "files")
-                for (fileName in attachmentFiles) {
-                    File(filesDir, fileName).delete()
-                    File(cacheDir, fileName).delete()
+                val cacheFilesDir = File(cacheDir, "files")
+                for (name in attachments) {
+                    File(filesDir, name).delete()
+                    File(cacheFilesDir, name).delete()
                 }
+                Log.i(TAG, "Cleared history for contact ${contact.id} (${attachments.size} attachments)")
 
-                Log.i(TAG, "Cleared history: deleted ${attachmentFiles.size} attachment files")
-
-                // 3. Update UI on main thread
                 runOnUiThread {
-                    // Clear adapter
                     adapter.clearAllMessages()
-
-                    // Show confirmation toast
                     Toast.makeText(
                         this,
                         getString(R.string.history_cleared),
@@ -544,7 +590,6 @@ class ChatActivity : BaseChatActivity() {
                     ).show()
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
                 Log.e(TAG, "Error clearing history", e)
                 runOnUiThread {
                     Toast.makeText(
@@ -611,21 +656,28 @@ class ChatActivity : BaseChatActivity() {
                 // Image message - recreate attachment
                 messageJson?.let { json ->
                     try {
-                        attachmentJson = org.json.JSONObject(json)
-                        attachmentType = messageType
-
-                        // Verify file exists and show attachment UI
-                        val filename = attachmentJson?.optString("name")
-                        if (filename != null) {
-                            val file = java.io.File(java.io.File(filesDir, "files"), filename)
-                            if (file.exists()) {
-                                val fileSize = attachmentJson?.optLong("size", 0) ?: 0
-                                val preview = getImagePreview(this, filename, 320, 85)
-
+                        val meta = org.json.JSONObject(json)
+                        val filename = meta.optString("name", "")
+                        if (filename.isNotEmpty()) {
+                            val attachmentsDir = java.io.File(filesDir, "files")
+                            val staged = stageForwardedAttachment(
+                                context = this,
+                                attachmentsDir = attachmentsDir,
+                                storageFileName = filename,
+                                originalName = meta.optString("originalName", filename),
+                                mimeType = meta.optString("mimeType", "image/jpeg"),
+                                msgType = messageType,
+                            )
+                            if (staged != null) {
+                                staged.caption = meta.optString("text", "")
+                                attachment = staged
+                                val preview = android.graphics.BitmapFactory.decodeFile(
+                                    java.io.File(attachmentsDir, filename).absolutePath,
+                                )
                                 attachmentPreview.setImageBitmap(preview)
                                 attachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
-                                attachmentName.text = filename
-                                attachmentSize.text = formatFileSize(fileSize)
+                                attachmentName.text = staged.spec.originalName
+                                attachmentSize.text = formatFileSize(staged.size)
                                 attachmentPanel.visibility = android.view.View.VISIBLE
                             } else {
                                 Log.e(TAG, "Forwarded file not found: $filename")
@@ -641,22 +693,26 @@ class ChatActivity : BaseChatActivity() {
                 // File message - recreate attachment
                 messageJson?.let { json ->
                     try {
-                        attachmentJson = org.json.JSONObject(json)
-                        attachmentType = messageType
-
-                        // Verify file exists and show attachment UI
-                        val filename = attachmentJson?.optString("name")
-                        if (filename != null) {
-                            val file = java.io.File(java.io.File(filesDir, "files"), filename)
-                            if (file.exists()) {
-                                val displayName = attachmentJson?.optString("originalName", filename) ?: filename
-                                val fileSize = attachmentJson?.optLong("size", 0) ?: 0
-                                val mimeType = attachmentJson?.optString("mimeType", "application/octet-stream") ?: "application/octet-stream"
-
+                        val meta = org.json.JSONObject(json)
+                        val filename = meta.optString("name", "")
+                        if (filename.isNotEmpty()) {
+                            val attachmentsDir = java.io.File(filesDir, "files")
+                            val mimeType = meta.optString("mimeType", "application/octet-stream")
+                            val staged = stageForwardedAttachment(
+                                context = this,
+                                attachmentsDir = attachmentsDir,
+                                storageFileName = filename,
+                                originalName = meta.optString("originalName", filename),
+                                mimeType = mimeType,
+                                msgType = messageType,
+                            )
+                            if (staged != null) {
+                                staged.caption = meta.optString("text", "")
+                                attachment = staged
                                 attachmentPreview.setImageResource(getFileIconForMimeType(mimeType))
                                 attachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
-                                attachmentName.text = displayName
-                                attachmentSize.text = formatFileSize(fileSize)
+                                attachmentName.text = staged.spec.originalName
+                                attachmentSize.text = formatFileSize(staged.size)
                                 attachmentPanel.visibility = android.view.View.VISIBLE
                             } else {
                                 Log.e(TAG, "Forwarded file not found: $filename")
@@ -688,9 +744,9 @@ class ChatActivity : BaseChatActivity() {
         }
     }
 
-    // StorageListener implementation
+    // Message lifecycle callbacks dispatched from messageReceiver (LocalBroadcastManager).
 
-    override fun onMessageSent(id: Long, contactId: Long, type: Int, replyTo: Long) {
+    fun onMessageSent(id: Long, contactId: Long, type: Int, replyTo: Long) {
         runOnUiThread {
             Log.i(TAG, "Message $id sent to $contactId")
             if (contact.id == contactId) {
@@ -707,7 +763,7 @@ class ChatActivity : BaseChatActivity() {
         }
     }
 
-    override fun onMessageDelivered(id: Long, delivered: Boolean) {
+    fun onMessageDelivered(id: Long, delivered: Boolean) {
         Log.i(TAG, "Message $id delivered = $delivered")
         runOnUiThread {
             adapter.setMessageDelivered(id, delivered)
@@ -715,7 +771,7 @@ class ChatActivity : BaseChatActivity() {
         }
     }
 
-    override fun onMessageReceived(id: Long, contactId: Long, type: Int, replyTo: Long): Boolean {
+    fun onMessageReceived(id: Long, contactId: Long, type: Int, replyTo: Long): Boolean {
         Log.i(TAG, "Message $id from $contactId")
         if (contact.id == contactId) {
             runOnUiThread {
@@ -745,6 +801,7 @@ class ChatActivity : BaseChatActivity() {
         LocalBroadcastManager.getInstance(this).unregisterReceiver(peerStatusReceiver)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(audioPlaybackReceiver)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(fileDownloadReceiver)
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(messageReceiver)
         super.onDestroy()
     }
 }

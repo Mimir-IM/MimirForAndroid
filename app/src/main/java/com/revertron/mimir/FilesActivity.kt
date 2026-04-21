@@ -14,7 +14,6 @@ import androidx.core.content.FileProvider
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.revertron.mimir.storage.SqlStorage
 import com.revertron.mimir.ui.FileItem
 import com.revertron.mimir.ui.FilesAdapter
 import java.io.File
@@ -106,48 +105,42 @@ class FilesActivity : BaseActivity(), FilesAdapter.Listener {
         val filesDirPath = File(filesDir, "files")
         val imageExtensions = setOf("jpg", "jpeg", "png", "gif", "webp")
 
-        // Build a map of storage name -> FileInfo from the database
-        val dbItems = getStorage().getAllFileItems()
-        val dbMap = mutableMapOf<String, SqlStorage.FileInfo>()
-        for (info in dbItems) {
-            // Keep the first occurrence (in case of duplicates)
-            if (info.storageName !in dbMap) {
-                dbMap[info.storageName] = info
-            }
-        }
+        // DB metadata for every sent/received attachment, keyed by on-disk filename.
+        val dbMap: Map<String, uniffi.mimir.FileItem> =
+            getStorage().getAllFileItems().associateBy { it.storageName }
 
-        // Cache contact/group names
+        // Cache contact/group names so we don't re-query for every row.
         val contactNameCache = mutableMapOf<Long, String>()
         val groupNameCache = mutableMapOf<Long, String>()
 
-        fun resolveChatName(info: SqlStorage.FileInfo): String {
-            return if (info.contactId >= 0) {
-                contactNameCache.getOrPut(info.contactId) {
-                    getStorage().getContactName(info.contactId)
+        fun resolveChatName(contactId: Long, chatId: Long): String {
+            return when {
+                contactId > 0 -> contactNameCache.getOrPut(contactId) {
+                    getStorage().getContact(contactId)?.name ?: ""
                 }
-            } else if (info.groupChatId >= 0) {
-                groupNameCache.getOrPut(info.groupChatId) {
-                    getStorage().getGroupChat(info.groupChatId)?.name ?: ""
+                chatId > 0 -> groupNameCache.getOrPut(chatId) {
+                    getStorage().getGroupChat(chatId)?.name ?: ""
                 }
-            } else ""
+                else -> ""
+            }
         }
 
         val items = mutableListOf<FileItem>()
 
         if (filesDirPath.exists() && filesDirPath.isDirectory) {
             filesDirPath.listFiles()?.forEach { file ->
-                val dbInfo = dbMap.remove(file.name)
-                if (dbInfo != null) {
+                val meta = dbMap[file.name]
+                if (meta != null) {
                     items.add(FileItem(
                         storageName = file.name,
-                        originalName = dbInfo.originalName,
-                        size = if (dbInfo.size > 0) dbInfo.size else file.length(),
-                        lastModified = dbInfo.timestamp,
-                        isImage = dbInfo.isImage,
-                        chatName = resolveChatName(dbInfo)
+                        originalName = meta.originalName,
+                        size = file.length(),
+                        lastModified = file.lastModified(),
+                        isImage = meta.isImage || meta.mimeType.startsWith("image/"),
+                        chatName = resolveChatName(meta.contactId, meta.chatId)
                     ))
                 } else {
-                    // Orphan file not in DB
+                    // Orphan: on disk but no DB row (e.g. leftover from uninstalled chat).
                     val ext = file.extension.lowercase()
                     items.add(FileItem(
                         storageName = file.name,

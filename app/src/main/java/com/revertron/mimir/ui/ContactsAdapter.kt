@@ -13,9 +13,7 @@ import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.*
-import com.revertron.mimir.storage.SqlStorage
-import org.json.JSONException
-import org.json.JSONObject
+import uniffi.mimir.StoredDraft
 import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.*
@@ -103,42 +101,16 @@ class ContactsAdapter(
             holder.lastMessage.text = draftText
         } else {
             // Set last message
-            var lastMessageText = when (contact.lastMessage?.type) {
-                1 -> {
-                    "\uD83D\uDDBC\uFE0F " + contact.lastMessage.getText(holder.avatar.context)
-                }
-                2 -> {
-                    val time = contact.lastMessage.getText(holder.avatar.context)
-                    if (contact.lastMessage.incoming) {
-                        holder.avatar.context.getString(R.string.audio_call_incoming) + " " + time
-                    } else {
-                        holder.avatar.context.getString(R.string.audio_call_outgoing) + " " + time
-                    }
-                }
-                3 -> {
-                    "\uD83D\uDCC4 " + contact.lastMessage.getText(holder.avatar.context)
-                }
-                else -> {
-                    contact.lastMessage?.getText(holder.avatar.context)
-                }
+            val text = contact.lastMessageText
+            if (text.isNullOrEmpty()) {
+                holder.lastMessage.text = holder.itemView.context.getString(R.string.empty_chat)
+            } else {
+                holder.lastMessage.text = text
             }
-            if (lastMessageText.isNullOrEmpty()) {
-                lastMessageText = holder.itemView.context.getString(R.string.empty_chat)
-            }
-            holder.lastMessage.text = lastMessageText
         }
 
-        // Set delivered icon (only for contacts, not group chats)
-        if (contact.unreadCount == 0 && contact.lastMessage?.delivered != null) {
-            if (contact.lastMessage?.delivered == true) {
-                holder.deliveredIcon.setImageResource(R.drawable.ic_message_delivered)
-            } else {
-                holder.deliveredIcon.setImageResource(R.drawable.ic_message_not_sent)
-            }
-            holder.deliveredIcon.visibility = View.VISIBLE
-        } else {
-            holder.deliveredIcon.visibility = View.GONE
-        }
+        // Delivered icon not available in the current data model
+        holder.deliveredIcon.visibility = View.GONE
 
         // Set avatar
         if (contact.avatar != null) {
@@ -203,7 +175,7 @@ class ContactsAdapter(
     /**
      * Builds a SpannableString for displaying a draft with red "Draft:" prefix.
      */
-    private fun buildDraftText(draft: SqlStorage.Draft, context: android.content.Context): SpannableString {
+    private fun buildDraftText(draft: StoredDraft, context: android.content.Context): SpannableString {
         // Build draft preview text
         val draftContent = when {
             !draft.text.isNullOrEmpty() && !draft.mediaUri.isNullOrEmpty() -> {
@@ -253,13 +225,7 @@ class ContactsAdapter(
     }
 
     fun setMessageDelivered(id: Long) {
-        for ((index, item) in dataSet.withIndex()) {
-            if (item is ChatListItem.ContactItem && item.lastMessage != null) {
-                if (item.lastMessage?.id == id) {
-                    item.lastMessage?.delivered = true
-                    notifyItemChanged(index)
-                }
-            }
-        }
+        // Delivered status is no longer tracked in ChatListItem;
+        // the list will be refreshed on next data load.
     }
 }

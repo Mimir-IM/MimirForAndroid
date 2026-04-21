@@ -13,18 +13,14 @@ import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.revertron.mimir.storage.SqlStorage
-import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.ChatListItem
-import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.ContactsAdapter
-import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 
 /**
  * A small copy of the MainActivity to accept media and send it to ChatActivity with selected contact
  */
-class SendContentActivity : BaseActivity(), View.OnClickListener, StorageListener {
+class SendContentActivity : BaseActivity(), View.OnClickListener {
 
     companion object {
         const val TAG = "SendContentActivity"
@@ -129,7 +125,7 @@ class SendContentActivity : BaseActivity(), View.OnClickListener, StorageListene
             is ChatListItem.SavedMessagesItem -> {
                 Log.i(TAG, "Clicked on Saved Messages")
                 val intent = Intent(this, ChatActivity::class.java)
-                intent.putExtra("contactId", SqlStorage.SAVED_MESSAGES_CONTACT_ID)
+                intent.putExtra("contactId", ChatListItem.SAVED_MESSAGES_CONTACT_ID)
                 intent.putExtra("name", item.name)
                 intent.putExtra("savedMessages", true)
                 addSharedContent(intent)
@@ -171,41 +167,47 @@ class SendContentActivity : BaseActivity(), View.OnClickListener, StorageListene
     }
 
     private fun getChatList(): List<ChatListItem> {
-        val storage = (application as App).storage
-        val contacts = storage.getContactList()
-        val groupChats = storage.getGroupChatList()
+        val storage = getStorage()
+        val contacts = storage.getContacts()
+        val groupChats = storage.getGroupChats()
 
         val chatItems = mutableListOf<ChatListItem>()
 
         // Convert contacts to ChatListItems
         chatItems.addAll(contacts.map { contact ->
+            val avatarDrawable = loadRoundedAvatar(this, contact.avatar.ifEmpty { null }, 48, 6)
+            val lastMessage = storage.getLastMessage(contact.id)
+            val lastMsgText = lastMessage?.data?.let { String(it) }
+
             ChatListItem.ContactItem(
                 id = contact.id,
                 pubkey = contact.pubkey,
                 name = contact.name,
-                lastMessage = contact.lastMessage,
-                unreadCount = contact.unread,
-                avatar = contact.avatar
+                lastMessageText = lastMsgText,
+                lastMessageTime = lastMessage?.sendTime ?: 0,
+                unreadCount = storage.getUnreadCount(contact.id),
+                avatar = avatarDrawable
             )
         })
 
         // Convert group chats to ChatListItems
-        val myPubKey = storage.getMyPubKey()
+        val myPubKey = storage.getAccount(1)?.pubkey ?: ByteArray(0)
         chatItems.addAll(groupChats.map { groupChat ->
-            val avatar = storage.getGroupChatAvatar(groupChat.chatId, 48, 6)
-            val isOwner = myPubKey?.contentEquals(groupChat.ownerPubkey) ?: false
+            val avatarDrawable = loadRoundedAvatar(this, groupChat.avatar.ifEmpty { null }, 48, 6)
+            val isOwner = myPubKey.contentEquals(groupChat.ownerPubkey)
             val lastMessage = storage.getLastGroupMessage(groupChat.chatId)
+            val lastMsgText = lastMessage?.data?.let { String(it) }
 
             ChatListItem.GroupChatItem(
                 id = groupChat.chatId,
                 chatId = groupChat.chatId,
                 name = groupChat.name,
-                description = groupChat.description ?: "",
+                description = groupChat.description,
                 mediatorAddress = groupChat.mediatorPubkey,
-                memberCount = storage.getGroupChatMembersCount(groupChat.chatId),
+                memberCount = storage.getMemberCount(groupChat.chatId),
                 isOwner = isOwner,
-                avatar = avatar,
-                lastMessageText = lastMessage?.getText(this),
+                avatar = avatarDrawable,
+                lastMessageText = lastMsgText,
                 lastMessageTime = groupChat.lastMessageTime,
                 unreadCount = groupChat.unreadCount
             )
@@ -216,16 +218,16 @@ class SendContentActivity : BaseActivity(), View.OnClickListener, StorageListene
 
         // Add Saved Messages at the top (after sorting)
         val savedMessagesIcon = ContextCompat.getDrawable(this, R.drawable.ic_saved_messages)
-        val lastSavedMessage = storage.getLastSavedMessage()
+        val lastSavedMessage = storage.getLastMessage(ChatListItem.SAVED_MESSAGES_CONTACT_ID)
 
         // Show tip if there are no saved messages
-        val messageText = lastSavedMessage?.getText(this) ?: getString(R.string.saved_messages_tip)
+        val messageText = lastSavedMessage?.data?.let { String(it) } ?: getString(R.string.saved_messages_tip)
 
         sortedItems.add(0, ChatListItem.SavedMessagesItem(
             name = getString(R.string.saved_messages),
             avatar = savedMessagesIcon,
             lastMessageText = messageText,
-            lastMessageTime = lastSavedMessage?.time ?: 0
+            lastMessageTime = lastSavedMessage?.sendTime ?: 0
         ))
 
         return sortedItems

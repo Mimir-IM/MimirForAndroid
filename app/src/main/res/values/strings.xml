@@ -52,6 +52,8 @@
     <string name="empty_name">You need to enter some name!</string>
     <string name="wrong_public_key">Wrong public key</string>
     <string name="remove_contact">Delete contact and chat</string>
+    <string name="remove_contact_title">Delete contact?</string>
+    <string name="confirm_remove_contact">This will delete %1$s from your contacts and remove the entire chat history. This cannot be undone.</string>
     <string name="remove_contact_confirm">This will permanently delete the contact, all messages, and the chat history. Continue?</string>
     <string name="rename">Rename</string>
     <string name="rename_contact">Rename contact</string>
@@ -189,6 +191,9 @@
     <string name="history_cleared">History cleared</string>
     <string name="error_clearing_history">Error clearing history</string>
     <string name="block_contact">Block contact</string>
+    <string name="unblock_contact">Unblock contact</string>
+    <string name="contact_blocked_toast">Blocked %1$s</string>
+    <string name="contact_unblocked_toast">Unblocked %1$s</string>
     <string name="my_qr_code">My QR-code</string>
     <string name="copy_my_id">Copy my ID</string>
     <string name="copy_link_to_my_id">Copy link to my ID</string>
@@ -328,6 +333,12 @@
     <string name="role_changed">Changed %1$s to %2$s</string>
     <string name="role_banned">banned</string>
     <string name="system_msg_role_changed">%1$s changed %2$s role to %3$s</string>
+    <string name="system_msg_user_accepted_invite">%1$s accepted invite from %2$s</string>
+    <string name="system_msg_user_left">%1$s left the chat</string>
+    <string name="system_msg_user_banned">%1$s banned %2$s from the chat</string>
+    <string name="system_msg_chat_deleted">%1$s deleted the chat</string>
+    <string name="system_msg_chat_info_changed">%1$s updated chat info</string>
+    <string name="system_msg_unknown">System event: %1$s</string>
     <string name="error_loading_avatar_picture">Error loading avatar picture!</string>
     <string name="error_loading_file">Error loading the file!</string>
     <string name="no_app_found_to_open">No app found to open: %1$s, copied to clipboard.</string>
@@ -409,5 +420,6 @@
     <string name="sort_by_name">Sort by name</string>
     <string name="sort_by_size">Sort by size</string>
     <string name="sort_by_date">Sort by date</string>
+    <string name="migration_in_progress">Updating database, please wait…</string>
 
 </resources>

@@ -55,14 +55,14 @@ class NotificationReplyReceiver : BroadcastReceiver() {
         val chatId = intent.getLongExtra("chat_id", 0)
         if (chatId == 0L) return
 
-        val storage = App.app.storage
+        val storage = App.app.mimirStorage!!
         val messageBytes = replyText.toByteArray()
         val sendTime = getUtcTimeMs()
         val guid = storage.generateGuid(sendTime, messageBytes)
 
         // Store locally first (ConnectionService's mediator_send expects this)
-        val myPubkey = storage.getMyPubKey()
-        storage.addGroupMessage(chatId, null, guid, myPubkey, sendTime, 0, false, messageBytes, 0L)
+        val myPubkey = storage.getAccount(1)?.pubkey ?: ByteArray(0)
+        storage.addGroupMessage(chatId, 0L, guid, myPubkey, sendTime, 0, false, messageBytes, 0L, false)
 
         // Send via ConnectionService
         val serviceIntent = Intent(context, ConnectionService::class.java).apply {

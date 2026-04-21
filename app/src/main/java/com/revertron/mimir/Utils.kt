@@ -372,33 +372,50 @@ fun Uri.resizeAndCompress(context: Context, target: ImageSize, quality: Int = 90
     }
 }
 
-fun loadRoundedAvatar(context: Context, fileName: String?, size: Int = 32, corners: Int = 6): RoundedBitmapDrawable? {
-    if (fileName == null || fileName.isEmpty()) return null
-    if (fileName.isNotEmpty()) {
-        val f = if (fileName.startsWith("/data/")) {
-            File(fileName)
-        } else {
-            val avatarsDir = File(context.filesDir, "avatars")
-            File(avatarsDir, fileName)
-        }
-        val resources = context.resources
-        try {
-            f.inputStream().use {
-                val iconSize = TypedValue.applyDimension(COMPLEX_UNIT_DIP, size.toFloat(), resources.displayMetrics).toInt()
-                val raw = BitmapFactory.decodeFile(f.absolutePath)
-                val scaled = raw.scale(iconSize, iconSize)
-
-                val drawable = RoundedBitmapDrawableFactory.create(resources, scaled).apply {
-                    cornerRadius = TypedValue.applyDimension(COMPLEX_UNIT_DIP, corners.toFloat(), resources.displayMetrics)
-                }
-                return drawable
-            }
-        } catch (e: IOException) {
-            Log.e("Utils", e.toString())
-            return null
-        }
+/**
+ * Resolve a value from an avatar column to a concrete File on disk.
+ *
+ * The string may be any of:
+ *  - **new-style relative subpath** — e.g. `avatars/account_1.avatar` or
+ *    `group_avatars/123/abcd.avatar`. Resolved against `<filesDir>/mimir/`
+ *    (the Rust data_dir). Preferred encoding; portable across data-dir moves.
+ *  - **legacy absolute path** — e.g. `/data/data/.../files/mimir/avatars/…`.
+ *    Used as-is, still works while the data_dir hasn't moved.
+ *  - **legacy bare filename** — e.g. `abc123.jpg`. Resolved against
+ *    `<filesDir>/avatars/` (pre-Rust SqlStorage layout).
+ *
+ * All three formats may coexist in the DB; `normalizeMigratedAvatars` on
+ * startup rewrites legacy rows into the new-style form when it runs.
+ */
+fun resolveAvatarFile(context: Context, stored: String): File {
+    val p = File(stored)
+    if (p.isAbsolute) return p
+    val mimirDir = File(context.filesDir, "mimir")
+    // Bare filename (no separators) → legacy <filesDir>/avatars/ layout.
+    if (!stored.contains('/') && !stored.contains('\\')) {
+        val legacy = File(File(context.filesDir, "avatars"), stored)
+        if (legacy.exists()) return legacy
     }
-    return null
+    // New-style: relative to data_dir.
+    return File(mimirDir, stored)
+}
+
+fun loadRoundedAvatar(context: Context, fileName: String?, size: Int = 32, corners: Int = 6): RoundedBitmapDrawable? {
+    if (fileName.isNullOrEmpty()) return null
+    val f = resolveAvatarFile(context, fileName)
+    if (!f.exists()) return null
+    val resources = context.resources
+    return try {
+        val iconSize = TypedValue.applyDimension(COMPLEX_UNIT_DIP, size.toFloat(), resources.displayMetrics).toInt()
+        val raw = BitmapFactory.decodeFile(f.absolutePath) ?: return null
+        val scaled = raw.scale(iconSize, iconSize)
+        RoundedBitmapDrawableFactory.create(resources, scaled).apply {
+            cornerRadius = TypedValue.applyDimension(COMPLEX_UNIT_DIP, corners.toFloat(), resources.displayMetrics)
+        }
+    } catch (e: IOException) {
+        Log.e("Utils", e.toString())
+        null
+    }
 }
 
 fun loadRoundedBitmap(context: Context, buffer: ByteArray, size: Int = 32, corners: Int = 6): RoundedBitmapDrawable? {
@@ -419,11 +436,7 @@ fun loadRoundedBitmap(context: Context, buffer: ByteArray, size: Int = 32, corne
  */
 fun loadNotificationBitmap(context: Context, fileName: String?, sizeDp: Int = 48): Bitmap? {
     if (fileName.isNullOrEmpty()) return null
-    val f = if (fileName.startsWith("/data/")) {
-        File(fileName)
-    } else {
-        File(File(context.filesDir, "avatars"), fileName)
-    }
+    val f = resolveAvatarFile(context, fileName)
     if (!f.exists()) return null
     return try {
         val px = TypedValue.applyDimension(COMPLEX_UNIT_DIP, sizeDp.toFloat(), context.resources.displayMetrics).toInt()
@@ -437,11 +450,17 @@ fun loadNotificationBitmap(context: Context, fileName: String?, sizeDp: Int = 48
 
 /**
  * Loads a group member avatar as a plain Bitmap suitable for notifications.
- * Group member avatars are stored in avatars_{chatId}/ directory.
+ * Accepts either a new-style relative subpath from MimirStorage or a legacy
+ * bare filename.
  */
 fun loadGroupMemberNotificationBitmap(context: Context, chatId: Long, fileName: String?, sizeDp: Int = 48): Bitmap? {
     if (fileName.isNullOrEmpty()) return null
-    val f = File(File(context.filesDir, "avatars_$chatId"), fileName)
+    val f = if (File(fileName).isAbsolute || fileName.contains('/') || fileName.contains('\\')) {
+        resolveAvatarFile(context, fileName)
+    } else {
+        // Legacy layout: avatars_{chatId}/<fileName> under <filesDir>.
+        File(File(context.filesDir, "avatars_$chatId"), fileName)
+    }
     if (!f.exists()) return null
     return try {
         val px = TypedValue.applyDimension(COMPLEX_UNIT_DIP, sizeDp.toFloat(), context.resources.displayMetrics).toInt()
@@ -565,154 +584,158 @@ private fun Uri.correctExifRotation(context: Context, quality: Int): ByteArray {
 }
 
 /**
- * Copies picture file to app directory, creates preview
- *
- * @return Hash of file, null if some error occurs
+ * Metadata + temp-file wrapper used while an attachment sits in the composer
+ * before the user sends. `stagedFile` is the temporary blob the UI owns and
+ * must delete on clear/send — null for forwarded attachments where the
+ * source lives in the persistent attachments directory and must survive.
  */
-fun prepareFileForMessage(context: Context, uri: Uri, imageSize: ImageSize, quality: Int): JSONObject? {
-    val tag = "prepareFileForMessage"
-    // TODO fix getting size
-    var size = uri.length(context)
+data class StagedAttachment(
+    val spec: uniffi.mimir.AttachmentSpec,
+    val size: Long,
+    val stagedFile: File?,
+    var caption: String = "",
+)
 
-    val inputStream = if (size <= PICTURE_MAX_SIZE) {
-        // Check if image needs EXIF rotation correction
-        val needsRotation = checkIfNeedsRotation(context, uri)
-        if (needsRotation) {
-            Log.i(tag, "Image needs EXIF rotation correction")
-            val corrected = uri.correctExifRotation(context, quality)
-            Log.i(tag, "Corrected rotation, new size: ${corrected.size}")
-            val newSize = corrected.size.toLong()
-            size = newSize
-            ByteArrayInputStream(corrected)
+/** Persistent staging dir. `cacheDir` is too aggressive — Android can wipe
+ *  it between composer open and send. */
+private fun attachmentStagingDir(context: Context): File =
+    File(context.filesDir, "attach_drafts").apply { mkdirs() }
+
+/**
+ * Copies a picked image URI into the staging directory (resizing if larger
+ * than `PICTURE_MAX_SIZE`, correcting EXIF rotation when needed) and returns
+ * a StagedAttachment ready to hand to `MimirApp.sendContactMessage` /
+ * `sendGroupChatMessage`. The Rust side then copies the staged file into
+ * the canonical attachments directory under a fresh random name.
+ */
+fun stageImageForSending(context: Context, uri: Uri, imageSize: ImageSize, quality: Int): StagedAttachment? {
+    val tag = "stageImage"
+    val rawSize = uri.length(context)
+
+    val bytes: ByteArray = if (rawSize <= PICTURE_MAX_SIZE) {
+        if (checkIfNeedsRotation(context, uri)) {
+            Log.i(tag, "Correcting EXIF rotation")
+            uri.correctExifRotation(context, quality)
         } else {
-            val contentResolver = context.contentResolver
-            contentResolver.openInputStream(uri)
+            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: return null
         }
     } else {
-        Log.i(tag, "File is too big, will try to resize")
+        Log.i(tag, "Image too big, resizing")
         val resized = uri.resizeAndCompress(context, imageSize, quality)
-        Log.i(tag, "Resized from $size to ${resized.size}")
-        val newSize = resized.size.toLong()
-        if (newSize > size || newSize > PICTURE_MAX_SIZE) return null
-        size = newSize
-        ByteArrayInputStream(resized)
+        if (resized.size.toLong() > PICTURE_MAX_SIZE) return null
+        resized
     }
-    val imagesDir = File(context.filesDir, "files")
-    if (!imagesDir.exists()) {
-        imagesDir.mkdirs()
-    }
-    val fileName = randomString(16)
-    val ext = getMimeType(context, uri)
-    val fullName = "$fileName.$ext"
-    val outputFile = File(imagesDir, fullName)
-    val outputStream = FileOutputStream(outputFile)
-    inputStream.use { input ->
-        outputStream.use { output ->
-            val copied = (input?.copyTo(output) ?: {
-                Log.e(tag, "File is not accessible")
-                null
-            }) as Long
-            if (copied != size) {
-                Log.e(tag, "Error copying file to app storage!")
-                return null
-            }
-        }
-    }
-    val hash = getFileHash(outputFile)
 
-    // Get original filename
-    val originalName = getFileNameFromUri(context, uri) ?: fullName
+    val originalName = getFileNameFromUri(context, uri) ?: "image.jpg"
+    val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
+    val stagedFile = File(attachmentStagingDir(context), "img_${randomString(12)}.jpg")
+    stagedFile.writeBytes(bytes)
 
-    val json = JSONObject()
-    json.put("name", fullName)
-    json.put("size", size)
-    json.put("hash", Hex.toHexString(hash))
-    json.put("originalName", originalName)
-    return json
+    return StagedAttachment(
+        spec = uniffi.mimir.AttachmentSpec(
+            filePath = stagedFile.absolutePath,
+            originalName = originalName,
+            mimeType = mimeType,
+            msgType = 1,
+        ),
+        size = stagedFile.length(),
+        stagedFile = stagedFile,
+    )
 }
 
 /**
- * Prepares a general file (non-image) for sending.
- * Enforces a maximum file size limit of MAX_FILE_SIZE (10MB).
- * Copies the file to app directory and creates JSON metadata.
- *
- * @param context Android context
- * @param uri File URI to prepare
- * @return JSON object with file metadata (name, size, hash, originalName, mimeType), or null on error
+ * Copies a picked general file URI into the staging directory without
+ * resizing and returns a StagedAttachment.
  */
-fun prepareGeneralFileForMessage(context: Context, uri: Uri): JSONObject? {
-    val tag = "prepareGeneralFile"
-
-    // Get file size
+fun stageFileForSending(context: Context, uri: Uri): StagedAttachment? {
+    val tag = "stageFile"
     val size = uri.length(context)
-    if (size <= 0) {
-        Log.e(tag, "Cannot determine file size")
-        return null
-    }
-
-    // Check file size limit (10MB)
+    if (size <= 0) return null
     if (size > MAX_FILE_SIZE) {
-        Log.e(tag, "File too large: $size bytes (max: $MAX_FILE_SIZE)")
         Toast.makeText(context, "File is too large. Maximum size is 1024 MB.", Toast.LENGTH_LONG).show()
         return null
     }
 
-    // Get original file name
     val originalName = getFileNameFromUri(context, uri) ?: "file"
-
-    // Get MIME type
     val mimeType = context.contentResolver.getType(uri) ?: "application/octet-stream"
-
-    // Copy file to app directory
-    val filesDir = File(context.filesDir, "files")
-    if (!filesDir.exists()) {
-        filesDir.mkdirs()
-    }
-
-    // Generate random filename with original extension
     val extension = originalName.substringAfterLast('.', "bin")
-    val fileName = randomString(16)
-    val fullName = "$fileName.$extension"
-    val outputFile = File(filesDir, fullName)
+    val stagedFile = File(attachmentStagingDir(context), "file_${randomString(12)}.$extension")
 
     try {
-        val inputStream = context.contentResolver.openInputStream(uri)
-        if (inputStream == null) {
-            Log.e(tag, "Cannot open input stream for URI")
-            return null
-        }
-
-        val outputStream = FileOutputStream(outputFile)
-        inputStream.use { input ->
-            outputStream.use { output ->
-                val copied = input.copyTo(output)
-                if (copied != size) {
-                    Log.e(tag, "Error copying file: expected $size bytes, got $copied")
-                    outputFile.delete()
-                    return null
-                }
-            }
-        }
-
-        // Calculate file hash
-        val hash = getFileHash(outputFile)
-
-        // Create JSON metadata
-        val json = JSONObject()
-        json.put("name", fullName)
-        json.put("size", size)
-        json.put("hash", Hex.toHexString(hash))
-        json.put("originalName", originalName)
-        json.put("mimeType", mimeType)
-
-        Log.i(tag, "Prepared file: $originalName -> $fullName ($size bytes)")
-        return json
-
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            stagedFile.outputStream().use { input.copyTo(it) }
+        } ?: return null
     } catch (e: Exception) {
-        Log.e(tag, "Error preparing file", e)
-        outputFile.delete()
+        Log.e(tag, "Error staging file", e)
+        stagedFile.delete()
         return null
     }
+
+    return StagedAttachment(
+        spec = uniffi.mimir.AttachmentSpec(
+            filePath = stagedFile.absolutePath,
+            originalName = originalName,
+            mimeType = mimeType,
+            msgType = 3,
+        ),
+        size = stagedFile.length(),
+        stagedFile = stagedFile,
+    )
+}
+
+/**
+ * Wraps an already-finished voice recording as a StagedAttachment. The
+ * recorder writes directly into the staging dir, so ownership transfers
+ * to the StagedAttachment (deleted on clear/send).
+ */
+fun stageVoiceRecording(file: File): StagedAttachment {
+    return StagedAttachment(
+        spec = uniffi.mimir.AttachmentSpec(
+            filePath = file.absolutePath,
+            originalName = "voice_message.m4a",
+            mimeType = "audio/mp4",
+            msgType = 3,
+        ),
+        size = file.length(),
+        stagedFile = file,
+    )
+}
+
+/**
+ * Allocates a fresh empty file in the staging dir for the voice recorder
+ * to write into. Caller passes the resulting File to MediaRecorder, then
+ * wraps it with `stageVoiceRecording()` once recording stops.
+ */
+fun allocateVoiceRecordingFile(context: Context): File =
+    File(attachmentStagingDir(context), "voice_${randomString(12)}.m4a")
+
+/**
+ * Builds a StagedAttachment for a forward operation where the source file
+ * is already in the canonical attachments directory from a prior message.
+ * `stagedFile` is null because the forwarded file must stay on disk for
+ * the original message to keep working.
+ */
+fun stageForwardedAttachment(
+    context: Context,
+    attachmentsDir: File,
+    storageFileName: String,
+    originalName: String,
+    mimeType: String,
+    msgType: Int,
+): StagedAttachment? {
+    val src = File(attachmentsDir, storageFileName)
+    if (!src.exists()) return null
+    return StagedAttachment(
+        spec = uniffi.mimir.AttachmentSpec(
+            filePath = src.absolutePath,
+            originalName = originalName,
+            mimeType = mimeType,
+            msgType = msgType,
+        ),
+        size = src.length(),
+        stagedFile = null,
+    )
 }
 
 /**
@@ -935,25 +958,19 @@ fun getFileContents(filePath: String): ByteArray {
     return bytes
 }
 
+/**
+ * Writes a received image/file payload to `<filesDir>/files/<fileName>` and
+ * generates a downscaled preview at `<cacheDir>/files/<fileName>` that the
+ * chat UI displays inline.
+ */
 fun saveFileForMessage(context: Context, fileName: String, data: ByteArray, offset: Int = 0, length: Int = data.size) {
-    val imagesDir = File(context.filesDir, "files")
-    if (!imagesDir.exists()) {
-        imagesDir.mkdirs()
-    }
-    val outputFile = File(imagesDir, fileName)
-    val outputStream = FileOutputStream(outputFile)
-    outputStream.use {
-        it.write(data, offset, length)
-        it.flush()
-    }
-    val cacheDir = File(context.cacheDir, "files")
-    if (!cacheDir.exists()) {
-        cacheDir.mkdirs()
-    }
-    val previewFile = File(cacheDir, fileName)
-    val originalFile = File(imagesDir, fileName).absolutePath
-    //TODO refactor this methods to make it more clear
-    createImagePreview(originalFile, previewFile.absolutePath, 512, 80)
+    val filesDir = File(context.filesDir, "files").apply { mkdirs() }
+    val cacheFilesDir = File(context.cacheDir, "files").apply { mkdirs() }
+    val originalFile = File(filesDir, fileName)
+    val previewFile = File(cacheFilesDir, fileName)
+
+    FileOutputStream(originalFile).use { it.write(data, offset, length) }
+    createImagePreview(originalFile.absolutePath, previewFile.absolutePath, 512, 80)
 }
 
 fun showQrCodeDialog(context: Context, name: String, public: String) {

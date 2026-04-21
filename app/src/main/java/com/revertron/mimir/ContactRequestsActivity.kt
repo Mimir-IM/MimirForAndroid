@@ -1,5 +1,6 @@
 package com.revertron.mimir
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
@@ -8,12 +9,10 @@ import androidx.appcompat.widget.Toolbar
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.revertron.mimir.storage.ContactRequest
-import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.ContactRequestsAdapter
-import org.bouncycastle.util.encoders.Hex
+import uniffi.mimir.StoredContactRequest
 
-class ContactRequestsActivity : BaseActivity(), ContactRequestsAdapter.Listener, StorageListener {
+class ContactRequestsActivity : BaseActivity(), ContactRequestsAdapter.Listener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -24,8 +23,6 @@ class ContactRequestsActivity : BaseActivity(), ContactRequestsAdapter.Listener,
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = getString(R.string.contact_requests)
 
-        getStorage().listeners.add(this)
-
         val recycler = findViewById<RecyclerView>(R.id.requests_list)
         recycler.addItemDecoration(DividerItemDecoration(baseContext, RecyclerView.VERTICAL))
     }
@@ -35,11 +32,6 @@ class ContactRequestsActivity : BaseActivity(), ContactRequestsAdapter.Listener,
         refreshRequests()
     }
 
-    override fun onDestroy() {
-        getStorage().listeners.remove(this)
-        super.onDestroy()
-    }
-
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             android.R.id.home -> { finish(); true }
@@ -47,35 +39,33 @@ class ContactRequestsActivity : BaseActivity(), ContactRequestsAdapter.Listener,
         }
     }
 
-    override fun onAccept(request: ContactRequest) {
+    override fun onAccept(request: StoredContactRequest) {
         val storage = getStorage()
         storage.acceptContactRequest(request.id)
 
-        // Send acceptance response to the peer
-        try {
-            App.app.peerNode?.sendContactResponse(request.pubkey, true)
-        } catch (e: Exception) {
-            // Peer may not be connected right now — that's OK, the contact is created
-        }
+        // Send acceptance response to the peer via ConnectionService
+        startService(Intent(this, ConnectionService::class.java).apply {
+            putExtra("command", "send_contact_response")
+            putExtra("pubkey", request.pubkey)
+            putExtra("accepted", true)
+        })
 
         Toast.makeText(this, R.string.contact_request_accepted, Toast.LENGTH_SHORT).show()
         refreshRequests()
     }
 
-    override fun onDecline(request: ContactRequest) {
+    override fun onDecline(request: StoredContactRequest) {
         val storage = getStorage()
         storage.deleteContactRequest(request.id)
 
-        try {
-            App.app.peerNode?.sendContactResponse(request.pubkey, false)
-        } catch (_: Exception) {}
+        startService(Intent(this, ConnectionService::class.java).apply {
+            putExtra("command", "send_contact_response")
+            putExtra("pubkey", request.pubkey)
+            putExtra("accepted", false)
+        })
 
         Toast.makeText(this, R.string.contact_request_declined, Toast.LENGTH_SHORT).show()
         refreshRequests()
-    }
-
-    override fun onContactRequestReceived(requestId: Long) {
-        runOnUiThread { refreshRequests() }
     }
 
     private fun refreshRequests() {

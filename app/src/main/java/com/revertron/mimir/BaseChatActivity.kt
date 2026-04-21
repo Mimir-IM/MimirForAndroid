@@ -44,8 +44,7 @@ import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.floatingactionbutton.FloatingActionButton
-import com.revertron.mimir.storage.SqlStorage
-import com.revertron.mimir.storage.StorageListener
+import com.revertron.mimir.ui.ChatListItem
 import com.revertron.mimir.ui.MessageAdapter
 import com.revertron.mimir.ui.MessageTag
 import com.revertron.mimir.ui.SettingsData.KEY_IMAGES_FORMAT
@@ -77,7 +76,7 @@ import androidx.core.graphics.drawable.toDrawable
  * - Toolbar click handling
  * - Menu creation
  */
-abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, StorageListener, View.OnClickListener {
+abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListener, View.OnClickListener {
 
     companion object {
         const val TAG = "BaseChatActivity"
@@ -129,8 +128,9 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     protected lateinit var attachmentName: AppCompatTextView
     protected lateinit var attachmentSize: AppCompatTextView
     protected lateinit var attachmentMenu: LinearLayoutCompat
-    protected var attachmentJson: JSONObject? = null
-    protected var attachmentType: Int = 1 // 1 = image, 3 = file (DB type)
+    /** Current staged attachment in the composer — null when none. The spec
+     *  inside is what gets handed to MimirApp.send*Message on send. */
+    protected var attachment: StagedAttachment? = null
     protected var currentPhotoUri: Uri? = null
 
     // UI Components - Message List
@@ -182,8 +182,8 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         setupAttachmentUI()
         setupMessageInput()
 
-        myName = getStorage().getAccountInfo(1, 0L)?.name ?: ""
-        getStorage().listeners.add(this)
+        myName = getStorage().getAccount(1)?.name ?: ""
+        // UI is updated via LocalBroadcastManager receivers.
         loadEmojiUsageCounts()
     }
 
@@ -295,7 +295,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     /**
      * Gets a  correct message from storage.
      */
-    protected abstract fun getMessageFromStorage(messageId: Long): SqlStorage.Message?
+    protected abstract fun getMessageFromStorage(messageId: Long): com.revertron.mimir.ui.DisplayMessage?
 
     /**
      * Handles adding/removing a reaction to a message.
@@ -402,11 +402,8 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         attachmentCancel.setOnClickListener {
             attachmentPreview.setImageDrawable(null)
             attachmentPanel.visibility = View.GONE
-            attachmentJson?.getString("name")?.apply {
-                deleteFileAndPreview(this@BaseChatActivity, this)
-            }
-            attachmentJson = null
-            attachmentType = 1
+            attachment?.stagedFile?.delete()
+            attachment = null
         }
     }
 
@@ -414,7 +411,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         val editText = findViewById<AppCompatEditText>(R.id.message_edit)
         val sendButton = findViewById<AppCompatImageButton>(R.id.send_button)
         val isForwardMode = intent.getBooleanExtra("FORWARD_MODE", false)
-        if (editText.text.isNullOrBlank() && attachmentJson == null && !isForwardMode) {
+        if (editText.text.isNullOrBlank() && attachment == null && !isForwardMode) {
             sendButton.setImageResource(R.drawable.ic_microphone_outline)
             isInMicMode = true
         } else {
@@ -484,9 +481,9 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             editText.text?.clear()
 
             // Then send the forwarded message
-            if (attachmentJson != null) {
+            if (attachment != null) {
                 // Media forward - combine user text with original caption
-                val originalCaption = attachmentJson?.optString("text", "") ?: ""
+                val originalCaption = attachment?.caption.orEmpty()
                 val combinedText = if (text.isNotEmpty() && originalCaption.isNotEmpty()) {
                     "$text\n$originalCaption"
                 } else text.ifEmpty { originalCaption }
@@ -514,9 +511,9 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             intent.removeExtra("FORWARD_MESSAGE_JSON")
 
             // Delete the draft since message was sent
-            val chatType = if (isGroupChat()) SqlStorage.CHAT_TYPE_GROUP else SqlStorage.CHAT_TYPE_CONTACT
+            val chatType = if (isGroupChat()) ChatListItem.CHAT_TYPE_GROUP else ChatListItem.CHAT_TYPE_CONTACT
             getStorage().deleteDraft(chatType, getChatId())
-        } else if (text.isNotEmpty() || attachmentJson != null) {
+        } else if (text.isNotEmpty() || attachment != null) {
             // Normal send flow
             editText.text?.clear()
             sendMessage(text, replyTo)
@@ -524,7 +521,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             clearAttachment()
 
             // Delete the draft since message was sent
-            val chatType = if (isGroupChat()) SqlStorage.CHAT_TYPE_GROUP else SqlStorage.CHAT_TYPE_CONTACT
+            val chatType = if (isGroupChat()) ChatListItem.CHAT_TYPE_GROUP else ChatListItem.CHAT_TYPE_CONTACT
             getStorage().deleteDraft(chatType, getChatId())
         }
     }
@@ -627,9 +624,9 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
 
     private fun markAllMessagesAsRead() {
         if (isGroupChat()) {
-            getStorage().markAllGroupMessagesRead(getChatId())
+            getStorage().markAllGroupRead(getChatId())
         } else {
-            getStorage().markAllMessagesRead(getChatId())
+            getStorage().markAllRead(getChatId())
         }
     }
 
@@ -829,24 +826,25 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         val resize = prefs.getInt(KEY_IMAGES_FORMAT, 0)
         val imageSize = ImageSize.fromInt(resize)
         val quality = prefs.getInt(KEY_IMAGES_QUALITY, 95)
-        // TODO move usage of this function to another Thread
-        val message = prepareFileForMessage(this, uri, imageSize, quality)
-        Log.i(this::class.simpleName, "File message for $uri is $message")
-        if (message != null) {
-            attachmentType = 1
-            val fileName = message.getString("name")
-            val fileSize = message.optLong("size", 0)
-            val preview = getImagePreview(this, fileName, 320, 85)
 
-            // Update UI for image attachment
-            attachmentPreview.setImageBitmap(preview)
-            attachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
-            attachmentName.text = fileName
-            attachmentSize.text = formatFileSize(fileSize)
-            attachmentPanel.visibility = View.VISIBLE
-            attachmentJson = message
-            updateSendButtonIcon()
-        }
+        // Staging decodes + optionally re-encodes the image — run off the UI thread.
+        Thread {
+            val staged = stageImageForSending(this, uri, imageSize, quality)
+            if (staged == null) {
+                Log.w(this::class.simpleName, "Failed to stage image for $uri")
+                return@Thread
+            }
+            val preview = android.graphics.BitmapFactory.decodeFile(staged.stagedFile?.absolutePath)
+            runOnUiThread {
+                attachment = staged
+                attachmentPreview.setImageBitmap(preview)
+                attachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                attachmentName.text = staged.spec.originalName
+                attachmentSize.text = formatFileSize(staged.size)
+                attachmentPanel.visibility = View.VISIBLE
+                updateSendButtonIcon()
+            }
+        }.start()
     }
 
     /**
@@ -861,7 +859,6 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     protected open fun getFileTooLargeMessageResId(): Int = R.string.file_too_large
 
     protected fun getFileFromUri(uri: Uri) {
-        // TODO move usage of this function to another Thread
         // Check file size against chat-specific limit before preparing
         val rawSize = uri.length(this)
         if (rawSize > getMaxFileSize()) {
@@ -869,23 +866,23 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             return
         }
 
-        val message = prepareGeneralFileForMessage(this, uri)
-        Log.i(this::class.simpleName, "File message for $uri is $message")
-        if (message != null) {
-            attachmentType = 3 // Type 3 for file attachments in DB
-            val fileName = message.optString("originalName", "file")
-            val fileSize = message.optLong("size", 0)
-            val mimeType = message.optString("mimeType", "application/octet-stream")
-
-            // Update UI for file attachment
-            attachmentPreview.setImageResource(getFileIconForMimeType(mimeType))
-            attachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
-            attachmentName.text = fileName
-            attachmentSize.text = formatFileSize(fileSize)
-            attachmentPanel.visibility = View.VISIBLE
-            attachmentJson = message
-            updateSendButtonIcon()
-        }
+        // Staging reads the URI bytes — off the UI thread.
+        Thread {
+            val staged = stageFileForSending(this, uri)
+            if (staged == null) {
+                Log.w(this::class.simpleName, "Failed to stage file for $uri")
+                return@Thread
+            }
+            runOnUiThread {
+                attachment = staged
+                attachmentPreview.setImageResource(getFileIconForMimeType(staged.spec.mimeType))
+                attachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+                attachmentName.text = staged.spec.originalName
+                attachmentSize.text = formatFileSize(staged.size)
+                attachmentPanel.visibility = View.VISIBLE
+                updateSendButtonIcon()
+            }
+        }.start()
     }
 
     fun formatFileSize(bytes: Long): String {
@@ -964,12 +961,33 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     }
 
     protected fun clearAttachment() {
-        if (attachmentJson != null) {
+        val current = attachment
+        if (current != null) {
             attachmentPanel.visibility = View.GONE
             attachmentPreview.setImageDrawable(null)
-            attachmentJson = null
+            // stagedFile is null for forwards (file is still in use by the original
+            // message); non-null for composer-owned blobs we should delete.
+            current.stagedFile?.delete()
+            attachment = null
         }
         updateSendButtonIcon()
+    }
+
+    /**
+     * Transfer ownership of the staged attachment (if any) from the composer
+     * UI to the caller. The UI preview is hidden immediately, the activity
+     * field is nulled, and the returned StagedAttachment is the caller's
+     * responsibility — including deleting `stagedFile` once the async send
+     * has finished copying the bytes. Prevents the race where a trailing
+     * `clearAttachment()` call deletes the file before Rust reads it.
+     */
+    protected fun takeAttachmentForSending(): StagedAttachment? {
+        val current = attachment ?: return null
+        attachmentPanel.visibility = View.GONE
+        attachmentPreview.setImageDrawable(null)
+        attachment = null
+        updateSendButtonIcon()
+        return current
     }
 
     // Context Menu
@@ -1397,8 +1415,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         val messageJson = data.getStringExtra("FORWARD_MESSAGE_JSON")
 
         // Get current user's pubkey for saved messages
-        val accountInfo = getStorage().getAccountInfo(1, 0L)
-        val myPubkey = (accountInfo!!.keyPair.public as org.bouncycastle.crypto.params.Ed25519PublicKeyParameters).encoded
+        val myPubkey = getStorage().getAccount(1)?.pubkey ?: ByteArray(0)
 
         // Send to ConnectionService which properly handles saved messages (sending to self)
         val serviceIntent = Intent(this, ConnectionService::class.java)
@@ -1429,7 +1446,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             com.google.android.material.snackbar.Snackbar.LENGTH_LONG
         ).setAction(getString(R.string.show)) {
             val intent = Intent(this, ChatActivity::class.java)
-            intent.putExtra("contactId", SqlStorage.SAVED_MESSAGES_CONTACT_ID)
+            intent.putExtra("contactId", ChatListItem.SAVED_MESSAGES_CONTACT_ID)
             intent.putExtra("name", getString(R.string.saved_messages))
             intent.putExtra("savedMessages", true)
             startActivity(intent, animFromRight.toBundle())
@@ -1476,25 +1493,18 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         val editText = findViewById<AppCompatEditText>(R.id.message_edit)
         val messageText = editText.text?.toString()?.trim()
 
-        // Get filename from attachmentJson if present
-        val fileName = attachmentJson?.optString("name")
-        val mediaType = if (attachmentJson != null) attachmentType else 0
+        // Persist only composer-owned staged files (forwards reference files
+        // still in use by the original message; serializing their path would
+        // surface them as drafts).
+        val staged = attachment
+        val mediaUri = staged?.stagedFile?.absolutePath
+        val mediaType = staged?.spec?.msgType ?: 0
 
-        // Construct full path if we have a filename
-        val mediaUri = if (!fileName.isNullOrEmpty()) {
-            val filesDir = File(this.filesDir, "files")
-            File(filesDir, fileName).absolutePath
-        } else {
-            null
-        }
-
-        // Only save if there's actual content
         if (!messageText.isNullOrEmpty() || mediaUri != null) {
-            val chatType = if (isGroupChat()) SqlStorage.CHAT_TYPE_GROUP else SqlStorage.CHAT_TYPE_CONTACT
+            val chatType = if (isGroupChat()) ChatListItem.CHAT_TYPE_GROUP else ChatListItem.CHAT_TYPE_CONTACT
             getStorage().saveDraft(chatType, getChatId(), messageText, mediaUri, mediaType)
         } else {
-            // Clear draft if there's no content
-            val chatType = if (isGroupChat()) SqlStorage.CHAT_TYPE_GROUP else SqlStorage.CHAT_TYPE_CONTACT
+            val chatType = if (isGroupChat()) ChatListItem.CHAT_TYPE_GROUP else ChatListItem.CHAT_TYPE_CONTACT
             getStorage().deleteDraft(chatType, getChatId())
         }
     }
@@ -1504,56 +1514,63 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
      * Called when the activity resumes (becomes visible).
      */
     private fun restoreDraft() {
-        val chatType = if (isGroupChat()) SqlStorage.CHAT_TYPE_GROUP else SqlStorage.CHAT_TYPE_CONTACT
+        val chatType = if (isGroupChat()) ChatListItem.CHAT_TYPE_GROUP else ChatListItem.CHAT_TYPE_CONTACT
         val draft = getStorage().getDraft(chatType, getChatId())
 
         if (draft != null) {
             // Restore text
             if (!draft.text.isNullOrEmpty()) {
                 val editText = findViewById<AppCompatEditText>(R.id.message_edit)
-                editText.setText(draft.text)
-                editText.setSelection(draft.text.length) // Move cursor to end
+                val draftText = draft.text ?: ""
+                editText.setText(draftText)
+                editText.setSelection(draftText.length) // Move cursor to end
             }
 
-            // Restore attachment if present
+            // Restore attachment if present.
             if (!draft.mediaUri.isNullOrEmpty() && draft.mediaType != 0) {
                 try {
                     val file = File(draft.mediaUri)
                     if (file.exists()) {
-                        // Reconstruct the attachment JSON from the saved file
                         val fileName = file.name
-                        val fileSize = file.length()
-
-                        val message = JSONObject()
-                        message.put("name", fileName)
-                        message.put("size", fileSize)
-
-                        attachmentType = draft.mediaType
-                        attachmentJson = message
-
-                        // Update UI based on media type
+                        val extension = fileName.substringAfterLast('.', "")
+                        val mimeType = when (draft.mediaType) {
+                            1 -> when (extension.lowercase()) {
+                                "png" -> "image/png"
+                                "gif" -> "image/gif"
+                                "webp" -> "image/webp"
+                                else -> "image/jpeg"
+                            }
+                            else -> when (extension.lowercase()) {
+                                "pdf" -> "application/pdf"
+                                "zip" -> "application/zip"
+                                "txt" -> "text/plain"
+                                "m4a", "mp4" -> "audio/mp4"
+                                else -> "application/octet-stream"
+                            }
+                        }
+                        attachment = StagedAttachment(
+                            spec = uniffi.mimir.AttachmentSpec(
+                                filePath = file.absolutePath,
+                                originalName = fileName,
+                                mimeType = mimeType,
+                                msgType = draft.mediaType,
+                            ),
+                            size = file.length(),
+                            stagedFile = file,
+                        )
                         when (draft.mediaType) {
-                            1 -> { // Image
-                                val preview = getImagePreview(this, fileName, 320, 85)
+                            1 -> {
+                                val preview = android.graphics.BitmapFactory.decodeFile(file.absolutePath)
                                 attachmentPreview.setImageBitmap(preview)
                                 attachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
                             }
-                            3 -> { // File
-                                // Try to determine MIME type from extension
-                                val extension = fileName.substringAfterLast('.', "")
-                                val mimeType = when (extension.lowercase()) {
-                                    "pdf" -> "application/pdf"
-                                    "zip" -> "application/zip"
-                                    "txt" -> "text/plain"
-                                    else -> "application/octet-stream"
-                                }
+                            else -> {
                                 attachmentPreview.setImageResource(getFileIconForMimeType(mimeType))
                                 attachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
                             }
                         }
-
                         attachmentName.text = fileName
-                        attachmentSize.text = formatFileSize(fileSize)
+                        attachmentSize.text = formatFileSize(file.length())
                         attachmentPanel.visibility = View.VISIBLE
                     } else {
                         // File no longer exists, clear the draft
@@ -1569,8 +1586,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     // Voice Recording
 
     private fun startVoiceRecording() {
-        val filesDir = File(filesDir, "files").apply { mkdirs() }
-        val file = File(filesDir, "${randomString(16)}.m4a")
+        val file = allocateVoiceRecordingFile(this)
         voiceRecordFile = file
 
         try {
@@ -1656,16 +1672,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     }
 
     private fun attachVoiceRecording(file: File) {
-        val hash = getFileHash(file)
-        val json = JSONObject().apply {
-            put("name", file.name)
-            put("size", file.length())
-            put("hash", Hex.toHexString(hash))
-            put("originalName", "voice_message.m4a")
-            put("mimeType", "audio/mp4")
-        }
-        attachmentType = 3
-        attachmentJson = json
+        attachment = stageVoiceRecording(file)
 
         attachmentPreview.setImageResource(R.drawable.ic_microphone_outline)
         attachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
@@ -1713,10 +1720,19 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         if (::recyclerView.isInitialized) {
             updateReactionFabVisibility()
         }
+        // Chat is now on-screen — dismiss its notification and wipe the cached
+        // MessagingStyle history so a future notification starts fresh.
+        val id = getChatId()
+        if (isGroupChat()) {
+            NotificationHelper.cancelGroupChatNotification(this, id)
+            NotificationHelper.clearGroupMessageHistory(id)
+        } else {
+            NotificationHelper.cancelMessageNotification(this, id)
+            NotificationHelper.clearMessageHistory(id)
+        }
     }
 
     override fun onDestroy() {
-        getStorage().listeners.remove(this)
         super.onDestroy()
     }
 

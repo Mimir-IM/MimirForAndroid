@@ -11,13 +11,14 @@ import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.R
 import com.revertron.mimir.getAvatarColor
 import com.revertron.mimir.loadRoundedAvatar
-import com.revertron.mimir.storage.GroupInvite
+import org.bouncycastle.util.encoders.Hex
+import uniffi.mimir.StoredInvite
 import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.*
 
 class InvitesAdapter(
-    private var dataSet: List<GroupInvite>,
+    private var dataSet: List<StoredInvite>,
     private val onClick: View.OnClickListener
 ) : RecyclerView.Adapter<InvitesAdapter.ViewHolder>() {
 
@@ -45,7 +46,7 @@ class InvitesAdapter(
         holder.chatName.text = invite.chatName
 
         // Set chat description
-        if (!invite.chatDescription.isNullOrEmpty()) {
+        if (invite.chatDescription.isNotEmpty()) {
             holder.chatDescription.text = invite.chatDescription
             holder.chatDescription.visibility = View.VISIBLE
         } else {
@@ -62,11 +63,12 @@ class InvitesAdapter(
         }
 
         // Set from name
-        holder.fromName.text = holder.itemView.context.getString(R.string.invited_by, invite.senderName)
+        val senderHex = Hex.toHexString(invite.fromPubkey).take(16)
+        holder.fromName.text = holder.itemView.context.getString(R.string.invited_by, senderHex)
 
         // Set avatar
-        if (invite.chatAvatarPath != null && invite.chatAvatarPath.isNotEmpty()) {
-            val bitmap = loadRoundedAvatar(holder.itemView.context, invite.chatAvatarPath!!, 64, 8)
+        if (invite.chatAvatar.isNotEmpty()) {
+            val bitmap = loadRoundedAvatar(holder.itemView.context, invite.chatAvatar, 64, 8)
             if (bitmap != null) {
                 holder.avatar.clearColorFilter()
                 holder.avatar.setImageDrawable(bitmap)
@@ -80,10 +82,10 @@ class InvitesAdapter(
         holder.itemView.tag = invite
     }
 
-    private fun setDefaultAvatar(holder: ViewHolder, invite: GroupInvite) {
+    private fun setDefaultAvatar(holder: ViewHolder, invite: StoredInvite) {
         holder.avatar.setImageResource(R.drawable.button_rounded_white)
         // Use chat ID for color generation
-        val colorSeed = invite.chatId.toLong().toInt()
+        val colorSeed = invite.chatId.toInt()
         val avatarColor = getAvatarColor(byteArrayOf(
             (colorSeed shr 24).toByte(),
             (colorSeed shr 16).toByte(),
@@ -98,7 +100,7 @@ class InvitesAdapter(
     }
 
     @SuppressLint("NotifyDataSetChanged")
-    fun setInvites(invites: List<GroupInvite>) {
+    fun setInvites(invites: List<StoredInvite>) {
         dataSet = invites
         notifyDataSetChanged()
     }

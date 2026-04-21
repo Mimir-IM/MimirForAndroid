@@ -19,12 +19,16 @@ import androidx.appcompat.widget.AppCompatEditText
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import androidx.preference.PreferenceManager
 import com.revertron.mimir.net.MSG_TYPE_REACTION
 import com.revertron.mimir.net.MediatorManager
-import com.revertron.mimir.net.SystemMessage
-import com.revertron.mimir.net.parseSystemMessage
+import uniffi.mimir.SystemMessage
+import uniffi.mimir.parseSystemMessage as mimirParseSystemMessage
+import com.revertron.mimir.ui.DisplayMessage
 import com.revertron.mimir.ui.GroupChat
 import com.revertron.mimir.ui.MessageAdapter
+import com.revertron.mimir.ui.MimirMessageProvider
+import com.revertron.mimir.ui.SettingsData
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import java.io.File
@@ -63,6 +67,7 @@ class GroupChatActivity : BaseChatActivity() {
     private var mediatorAddress: ByteArray? = null
     private lateinit var publicKey: ByteArray
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val messageProvider by lazy { MimirMessageProvider(App.app.mimirStorage!!, this) }
 
     private val mediatorReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -82,9 +87,8 @@ class GroupChatActivity : BaseChatActivity() {
                                 return@post
                             }
                             startShortSound(R.raw.message_sent)
-                            // Message sent successfully, refresh UI
-                            adapter.notifyDataSetChanged()
-                            recyclerView.scrollToPosition(adapter.itemCount - 1)
+                            adapter.addMessageId(messageId, false)
+                            recyclerView.scrollToEnd()
                         }
                     }
                 }
@@ -119,6 +123,38 @@ class GroupChatActivity : BaseChatActivity() {
                             else -> error ?: getString(R.string.operation_failed)
                         }
                         Toast.makeText(this@GroupChatActivity, message, Toast.LENGTH_LONG).show()
+                    }
+                }
+                "ACTION_GROUP_MESSAGE_RECEIVED" -> {
+                    val chatId = intent.getLongExtra("chat_id", 0)
+                    val messageId = intent.getLongExtra("message_id", 0)
+                    val msgType = intent.getIntExtra("msg_type", 0)
+                    val replyTo = intent.getLongExtra("reply_to", 0L)
+                    if (chatId == groupChat.chatId) {
+                        onGroupMessageReceived(chatId, messageId, 0, msgType, replyTo)
+                    }
+                }
+                "ACTION_GROUP_MESSAGE_DELETED" -> {
+                    val chatId = intent.getLongExtra("chat_id", 0)
+                    val guid = intent.getLongExtra("guid", 0)
+                    if (chatId == groupChat.chatId) {
+                        val msg = getStorage().getGroupMessageByGuid(chatId, guid)
+                        if (msg != null) {
+                            onGroupMessageDeleted(chatId, msg.id)
+                        }
+                    }
+                }
+                "ACTION_GROUP_MESSAGE_DELIVERED" -> {
+                    val chatId = intent.getLongExtra("chat_id", 0)
+                    val guid = intent.getLongExtra("guid", 0L)
+                    if (chatId == groupChat.chatId) {
+                        val msg = getStorage().getGroupMessageByGuid(chatId, guid)
+                        if (msg != null) {
+                            mainHandler.post {
+                                adapter.setMessageDelivered(msg.id, true)
+                                startShortSound(R.raw.message_sent)
+                            }
+                        }
                     }
                 }
             }
@@ -200,7 +236,7 @@ class GroupChatActivity : BaseChatActivity() {
         mediatorAddress = intent.getByteArrayExtra(EXTRA_MEDIATOR_ADDRESS)
             ?: MediatorManager.getDefaultMediatorPubkey()
 
-        val memberCount = getStorage().getGroupChatMembersCount(chatId)
+        val memberCount = getStorage().getMemberCount(chatId)
         val readOnly = getStorage().getGroupChat(chatId)?.readOnly ?: false
 
         if (chatId == 0L || chatName == null || mediatorAddress == null) {
@@ -209,14 +245,12 @@ class GroupChatActivity : BaseChatActivity() {
             return
         }
 
-        // Get sender pubkey
-        App.app.mediatorNode?.apply {
-            val keyPair = getStorage().getAccountInfo(1, 0L)?.keyPair
-            publicKey = (keyPair?.public as Ed25519PublicKeyParameters).encoded
-        }
+        // Get sender pubkey from account
+        publicKey = getStorage().getAccount(1)?.pubkey ?: ByteArray(0)
 
-        // Load avatar from storage
-        val avatar = getStorage().getGroupChatAvatar(chatId)
+        // Load avatar from storage — avatar path is on the group chat object
+        val avatarPath = getStorage().getGroupChat(chatId)?.avatar ?: ""
+        val avatar = if (avatarPath.isNotEmpty()) loadRoundedAvatar(this, avatarPath) else null
         groupChat = GroupChat(
             chatId = chatId,
             name = chatName,
@@ -234,7 +268,9 @@ class GroupChatActivity : BaseChatActivity() {
 
         // Set title, subtitle, and avatar
         setToolbarTitle(groupChat.name)
-        setToolbarSubtitle(getString(R.string.member_count, groupChat.memberCount, 0))
+        setToolbarSubtitle(getString(R.string.member_count,
+            groupChat.memberCount,
+            getStorage().getOnlineMemberCount(groupChat.chatId)))
         setupAvatar(groupChat.avatar)
 
         // Setup message list
@@ -284,7 +320,7 @@ class GroupChatActivity : BaseChatActivity() {
 
     override fun createMessageAdapter(fontSize: Int): MessageAdapter {
         return MessageAdapter(
-            getStorage(),
+            messageProvider,
             groupChat.chatId,
             groupChat = true, // Enable group-chat mode to show sender names
             groupChat.name,
@@ -310,7 +346,7 @@ class GroupChatActivity : BaseChatActivity() {
             putExtra("guid", guid)
         })
         // Delete locally and clean up attachment
-        val (_, attachmentFileName) = getStorage().deleteGroupMessageByGuid(groupChat.chatId, guid)
+        val attachmentFileName = getStorage().deleteGroupMessageByGuid(groupChat.chatId, guid)
         if (attachmentFileName != null) {
             File(File(filesDir, "files"), attachmentFileName).delete()
             File(File(cacheDir, "files"), attachmentFileName).delete()
@@ -318,18 +354,21 @@ class GroupChatActivity : BaseChatActivity() {
     }
 
     override fun getMessageForReply(messageId: Long): Pair<String, String>? {
-        val message = getStorage().getGroupMessage(groupChat.chatId, messageId, true) ?: return null
+        val message = getStorage().getGroupMessageByGuid(groupChat.chatId, messageId) ?: return null
         val authorName = if (message.incoming) {
-            val user = getStorage().getMemberInfo(message.contact, groupChat.chatId, 48, 6)
-            user?.first ?: getString(R.string.unknown_nickname)
+            val pubkey = getStorage().getMemberPubkey(groupChat.chatId, message.contactId)
+            val member = if (pubkey != null) getStorage().getMemberInfo(groupChat.chatId, pubkey) else null
+            member?.nickname ?: getString(R.string.unknown_nickname)
         } else {
             myName
         }
-        return Pair(authorName, message.getText(this))
+        val text = DisplayMessage.from(message).getText(this)
+        return Pair(authorName, text)
     }
 
-    override fun getMessageFromStorage(messageId: Long): com.revertron.mimir.storage.SqlStorage.Message? {
-        return getStorage().getGroupMessage(groupChat.chatId, messageId, byGuid = false)
+    override fun getMessageFromStorage(messageId: Long): DisplayMessage? {
+        val msg = getStorage().getGroupMessage(groupChat.chatId, messageId) ?: return null
+        return DisplayMessage.from(msg)
     }
 
     override fun handleReaction(targetGuid: Long, emoji: String, currentEmoji: String?) {
@@ -342,133 +381,64 @@ class GroupChatActivity : BaseChatActivity() {
             put("replyTo", targetGuid)
         }.toString()
 
-        Thread {
-            try {
-                val sendTime = System.currentTimeMillis()
-                val guid = getStorage().generateGuid(sendTime, reactionData.toByteArray())
+        val sendTime = System.currentTimeMillis()
+        val guid = getStorage().generateGuid(sendTime, reactionData.toByteArray())
 
-                // Store reaction locally (type = 10)
-                val localId = getStorage().addGroupMessage(
-                    chatId = groupChat.chatId,
-                    serverMsgId = null,
-                    guid = guid,
-                    author = publicKey,
-                    timestamp = sendTime,
-                    type = 10,  // Reaction type
-                    system = false,
-                    data = reactionData.toByteArray(),
-                    replyTo = targetGuid
-                )
-
-                Log.i(TAG, "Stored reaction locally with ID: $localId, targetGuid = $targetGuid")
-
-                // Send reaction to mediator via ConnectionService
-                val intent = Intent(this, ConnectionService::class.java)
-                intent.putExtra("command", "mediator_send")
-                intent.putExtra("chat_id", groupChat.chatId)
-                intent.putExtra("guid", guid)
-                intent.putExtra("reply_to", targetGuid)
-                intent.putExtra("send_time", sendTime)
-                intent.putExtra("type", 10)  // Reaction type
-                intent.putExtra("message", reactionData)
-                startService(intent)
-
-                Log.i(TAG, "Sent reaction to ConnectionService for chat ${groupChat.chatId}")
-
-                // Refresh the message list to show updated reactions
-                runOnUiThread {
-                    adapter.notifyDataSetChanged()
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error sending reaction", e)
-            }
-        }.start()
+        // Send reaction via ConnectionService — MimirApp handles storage + encryption
+        val intent = Intent(this, ConnectionService::class.java)
+        intent.putExtra("command", "mediator_send")
+        intent.putExtra("chat_id", groupChat.chatId)
+        intent.putExtra("guid", guid)
+        intent.putExtra("reply_to", targetGuid)
+        intent.putExtra("send_time", sendTime)
+        intent.putExtra("type", 10)
+        intent.putExtra("message", reactionData)
+        startService(intent)
     }
 
     override fun getUserCurrentReaction(targetGuid: Long): String? {
-        return getStorage().getUserReactionForGroupMessage(groupChat.chatId, targetGuid)
+        return messageProvider.getUserReaction(groupChat.chatId, targetGuid, true)
     }
 
     override fun getUnseenReactionsCount(): Int {
-        return getStorage().getGroupUnseenReactionsCount(groupChat.chatId)
+        return getStorage().getGroupUnseenReactionsCount(groupChat.chatId).toInt()
     }
 
     override fun scrollToFirstUnseenReaction(): Boolean {
-        val reaction = getStorage().getFirstUnseenGroupReaction(groupChat.chatId) ?: return false
-        val (reactionGuid, targetMessageGuid) = reaction
-
-        // Find position of the target message
-        val position = adapter.getMessageGuidPosition(targetMessageGuid)
-        if (position >= 0) {
-            recyclerView.smoothScrollToPosition(position)
-        }
-
-        // Mark the reaction as seen
-        getStorage().markGroupReactionAsSeen(groupChat.chatId, reactionGuid)
-
+        val target = getStorage().getFirstUnseenGroupReaction(groupChat.chatId) ?: return false
+        val position = adapter.getMessageGuidPosition(target.targetGuid)
+        if (position < 0) return false
+        recyclerView.smoothScrollToPosition(position)
+        getStorage().markGroupReactionAsSeen(groupChat.chatId, target.reactionGuid)
+        adapter.notifyMessageChanged(target.targetGuid)
         return true
     }
 
     override fun sendMessage(text: String, replyTo: Long) {
-        // Prepare message data based on type
-        val messageType: Int
-        val messageData: String
-
-        if (attachmentJson != null) {
-            // Message with attachment - send only JSON metadata
-            messageType = attachmentType // 1 = image, 3 = file
-            attachmentJson!!.put("text", text)
-            messageData = attachmentJson!!.toString()
-        } else {
-            // Plain text message
-            messageType = 0 // 0 = text message
-            messageData = text
+        val app = App.app.mimirApp ?: run {
+            Log.w(TAG, "sendMessage: MimirApp not ready yet")
+            return
         }
+        // Ownership handoff on the UI thread — see BaseChatActivity.takeAttachmentForSending.
+        val staged = takeAttachmentForSending()
+        val fileServerHex = PreferenceManager.getDefaultSharedPreferences(this)
+            .getString(SettingsData.KEY_FILE_SERVER_PUBKEY, ConnectionService.DEFAULT_FILE_SERVER_HEX)
+            ?: ConnectionService.DEFAULT_FILE_SERVER_HEX
+        val fileServerPubkey = if (staged != null) Hex.decode(fileServerHex) else null
+
         Thread {
             try {
-                val sendTime = System.currentTimeMillis()
-                val guid = getStorage().generateGuid(sendTime, messageData.toByteArray())
-
-                // Store message locally with pending status (msgId = null until confirmed)
-                val localId = getStorage().addGroupMessage(
-                    chatId = groupChat.chatId,
-                    serverMsgId = null, // Will be updated when confirmed
-                    guid = guid,
-                    author = publicKey,
-                    timestamp = sendTime,
-                    type = messageType,
-                    system = false,
-                    data = messageData.toByteArray(),
-                    replyTo = replyTo
+                // Rust's Phase 1 fires on_outgoing_message_stored → the row
+                // appears in the chat as "sending…" before upload/dispatch.
+                // Rust's Phase 3 fires on_group_message_delivered → the
+                // delivered indicator flips once the mediator acknowledges.
+                app.sendGroupChatMessage(
+                    groupChat.chatId, replyTo, text, staged?.spec, fileServerPubkey,
                 )
-
-                Log.i(TAG, "Stored message locally with ID: $localId, replyTo = $replyTo")
-
-                // Send message parameters to ConnectionService
-                // ConnectionService will handle serialization, encryption, and transmission
-                val intent = Intent(this, ConnectionService::class.java)
-                intent.putExtra("command", "mediator_send")
-                intent.putExtra("chat_id", groupChat.chatId)
-                intent.putExtra("guid", guid)
-                intent.putExtra("reply_to", replyTo)
-                intent.putExtra("send_time", sendTime)
-                intent.putExtra("type", messageType)
-                intent.putExtra("message", messageData)  // Just the JSON string or text
-                startService(intent)
-
-                Log.i(TAG, "Sent message request to ConnectionService for chat ${groupChat.chatId}")
-
-                // Clean up attachment UI
-                if (attachmentJson != null) {
-                    runOnUiThread {
-                        clearAttachment()
-                    }
-                }
             } catch (e: Exception) {
-                Log.e(TAG, "Error sending group message", e)
-                runOnUiThread {
-                    Toast.makeText(this, getString(R.string.failed_to_send_message), Toast.LENGTH_SHORT).show()
-                }
+                Log.e(TAG, "sendGroupChatMessage failed: ${e.message}", e)
+            } finally {
+                staged?.stagedFile?.delete()
             }
         }.start()
     }
@@ -479,6 +449,9 @@ class GroupChatActivity : BaseChatActivity() {
             addAction("ACTION_MEDIATOR_CHAT_DELETED")
             addAction("ACTION_MEDIATOR_LEFT_CHAT")
             addAction("ACTION_MEDIATOR_ERROR")
+            addAction("ACTION_GROUP_MESSAGE_RECEIVED")
+            addAction("ACTION_GROUP_MESSAGE_DELETED")
+            addAction("ACTION_GROUP_MESSAGE_DELIVERED")
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(mediatorReceiver, filter)
 
@@ -513,17 +486,14 @@ class GroupChatActivity : BaseChatActivity() {
     // Click handlers
 
     private fun onClickOnAvatar() = fun(it: View) {
-        val contactId = it.tag as? Long
-        if (contactId != null) {
-            // Get member info from storage
-            val user = getStorage().getMemberInfo(contactId, groupChat.chatId, 48, 6)
-            val pubKey = getStorage().getMemberPubkey(contactId, groupChat.chatId)
-
+        val memberId = it.tag as? Long
+        if (memberId != null) {
+            val pubKey = getStorage().getMemberPubkey(groupChat.chatId, memberId)
             if (pubKey != null) {
-                // Open ContactActivity with member's info
+                val member = getStorage().getMemberInfo(groupChat.chatId, pubKey)
                 val intent = Intent(this, ContactActivity::class.java)
                 intent.putExtra("pubkey", pubKey)
-                intent.putExtra("name", user?.first ?: Hex.toHexString(pubKey).take(16))
+                intent.putExtra("name", member?.nickname ?: Hex.toHexString(pubKey).take(16))
                 startActivity(intent, animFromRight.toBundle())
             }
         }
@@ -545,56 +515,40 @@ class GroupChatActivity : BaseChatActivity() {
 
         // Store forward data for sending
         when (messageType) {
-            1 -> {
-                // Image message - recreate attachment
+            1, 3 -> {
                 messageJson?.let { json ->
                     try {
-                        attachmentJson = org.json.JSONObject(json)
-                        attachmentType = messageType
-
-                        // Verify file exists and show attachment UI
-                        val filename = attachmentJson?.optString("name")
-                        if (filename != null) {
-                            val file = java.io.File(java.io.File(filesDir, "files"), filename)
-                            if (file.exists()) {
-                                val fileSize = attachmentJson?.optLong("size", 0) ?: 0
-                                val preview = getImagePreview(this, filename, 320, 85)
-
-                                attachmentPreview.setImageBitmap(preview)
-                                attachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
-                                attachmentName.text = filename
-                                attachmentSize.text = formatFileSize(fileSize)
-                                attachmentPanel.visibility = android.view.View.VISIBLE
-                            } else {
-                                Log.e(TAG, "Forwarded file not found: $filename")
-                                Toast.makeText(this, "Media file not found", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to parse forwarded media", e)
-                    }
-                }
-            }
-            3 -> {
-                // File message - recreate attachment
-                messageJson?.let { json ->
-                    try {
-                        attachmentJson = org.json.JSONObject(json)
-                        attachmentType = messageType
-
-                        // Verify file exists and show attachment UI
-                        val filename = attachmentJson?.optString("name")
-                        if (filename != null) {
-                            val file = java.io.File(java.io.File(filesDir, "files"), filename)
-                            if (file.exists()) {
-                                val displayName = attachmentJson?.optString("originalName", filename) ?: filename
-                                val fileSize = attachmentJson?.optLong("size", 0) ?: 0
-                                val mimeType = attachmentJson?.optString("mimeType", "application/octet-stream") ?: "application/octet-stream"
-
-                                attachmentPreview.setImageResource(getFileIconForMimeType(mimeType))
-                                attachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
-                                attachmentName.text = displayName
-                                attachmentSize.text = formatFileSize(fileSize)
+                        val meta = org.json.JSONObject(json)
+                        val filename = meta.optString("name", "")
+                        if (filename.isNotEmpty()) {
+                            val attachmentsDir = java.io.File(filesDir, "files")
+                            val mimeType = meta.optString(
+                                "mimeType",
+                                if (messageType == 1) "image/jpeg" else "application/octet-stream",
+                            )
+                            val staged = stageForwardedAttachment(
+                                context = this,
+                                attachmentsDir = attachmentsDir,
+                                storageFileName = filename,
+                                originalName = meta.optString("originalName", filename),
+                                mimeType = mimeType,
+                                msgType = messageType,
+                            )
+                            if (staged != null) {
+                                staged.caption = meta.optString("text", "")
+                                attachment = staged
+                                if (messageType == 1) {
+                                    val preview = android.graphics.BitmapFactory.decodeFile(
+                                        java.io.File(attachmentsDir, filename).absolutePath,
+                                    )
+                                    attachmentPreview.setImageBitmap(preview)
+                                    attachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                                } else {
+                                    attachmentPreview.setImageResource(getFileIconForMimeType(mimeType))
+                                    attachmentPreview.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+                                }
+                                attachmentName.text = staged.spec.originalName
+                                attachmentSize.text = formatFileSize(staged.size)
                                 attachmentPanel.visibility = android.view.View.VISIBLE
                             } else {
                                 Log.e(TAG, "Forwarded file not found: $filename")
@@ -689,20 +643,14 @@ class GroupChatActivity : BaseChatActivity() {
             R.id.mute_group -> {
                 val currentlyMuted = getStorage().getGroupChat(groupChat.chatId)?.muted ?: false
                 val newMutedStatus = !currentlyMuted
-
-                if (getStorage().setGroupChatMuted(groupChat.chatId, newMutedStatus)) {
-                    val message = if (newMutedStatus) {
-                        getString(R.string.mute_group)
-                    } else {
-                        getString(R.string.unmute_group)
-                    }
-                    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-
-                    // Update the menu item title
-                    invalidateOptionsMenu()
+                getStorage().setGroupChatMuted(groupChat.chatId, newMutedStatus)
+                val message = if (newMutedStatus) {
+                    getString(R.string.mute_group)
                 } else {
-                    Toast.makeText(this, "Failed to update mute status", Toast.LENGTH_SHORT).show()
+                    getString(R.string.unmute_group)
                 }
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                invalidateOptionsMenu()
                 true
             }
             R.id.clear_history -> {
@@ -801,25 +749,17 @@ class GroupChatActivity : BaseChatActivity() {
     private fun clearHistory() {
         Thread {
             try {
-                // 1. Clear messages from database and get attachment files
-                val attachmentFiles = getStorage().clearGroupChatHistory(groupChat.chatId)
-
-                // 2. Delete attachment files
+                val attachments = getStorage().clearGroupChatHistory(groupChat.chatId)
                 val filesDir = File(filesDir, "files")
-                val cacheDir = File(cacheDir, "files")
-                for (fileName in attachmentFiles) {
-                    File(filesDir, fileName).delete()
-                    File(cacheDir, fileName).delete()
+                val cacheFilesDir = File(cacheDir, "files")
+                for (name in attachments) {
+                    File(filesDir, name).delete()
+                    File(cacheFilesDir, name).delete()
                 }
+                Log.i(TAG, "Cleared history for chat ${groupChat.chatId} (${attachments.size} attachments)")
 
-                Log.i(TAG, "Cleared group history: deleted ${attachmentFiles.size} attachment files")
-
-                // 3. Update UI on main thread
                 runOnUiThread {
-                    // Clear adapter
                     adapter.clearAllMessages()
-
-                    // Show confirmation toast
                     Toast.makeText(
                         this,
                         getString(R.string.history_cleared),
@@ -839,19 +779,19 @@ class GroupChatActivity : BaseChatActivity() {
         }.start()
     }
 
-    // StorageListener implementation
+    // Message lifecycle callbacks dispatched from mediatorReceiver.
 
-    override fun onGroupMessageReceived(chatId: Long, id: Long, contactId: Long, type: Int, replyTo: Long): Boolean {
+    fun onGroupMessageReceived(chatId: Long, id: Long, contactId: Long, type: Int, replyTo: Long): Boolean {
         if (chatId == groupChat.chatId) {
             runOnUiThread {
-                val message = getStorage().getGroupMessage(chatId, id, false)
+                val message = getStorage().getGroupMessage(chatId, id)
                 if (message != null) {
                     if (type == MSG_TYPE_REACTION) {
                         adapter.notifyMessageChanged(replyTo)
                         return@runOnUiThread
                     }
                     val isAtEnd = recyclerView.isAtEnd()
-                    adapter.addMessageId(id, message.incoming) // Add the message ID like broadcasts do
+                    adapter.addMessageId(id, message.incoming)
                     if (isAtEnd) {
                         recyclerView.scrollToEnd()
                     } else {
@@ -859,8 +799,8 @@ class GroupChatActivity : BaseChatActivity() {
                     }
 
                     // Check if this is a system message that affects member count
-                    if (message.type == 1000 && message.data != null) {
-                        val sysMsg = parseSystemMessage(message.data)
+                    if (message.msgType == 1000 && message.data != null) {
+                        val sysMsg = try { mimirParseSystemMessage(message.data!!) } catch (_: Exception) { null }
                         when (sysMsg) {
                             is SystemMessage.UserAdded,
                             is SystemMessage.UserLeft,
@@ -881,7 +821,7 @@ class GroupChatActivity : BaseChatActivity() {
         return false
     }
 
-    override fun onGroupMessageDeleted(chatId: Long, messageId: Long) {
+    fun onGroupMessageDeleted(chatId: Long, messageId: Long) {
         if (chatId == groupChat.chatId) {
             runOnUiThread {
                 Log.i(TAG, "Message $messageId deleted in chat $chatId, updating adapter")
@@ -891,26 +831,22 @@ class GroupChatActivity : BaseChatActivity() {
     }
 
     private fun updateMemberCount() {
-        val members = getStorage().getGroupMembers(groupChat.chatId)
-        val onlineCount = members.count { it.online }
+        val total = getStorage().getMemberCount(groupChat.chatId)
+        val online = getStorage().getOnlineMemberCount(groupChat.chatId)
 
-        groupChat = groupChat.copy(memberCount = members.size)
+        groupChat = groupChat.copy(memberCount = total)
         findViewById<AppCompatTextView>(R.id.subtitle).text =
-            getString(R.string.member_count, members.size, onlineCount)
+            getString(R.string.member_count, total, online)
     }
 
     private fun refreshMemberStatus() {
         updateMemberCount()
     }
 
-    override fun onGroupChatChanged(chatId: Long): Boolean {
-        return super.onGroupChatChanged(chatId)
-    }
-
     // Invite member functionality
 
     private fun openContactSelector() {
-        val members = getStorage().getGroupMembers(groupChat.chatId)
+        val members = getStorage().getMembers(groupChat.chatId)
         val memberPubkeys = members.map { it.pubkey }.toTypedArray()
 
         val intent = Intent(this, ContactSelectorActivity::class.java).apply {
@@ -981,7 +917,7 @@ class GroupChatActivity : BaseChatActivity() {
 
     private fun exitReadOnlyMode() {
         findViewById<View>(R.id.tools).visibility = View.VISIBLE
-        setToolbarSubtitle(getString(R.string.member_count, groupChat.memberCount, 0))
+        updateMemberCount()
         showConnectionStatus(MediatorManager.GroupChatStatus.SUBSCRIBED)
         invalidateOptionsMenu()
     }

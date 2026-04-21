@@ -40,19 +40,20 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.google.android.material.snackbar.Snackbar
-import com.revertron.mimir.storage.SqlStorage
-import com.revertron.mimir.storage.StorageListener
 import com.revertron.mimir.ui.ChatListItem
 import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.ContactsAdapter
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
+import java.io.File
 
 
-class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListener, StorageListener {
+class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListener {
 
     companion object {
         const val TAG = "MainActivity"
+        private const val CHAT_TYPE_CONTACT = 0
+        private const val CHAT_TYPE_GROUP = 1
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -70,16 +71,40 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         }
     }
 
-    private val mediatorReceiver = object : BroadcastReceiver() {
+    /**
+     * Catch every broadcast that changes the shape of the contact list:
+     * incoming / outgoing messages shift the last-message column and the
+     * unread badge; delivered flips the status indicator on our own rows;
+     * group/mediator state transitions may reorder the list. Refresh on
+     * any of them — the query is cheap and runs on a worker thread.
+     */
+    private val contactListRefreshReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
-                "ACTION_MEDIATOR_LEFT_CHAT" -> refreshContacts()
+                "ACTION_MEDIATOR_LEFT_CHAT",
+                "ACTION_MESSAGE_RECEIVED",
+                "ACTION_GROUP_MESSAGE_RECEIVED",
+                "ACTION_MESSAGE_SENT",
+                "ACTION_MEDIATOR_MESSAGE_SENT",
+                "ACTION_MESSAGE_DELIVERED",
+                "ACTION_GROUP_MESSAGE_DELIVERED",
+                "ACTION_GROUP_MESSAGE_DELETED",
+                "ACTION_CONTACT_REQUEST_RECEIVED",
+                "ACTION_MEMBERS_SYNCED",
+                "ACTION_MEDIATOR_CONNECTED",
+                "ACTION_MEDIATOR_DISCONNECTED" -> refreshContacts()
             }
         }
     }
 
     var avatarDrawable: Drawable? = null
     lateinit var myPubKey: ByteArray
+
+    private val migrationReceiver2 = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            onMigrationComplete()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -88,28 +113,46 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         val toolbar = findViewById<Toolbar>(R.id.toolbar)
         setSupportActionBar(toolbar)
         supportActionBar?.setHomeActionContentDescription(R.string.account)
+
+        if (App.app.migrationNeeded) {
+            // Show migration overlay, defer everything else.
+            findViewById<View>(R.id.migration_overlay).visibility = View.VISIBLE
+            LocalBroadcastManager.getInstance(this).registerReceiver(
+                migrationReceiver2, IntentFilter(App.ACTION_MIGRATION_COMPLETE)
+            )
+            return
+        }
+
+        initAfterReady()
+    }
+
+    private fun initAfterReady() {
         if (intent?.hasExtra("no_service") != true) {
             startService()
         }
 
-        myPubKey = getStorage().getMyPubKey()
-        val info = getStorage().getAccountInfo(1, 0L)
-        if (info != null) {
-            if (info.avatar.isNotEmpty()) {
-                avatarDrawable = loadRoundedAvatar(this, info.avatar)
-                if (avatarDrawable != null) {
-                    toolbar.navigationIcon = avatarDrawable
-                }
+        val account = getStorage().getAccount(1)
+        myPubKey = account?.pubkey ?: ByteArray(0)
+        if (account != null && account.avatar.isNotEmpty()) {
+            avatarDrawable = loadRoundedAvatar(this, account.avatar)
+            if (avatarDrawable != null) {
+                val toolbar = findViewById<Toolbar>(R.id.toolbar)
+                toolbar.navigationIcon = avatarDrawable
             }
         }
-
-        getStorage().listeners.add(this)
         val recycler = findViewById<RecyclerView>(R.id.contacts_list)
         recycler.addItemDecoration(DividerItemDecoration(baseContext, RecyclerView.VERTICAL))
     }
 
+    private fun onMigrationComplete() {
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(migrationReceiver2)
+        findViewById<View>(R.id.migration_overlay).visibility = View.GONE
+        initAfterReady()
+    }
+
     override fun onResume() {
         super.onResume()
+        if (App.app.migrationNeeded) return
         val recycler = findViewById<RecyclerView>(R.id.contacts_list)
         if (recycler.adapter == null) {
             val chatList = getChatList()
@@ -127,8 +170,21 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             IntentFilter("ACTION_CONNECTIVITY_CHANGED")
         )
         LocalBroadcastManager.getInstance(this).registerReceiver(
-            mediatorReceiver,
-            IntentFilter("ACTION_MEDIATOR_LEFT_CHAT")
+            contactListRefreshReceiver,
+            IntentFilter().apply {
+                addAction("ACTION_MEDIATOR_LEFT_CHAT")
+                addAction("ACTION_MESSAGE_RECEIVED")
+                addAction("ACTION_GROUP_MESSAGE_RECEIVED")
+                addAction("ACTION_MESSAGE_SENT")
+                addAction("ACTION_MEDIATOR_MESSAGE_SENT")
+                addAction("ACTION_MESSAGE_DELIVERED")
+                addAction("ACTION_GROUP_MESSAGE_DELIVERED")
+                addAction("ACTION_GROUP_MESSAGE_DELETED")
+                addAction("ACTION_CONTACT_REQUEST_RECEIVED")
+                addAction("ACTION_MEMBERS_SYNCED")
+                addAction("ACTION_MEDIATOR_CONNECTED")
+                addAction("ACTION_MEDIATOR_DISCONNECTED")
+            }
         )
     }
 
@@ -136,11 +192,13 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         super.onPause()
         handler.removeCallbacks(refreshTask)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(connectivityReceiver)
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(mediatorReceiver)
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(contactListRefreshReceiver)
     }
 
     override fun onDestroy() {
-        getStorage().listeners.remove(this)
+        try {
+            LocalBroadcastManager.getInstance(this).unregisterReceiver(migrationReceiver2)
+        } catch (_: Exception) { }
         super.onDestroy()
     }
 
@@ -153,10 +211,10 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
         super.onPrepareOptionsMenu(menu)
 
-        val invites = getStorage().getPendingGroupInvites()
+        val invites = getStorage().getPendingInvites()
         menu.findItem(R.id.group_invites).isVisible = invites.isNotEmpty()
 
-        val requestCount = getStorage().getContactRequestCount()
+        val requestCount = getStorage().getContactRequests().size
         menu.findItem(R.id.contact_requests).isVisible = requestCount > 0
         return true
     }
@@ -215,7 +273,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                     Log.i(TAG, "Clicked on Saved Messages")
 
                     val intent = Intent(this, ChatActivity::class.java)
-                    intent.putExtra("contactId", SqlStorage.SAVED_MESSAGES_CONTACT_ID)
+                    intent.putExtra("contactId", ChatListItem.SAVED_MESSAGES_CONTACT_ID)
                     intent.putExtra("name", item.name)
                     intent.putExtra("savedMessages", true)
                     startActivity(intent, animFromRight.toBundle())
@@ -252,7 +310,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             }
             is ChatListItem.ContactItem -> {
                 // Convert ChatListItem.ContactItem back to Contact for the popup menu
-                val contact = Contact(item.id, item.pubkey, item.name, item.lastMessage, item.unreadCount, item.avatar)
+                val contact = Contact(item.id, item.pubkey, item.name, item.avatar)
                 showContactPopupMenu(contact, v)
             }
             is ChatListItem.GroupChatItem -> {
@@ -260,41 +318,6 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             }
         }
         return true
-    }
-
-    override fun onMessageReceived(id: Long, contactId: Long, type: Int, replyTo: Long): Boolean {
-        runOnUiThread {
-            refreshContacts()
-        }
-        return false
-    }
-
-    override fun onGroupMessageReceived(chatId: Long, id: Long, contactId: Long, type: Int, replyTo: Long): Boolean {
-        runOnUiThread {
-            refreshContacts()
-        }
-        return false
-    }
-
-    override fun onContactRequestReceived(requestId: Long) {
-        runOnUiThread {
-            invalidateOptionsMenu()
-            val count = getStorage().getContactRequestCount()
-            val root = findViewById<View>(android.R.id.content)
-            Snackbar.make(root, getString(R.string.contact_requests_snackbar, count), Snackbar.LENGTH_INDEFINITE)
-                .setAction(getString(R.string.view)) {
-                    val intent = Intent(this, ContactRequestsActivity::class.java)
-                    startActivity(intent, animFromRight.toBundle())
-                }
-                .show()
-        }
-    }
-
-    override fun onGroupChatChanged(chatId: Long): Boolean {
-        runOnUiThread {
-            refreshContacts()
-        }
-        return false
     }
 
     fun showOnlineState(isOnline: Boolean) {
@@ -382,7 +405,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         }
 
         // Check for pending contact requests
-        val requestCount = getStorage().getContactRequestCount()
+        val requestCount = getStorage().getContactRequests().size
         if (requestCount > 0) {
             val root = findViewById<View>(android.R.id.content)
             Snackbar.make(root, getString(R.string.contact_requests_snackbar, requestCount), Snackbar.LENGTH_LONG)
@@ -428,7 +451,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         builder.setIcon(R.drawable.ic_contact_rename)
         builder.setPositiveButton(getString(R.string.rename)) { _, _ ->
             val newName = name.text.toString()
-            (application as App).storage.renameContact(contact.id, newName, true)
+            getStorage().renameContact(contact.id, newName, true)
             refreshContacts()
         }
         builder.setNegativeButton(getString(R.string.cancel)) { dialog, _ ->
@@ -460,9 +483,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                     true
                 }
                 R.id.remove_contact -> {
-                    //TODO add confirmation dialog
-                    getStorage().removeContactAndChat(contact.id)
-                    refreshContacts()
+                    showRemoveContactConfirmDialog(contact)
                     true
                 }
                 else -> {
@@ -525,10 +546,23 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
     private fun toggleGroupMute(groupChat: ChatListItem.GroupChatItem) {
         val currentlyMuted = getStorage().getGroupChat(groupChat.chatId)?.muted ?: false
         val newMuted = !currentlyMuted
-        if (getStorage().setGroupChatMuted(groupChat.chatId, newMuted)) {
-            val message = if (newMuted) getString(R.string.mute_group) else getString(R.string.unmute_group)
-            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-        }
+        getStorage().setGroupChatMuted(groupChat.chatId, newMuted)
+        val message = if (newMuted) getString(R.string.mute_group) else getString(R.string.unmute_group)
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showRemoveContactConfirmDialog(contact: Contact) {
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        AlertDialog.Builder(wrapper)
+            .setTitle(R.string.remove_contact_title)
+            .setMessage(getString(R.string.confirm_remove_contact, contact.name))
+            .setIcon(R.drawable.ic_clean_chat_outline)
+            .setPositiveButton(R.string.remove_contact) { _, _ ->
+                getStorage().removeContact(contact.id)
+                refreshContacts()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     private fun showClearGroupHistoryConfirmDialog(groupChat: ChatListItem.GroupChatItem) {
@@ -540,12 +574,12 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             .setPositiveButton(getString(R.string.clear)) { _, _ ->
                 Thread {
                     try {
-                        val attachmentFiles = getStorage().clearGroupChatHistory(groupChat.chatId)
-                        val filesDir = java.io.File(filesDir, "files")
-                        val cacheDir = java.io.File(cacheDir, "files")
-                        for (fileName in attachmentFiles) {
-                            java.io.File(filesDir, fileName).delete()
-                            java.io.File(cacheDir, fileName).delete()
+                        val attachments = App.app.mimirStorage!!.clearGroupChatHistory(groupChat.chatId)
+                        val filesDir = File(filesDir, "files")
+                        val cacheFilesDir = File(cacheDir, "files")
+                        for (name in attachments) {
+                            File(filesDir, name).delete()
+                            File(cacheFilesDir, name).delete()
                         }
                         runOnUiThread {
                             refreshContacts()
@@ -595,75 +629,85 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             .show()
     }
 
-    override fun onMessageDelivered(id: Long, delivered: Boolean) {
-        runOnUiThread {
-            super.onMessageDelivered(id, delivered)
-            val recycler = findViewById<RecyclerView>(R.id.contacts_list)
-            val adapter = recycler.adapter as ContactsAdapter
-            adapter.setMessageDelivered(id)
-        }
+    private fun getStoredMessageText(msg: uniffi.mimir.StoredMessage?): String? {
+        if (msg?.data == null) return null
+        return try {
+            when (msg.msgType) {
+                1 -> {
+                    val json = org.json.JSONObject(String(msg.data!!))
+                    val text = json.optString("text", "")
+                    if (text.isNotEmpty()) text
+                    else json.optString("originalName", json.optString("name", getString(R.string.draft_image)))
+                }
+                3 -> {
+                    val json = org.json.JSONObject(String(msg.data!!))
+                    val text = json.optString("text", "")
+                    if (text.isNotEmpty()) text
+                    else json.optString("originalName", json.optString("name", getString(R.string.draft_attachment)))
+                }
+                else -> String(msg.data!!)
+            }
+        } catch (_: Exception) { String(msg.data!!) }
     }
 
     private fun getChatList(): List<ChatListItem> {
         val storage = getStorage()
-        val contacts = storage.getContactList()
-        val groupChats = storage.getGroupChatList()
+        val contacts = storage.getContacts()
+        val groupChats = storage.getGroupChats()
 
         val chatItems = mutableListOf<ChatListItem>()
 
         // Convert contacts to ChatListItems
         chatItems.addAll(contacts.map { contact ->
-            // Check if there's a draft for this contact
-            val draft = storage.getDraft(SqlStorage.CHAT_TYPE_CONTACT, contact.id)
-            // Get unseen reactions count
-            val unseenReactions = storage.getUnseenReactionsCount(contact.id)
+            val lastMessage = storage.getLastMessage(contact.id)
+            val lastMsgText = when (lastMessage?.msgType) {
+                1 -> "\uD83D\uDDBC\uFE0F " + (getStoredMessageText(lastMessage) ?: "")
+                3 -> "\uD83D\uDCC4 " + (getStoredMessageText(lastMessage) ?: "")
+                else -> getStoredMessageText(lastMessage)
+            }
+            val draft = storage.getDraft(CHAT_TYPE_CONTACT, contact.id)
+            val avatarDrawable = loadRoundedAvatar(this, contact.avatar.ifEmpty { null }, 48, 6)
 
             ChatListItem.ContactItem(
                 id = contact.id,
                 pubkey = contact.pubkey,
                 name = contact.name,
-                lastMessage = contact.lastMessage,
-                unreadCount = contact.unread,
-                avatar = contact.avatar,
-                unseenReactions = unseenReactions,
+                lastMessageText = lastMsgText,
+                lastMessageTime = lastMessage?.sendTime ?: 0,
+                unreadCount = storage.getUnreadCount(contact.id),
+                avatar = avatarDrawable,
+                unseenReactions = storage.getUnseenReactionsCount(contact.id).toInt(),
                 draft = draft
             )
         })
 
         // Convert group chats to ChatListItems
         chatItems.addAll(groupChats.map { groupChat ->
-            val avatar = storage.getGroupChatAvatar(groupChat.chatId, 48, 6)
-            // Check if current user is the owner
+            val avatarDrawable = loadRoundedAvatar(this, groupChat.avatar.ifEmpty { null }, 48, 6)
             val isOwner = myPubKey.contentEquals(groupChat.ownerPubkey)
 
-            // Get last message for the group chat
             val lastMessage = storage.getLastGroupMessage(groupChat.chatId)
-            val lastMessageText = if (lastMessage?.type == 1) {
-                "\uD83D\uDDBC\uFE0F " + lastMessage.getText(this)
-            } else if (lastMessage?.type == 3) {
-                "\uD83D\uDCC4 " +lastMessage.getText(this)
-            } else {
-                lastMessage?.getText(this)
+            val lastMessageText = when (lastMessage?.msgType) {
+                1 -> "\uD83D\uDDBC\uFE0F " + (getStoredMessageText(lastMessage) ?: "")
+                3 -> "\uD83D\uDCC4 " + (getStoredMessageText(lastMessage) ?: "")
+                else -> getStoredMessageText(lastMessage)
             }
 
-            // Check if there's a draft for this group chat
-            val draft = storage.getDraft(SqlStorage.CHAT_TYPE_GROUP, groupChat.chatId)
-            // Get unseen reactions count
-            val unseenReactions = storage.getGroupUnseenReactionsCount(groupChat.chatId)
+            val draft = storage.getDraft(CHAT_TYPE_GROUP, groupChat.chatId)
 
             ChatListItem.GroupChatItem(
                 id = groupChat.chatId,
                 chatId = groupChat.chatId,
                 name = groupChat.name,
-                description = groupChat.description ?: "",
+                description = groupChat.description,
                 mediatorAddress = groupChat.mediatorPubkey,
-                memberCount = storage.getGroupChatMembersCount(groupChat.chatId),
+                memberCount = storage.getMemberCount(groupChat.chatId),
                 isOwner = isOwner,
-                avatar = avatar,
+                avatar = avatarDrawable,
                 lastMessageText = lastMessageText,
                 lastMessageTime = groupChat.lastMessageTime,
                 unreadCount = groupChat.unreadCount,
-                unseenReactions = unseenReactions,
+                unseenReactions = storage.getGroupUnseenReactionsCount(groupChat.chatId).toInt(),
                 draft = draft,
                 readOnly = groupChat.readOnly
             )
@@ -674,13 +718,12 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
 
         // Add Saved Messages at the top (after sorting)
         val savedMessagesIcon = ContextCompat.getDrawable(this, R.drawable.ic_saved_messages)
-        val lastSavedMessage = storage.getLastSavedMessage()
-        val savedDraft = storage.getDraft(SqlStorage.CHAT_TYPE_CONTACT, SqlStorage.SAVED_MESSAGES_CONTACT_ID)
+        val lastSavedMessage = storage.getLastMessage(ChatListItem.SAVED_MESSAGES_CONTACT_ID)
+        val savedDraft = storage.getDraft(CHAT_TYPE_CONTACT, ChatListItem.SAVED_MESSAGES_CONTACT_ID)
 
-        // Show tip if there are no saved messages and no draft
         val messageText = when {
             savedDraft != null -> null  // Draft will be shown by adapter
-            lastSavedMessage != null -> lastSavedMessage.getText(this)
+            lastSavedMessage != null -> getStoredMessageText(lastSavedMessage)
             else -> getString(R.string.saved_messages_tip)
         }
 
@@ -688,7 +731,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             name = getString(R.string.saved_messages),
             avatar = savedMessagesIcon,
             lastMessageText = messageText,
-            lastMessageTime = lastSavedMessage?.time ?: 0,
+            lastMessageTime = lastSavedMessage?.sendTime ?: 0,
             draft = savedDraft
         ))
 

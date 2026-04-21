@@ -33,17 +33,18 @@ class ContactActivity: BaseActivity() {
         host = getMimirUriHost()
 
         val id = getStorage().getContactId(pubkey)
-        val avatar = getStorage().getContactAvatar(id, 128, 8)
-        if (avatar != null) {
+        val contact = getStorage().getContact(id)
+        val avatarDrawable = loadRoundedAvatar(this, contact?.avatar, 128, 8)
+        if (avatarDrawable != null) {
             val avatarView = findViewById<AppCompatImageView>(R.id.avatar)
-            avatarView.setImageDrawable(avatar)
+            avatarView.setImageDrawable(avatarDrawable)
         }
 
         // Set contact name in header
         findViewById<AppCompatTextView>(R.id.contact_name).text = name
 
         // Set contact description if available
-        val contactInfo = getStorage().getContactInfo(id)
+        val contactInfo = getStorage().getContact(id)?.info
         if (!contactInfo.isNullOrEmpty()) {
             findViewById<View>(R.id.description_section).visibility = View.VISIBLE
             findViewById<AppCompatTextView>(R.id.description_text).text = contactInfo
@@ -85,9 +86,20 @@ class ContactActivity: BaseActivity() {
         }
 
         // Block button
+        updateBlockButton()
         findViewById<View>(R.id.btn_block).setOnClickListener {
-            // TODO: Implement block functionality
-            Toast.makeText(this, getString(R.string.not_yet_implemented), Toast.LENGTH_SHORT).show()
+            val wasBlocked = getStorage().isContactBlocked(pubkey)
+            if (wasBlocked) {
+                getStorage().unblockContact(pubkey)
+            } else {
+                getStorage().blockContact(pubkey)
+                // Also disconnect any currently-open session so the block takes
+                // effect immediately instead of at next reconnect.
+                App.app.mimirApp?.disconnectContact(pubkey)
+            }
+            updateBlockButton()
+            val template = if (wasBlocked) R.string.contact_unblocked_toast else R.string.contact_blocked_toast
+            Toast.makeText(this, getString(template, name), Toast.LENGTH_SHORT).show()
         }
 
         // Copy public key button
@@ -150,6 +162,13 @@ class ContactActivity: BaseActivity() {
         )
         findViewById<AppCompatTextView>(R.id.mute_text).setText(
             if (isMuted) R.string.unmute else R.string.mute
+        )
+    }
+
+    private fun updateBlockButton() {
+        val isBlocked = getStorage().isContactBlocked(pubkey)
+        findViewById<AppCompatTextView>(R.id.block_text).setText(
+            if (isBlocked) R.string.unblock_contact else R.string.block_contact
         )
     }
 

@@ -146,8 +146,9 @@ class CallActivity: BaseActivity() {
         }
 
         val id = getStorage().getContactId(pubkey)
-        val avatarPic = getStorage().getContactAvatar(id, 128, 6)
-        contact = Contact(id, pubkey, name, null, 0, avatarPic)
+        val avatarPath = getStorage().getContact(id)?.avatar
+        val avatarPic = if (!avatarPath.isNullOrEmpty()) loadRoundedAvatar(this, avatarPath, 128, 6) else null
+        contact = Contact(id, pubkey, name, avatarPic)
 
         val nameView = findViewById<AppCompatTextView>(R.id.name)
         nameView.text = name

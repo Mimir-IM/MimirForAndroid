@@ -45,7 +45,7 @@ class AddContactActivity : BaseActivity() {
             val pubkey = Hex.decode(pubKeyString)
 
             // Check if it's our own key
-            val myPubkey = getStorage().getMyPubKey()
+            val myPubkey = getStorage().getAccount(1)?.pubkey ?: ByteArray(0)
             if (pubkey.contentEquals(myPubkey)) {
                 Toast.makeText(this, R.string.you_cant_add_yourself, Toast.LENGTH_LONG).show()
                 return@setOnClickListener

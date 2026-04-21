@@ -9,16 +9,16 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
 import com.revertron.mimir.R
 import com.revertron.mimir.loadRoundedAvatar
-import com.revertron.mimir.storage.ContactRequest
+import uniffi.mimir.StoredContactRequest
 
 class ContactRequestsAdapter(
-    private var requests: List<ContactRequest>,
+    private var requests: List<StoredContactRequest>,
     private val listener: Listener
 ) : RecyclerView.Adapter<ContactRequestsAdapter.ViewHolder>() {
 
     interface Listener {
-        fun onAccept(request: ContactRequest)
-        fun onDecline(request: ContactRequest)
+        fun onAccept(request: StoredContactRequest)
+        fun onDecline(request: StoredContactRequest)
     }
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
@@ -41,8 +41,8 @@ class ContactRequestsAdapter(
         holder.message.text = req.message.ifEmpty { req.info }
         holder.message.visibility = if (holder.message.text.isNullOrEmpty()) View.GONE else View.VISIBLE
 
-        if (req.avatarPath != null) {
-            val drawable = loadRoundedAvatar(holder.avatar.context, req.avatarPath, 48, 6)
+        if (req.avatar.isNotEmpty()) {
+            val drawable = loadRoundedAvatar(holder.avatar.context, req.avatar, 48, 6)
             if (drawable != null) {
                 holder.avatar.setImageDrawable(drawable)
             }
@@ -54,7 +54,7 @@ class ContactRequestsAdapter(
 
     override fun getItemCount() = requests.size
 
-    fun setRequests(newRequests: List<ContactRequest>) {
+    fun setRequests(newRequests: List<StoredContactRequest>) {
         requests = newRequests
         @Suppress("NotifyDataSetChanged")
         notifyDataSetChanged()

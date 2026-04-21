@@ -22,9 +22,9 @@ import androidx.appcompat.widget.Toolbar
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.revertron.mimir.storage.GroupMemberInfo
 import com.revertron.mimir.ui.GroupMemberAdapter
 import org.bouncycastle.util.encoders.Hex
+import uniffi.mimir.StoredMember
 
 class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListener {
 
@@ -54,7 +54,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
     private var isOwner: Boolean = false
     private var myPermissions: Int = 0
     private var memberCount: Int = 0
-    private var onlineCount: Int = 0 // TODO: Implement real online tracking
+    private var onlineCount: Int = 0
 
     private val mediatorReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -64,7 +64,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
                     if (intentChatId == chatId) {
                         val userPubkey = intent.getByteArrayExtra("user_pubkey")
                         val memberName = if (userPubkey != null) {
-                            getStorage().getGroupMemberInfo(chatId, userPubkey)?.nickname
+                            getStorage().getMemberInfo(chatId, userPubkey)?.nickname
                                 ?: Hex.toHexString(userPubkey).take(16)
                         } else {
                             "User"
@@ -81,7 +81,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
                         val permissions = intent.getIntExtra("permissions", 0)
 
                         val memberName = if (userPubkey != null) {
-                            getStorage().getGroupMemberInfo(chatId, userPubkey)?.nickname
+                            getStorage().getMemberInfo(chatId, userPubkey)?.nickname
                                 ?: Hex.toHexString(userPubkey).take(16)
                         } else {
                             "User"
@@ -143,19 +143,13 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
             return
         }
 
-        // Get current user's public key from the running PeerNode
-        val myPubkey = App.app.peerNode?.publicKey()
-        if (myPubkey != null) {
-            currentUserPubkey = myPubkey
+        // Get current user's public key from storage
+        val account = getStorage().getAccount(1)
+        if (account != null) {
+            currentUserPubkey = account.pubkey
         } else {
-            // Fall back to storage if peerNode not yet started
-            val accountInfo = getStorage().getAccountInfo(1, 0L)
-            if (accountInfo != null) {
-                currentUserPubkey = (accountInfo.keyPair.public as org.bouncycastle.crypto.params.Ed25519PublicKeyParameters).encoded
-            } else {
-                finish()
-                return
-            }
+            finish()
+            return
         }
 
         // Load group chat info from database
@@ -208,11 +202,12 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
         findViewById<AppCompatTextView>(R.id.group_name).text = chatName
 
         // Load and set avatar
-        val avatar = getStorage().getGroupChatAvatar(chatId, 128, 8)
+        val chatInfo2 = getStorage().getGroupChat(chatId)
+        val avatarDrawable = loadRoundedAvatar(this, chatInfo2?.avatar, 128, 8)
         val avatarView = findViewById<AppCompatImageView>(R.id.avatar)
-        if (avatar != null) {
+        if (avatarDrawable != null) {
             avatarView.clearColorFilter()
-            avatarView.setImageDrawable(avatar)
+            avatarView.setImageDrawable(avatarDrawable)
         } else {
             avatarView.setImageResource(R.drawable.button_rounded_white)
             val avatarColor = getAvatarColor(chatId.toString().toByteArray())
@@ -220,7 +215,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
         }
 
         // Set member count
-        memberCount = getStorage().getGroupChatMembersCount(chatId)
+        memberCount = getStorage().getMemberCount(chatId)
         updateMemberCount()
 
         // Set description if available
@@ -354,17 +349,18 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
     }
 
     private fun updateOnlineCount() {
-        val members = getStorage().getGroupMembers(chatId)
-        onlineCount = members.count { it.online }
+        onlineCount = getStorage().getOnlineMemberCount(chatId)
+        Log.d(TAG, "updateOnlineCount: chat=$chatId onlineCount=$onlineCount")
         updateMemberCount()
     }
 
     private fun loadMembers() {
         Thread {
-            val members = getStorage().getGroupMembers(chatId).toMutableList()
+            val members = getStorage().getMembers(chatId).toMutableList()
 
             // Look up current user's permissions from member list
-            val me = members.find { it.pubkey.contentEquals(currentUserPubkey) }
+            val myPubkeyHex = Hex.toHexString(currentUserPubkey)
+            val me = members.find { it.pubkey == myPubkeyHex }
             val perms = me?.permissions ?: 0
 
             // Sort members: online first, then owner, then admins/moderators, then everyone else
@@ -372,7 +368,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
                 { !it.online }, // Online members first
                 { (it.permissions and PERM_OWNER) == 0 }, // Owner first among online/offline groups
                 { (it.permissions and (PERM_ADMIN or PERM_MOD)) == 0 }, // Admins/moderators second
-                { it.nickname ?: Hex.toHexString(it.pubkey) } // Then by name
+                { it.nickname.ifEmpty { it.pubkey.take(16) } } // Then by name
             ))
 
             runOnUiThread {
@@ -384,12 +380,11 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
         }.start()
     }
 
-    private fun setupMembersList(members: List<GroupMemberInfo>) {
+    private fun setupMembersList(members: List<uniffi.mimir.StoredMember>) {
         adapter = GroupMemberAdapter(
             chatId = chatId,
             ownerPubkey = ownerPubkey,
             currentUserPubkey = currentUserPubkey,
-            storage = getStorage(),
             members = members,
             onClick = this,
             onLongClick = this
@@ -401,8 +396,8 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
     }
 
     private fun openContactSelector() {
-        val members = getStorage().getGroupMembers(chatId)
-        val memberPubkeys = members.map { it.pubkey }.toTypedArray()
+        val members = getStorage().getMembers(chatId)
+        val memberPubkeys = members.map { Hex.decode(it.pubkey) }.toTypedArray()
 
         val intent = Intent(this, ContactSelectorActivity::class.java).apply {
             putExtra(ContactSelectorActivity.EXTRA_TITLE, getString(R.string.add_member))
@@ -456,11 +451,12 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
             }
 
             // Update avatar
-            val avatar = getStorage().getGroupChatAvatar(chatId, 128, 8)
+            val refreshedChat = getStorage().getGroupChat(chatId)
+            val refreshedAvatar = loadRoundedAvatar(this, refreshedChat?.avatar, 128, 8)
             val avatarView = findViewById<AppCompatImageView>(R.id.avatar)
-            if (avatar != null) {
+            if (refreshedAvatar != null) {
                 avatarView.clearColorFilter()
-                avatarView.setImageDrawable(avatar)
+                avatarView.setImageDrawable(refreshedAvatar)
             }
         }
     }
@@ -501,19 +497,19 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
 
     override fun onClick(v: View?) {
         // Handle member item click
-        val member = v?.tag as? GroupMemberInfo
+        val member = v?.tag as? StoredMember
         if (member != null) {
             // Open ContactActivity for this member
             val intent = Intent(this, ContactActivity::class.java)
-            intent.putExtra("pubkey", member.pubkey)
-            intent.putExtra("name", member.nickname ?: Hex.toHexString(member.pubkey).take(16))
+            intent.putExtra("pubkey", Hex.decode(member.pubkey))
+            intent.putExtra("name", member.nickname.ifEmpty { member.pubkey.take(16) })
             startActivity(intent, animFromRight.toBundle())
         }
     }
 
     override fun onLongClick(v: View?): Boolean {
         // Handle member item long-click
-        val member = v?.tag as? GroupMemberInfo ?: return false
+        val member = v?.tag as? StoredMember ?: return false
 
         // Only show menu if current user is owner or admin
         if ((myPermissions and (PERM_OWNER or PERM_ADMIN)) == 0) {
@@ -559,8 +555,8 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
         }
     }
 
-    private fun banUser(member: GroupMemberInfo) {
-        val memberName = member.nickname?.ifEmpty { null } ?: Hex.toHexString(member.pubkey).take(16)
+    private fun banUser(member: StoredMember) {
+        val memberName = member.nickname.ifEmpty { member.pubkey.take(16) }
 
         // Show confirmation dialog
         val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
@@ -572,7 +568,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
                 val intent = Intent(this, ConnectionService::class.java)
                 intent.putExtra("command", "mediator_ban_user")
                 intent.putExtra("chat_id", chatId)
-                intent.putExtra("user_pubkey", member.pubkey)
+                intent.putExtra("user_pubkey", Hex.decode(member.pubkey))
                 startService(intent)
 
                 Log.i(TAG, "Sent ban user request to ConnectionService")
@@ -582,8 +578,8 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
             .show()
     }
 
-    private fun changeUserRole(member: GroupMemberInfo) {
-        val memberName = member.nickname?.ifEmpty { null } ?: Hex.toHexString(member.pubkey).take(16)
+    private fun changeUserRole(member: StoredMember) {
+        val memberName = member.nickname.ifEmpty { member.pubkey.take(16) }
 
         val PERM_USER = 0x10
 
@@ -618,7 +614,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
                     val intent = Intent(this, ConnectionService::class.java)
                     intent.putExtra("command", "mediator_change_role")
                     intent.putExtra("chat_id", chatId)
-                    intent.putExtra("user_pubkey", member.pubkey)
+                    intent.putExtra("user_pubkey", Hex.decode(member.pubkey))
                     intent.putExtra("permissions", newPermissions)
                     startService(intent)
 
@@ -637,78 +633,75 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
         overridePendingTransition(R.anim.hold_still, R.anim.slide_out_right)
     }
 
-    // TODO remove duplication
-    private fun leaveGroup() {
-        // Check if user is the owner - owners cannot leave, they must delete the group instead
-        if (isOwner) {
-            Toast.makeText(
-                this,
-                getString(R.string.owner_cannot_leave_group),
-                Toast.LENGTH_LONG
-            ).show()
-            return
-        }
-
-        // Show confirmation dialog
+    /**
+     * Shared confirmation-dialog-then-mediator-command flow used by both
+     * Leave and Delete group. Pops an AlertDialog; on confirm fires the given
+     * `command` to ConnectionService with the current `chatId` and optionally
+     * closes this activity right away (leave waits for the broadcast).
+     */
+    private fun confirmAndSendMediatorCommand(
+        titleRes: Int,
+        messageRes: Int,
+        confirmButtonRes: Int,
+        command: String,
+        finishImmediately: Boolean,
+    ) {
         val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
         AlertDialog.Builder(wrapper)
-            .setTitle(R.string.leave_group)
-            .setMessage(R.string.confirm_leave_group)
-            .setPositiveButton(R.string.leave) { _, _ ->
-                // Send intent to ConnectionService to leave the chat
+            .setTitle(titleRes)
+            .setMessage(messageRes)
+            .setPositiveButton(confirmButtonRes) { _, _ ->
                 val intent = Intent(this, ConnectionService::class.java)
-                intent.putExtra("command", "mediator_leave")
+                intent.putExtra("command", command)
                 intent.putExtra("chat_id", chatId)
                 startService(intent)
-
-                Log.i(GroupChatActivity.Companion.TAG, "Sent leave chat request to ConnectionService for chat ${chatId}")
-
-                // The activity will be finished when ACTION_MEDIATOR_LEFT_CHAT broadcast is received
+                Log.i(TAG, "Sent $command to ConnectionService for chat $chatId")
+                if (finishImmediately) finish()
+                // Otherwise the activity closes when ACTION_MEDIATOR_LEFT_CHAT arrives.
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
     }
 
+    private fun leaveGroup() {
+        // Owners cannot leave — they must delete the group instead.
+        if (isOwner) {
+            Toast.makeText(this, getString(R.string.owner_cannot_leave_group), Toast.LENGTH_LONG).show()
+            return
+        }
+        confirmAndSendMediatorCommand(
+            titleRes = R.string.leave_group,
+            messageRes = R.string.confirm_leave_group,
+            confirmButtonRes = R.string.leave,
+            command = "mediator_leave",
+            finishImmediately = false,
+        )
+    }
+
     private fun deleteGroup() {
-        // Show confirmation dialog
-        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
-        AlertDialog.Builder(wrapper)
-            .setTitle(R.string.delete_group)
-            .setMessage(R.string.confirm_delete_group)
-            .setPositiveButton(R.string.menu_delete) { _, _ ->
-                // Send intent to ConnectionService to delete the chat
-                val intent = Intent(this, ConnectionService::class.java)
-                intent.putExtra("command", "mediator_delete")
-                intent.putExtra("chat_id", chatId)
-                startService(intent)
-
-                Log.i(TAG, "Sent delete chat request to ConnectionService for chat $chatId")
-
-                // The activity will be finished when ACTION_MEDIATOR_LEFT_CHAT broadcast is received
-                // (same broadcast as leaving, as both result in the chat being removed)
-                finish()
-            }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
+        confirmAndSendMediatorCommand(
+            titleRes = R.string.delete_group,
+            messageRes = R.string.confirm_delete_group,
+            confirmButtonRes = R.string.menu_delete,
+            command = "mediator_delete",
+            finishImmediately = true,
+        )
     }
 
     private fun toggleMute() {
         val currentlyMuted = getStorage().getGroupChat(chatId)?.muted ?: false
         val newMutedStatus = !currentlyMuted
 
-        if (getStorage().setGroupChatMuted(chatId, newMutedStatus)) {
-            val message = if (newMutedStatus) {
-                getString(R.string.mute_group)
-            } else {
-                getString(R.string.unmute_group)
-            }
-            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-
-            // Update the button UI
-            updateMuteButton()
+        getStorage().setGroupChatMuted(chatId, newMutedStatus)
+        val message = if (newMutedStatus) {
+            getString(R.string.mute_group)
         } else {
-            Toast.makeText(this, "Failed to update mute status", Toast.LENGTH_SHORT).show()
+            getString(R.string.unmute_group)
         }
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+
+        // Update the button UI
+        updateMuteButton()
     }
 
     private fun updateMuteButton() {

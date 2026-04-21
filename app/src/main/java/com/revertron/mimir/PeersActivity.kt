@@ -6,6 +6,7 @@ import android.content.ClipboardManager
 import android.content.Intent
 import android.os.Bundle
 import android.view.ContextThemeWrapper
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
@@ -100,7 +101,7 @@ class PeersActivity : BaseActivity() {
 
     private fun showPeerPopupMenu(position: Int, anchor: View) {
         val peer = peers[position]
-        val popup = PopupMenu(this, anchor)
+        val popup = PopupMenu(this, anchor, Gravity.CENTER_HORIZONTAL)
         popup.inflate(R.menu.menu_context_peer)
         popup.setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {

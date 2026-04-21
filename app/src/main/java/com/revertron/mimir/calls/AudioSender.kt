@@ -12,7 +12,7 @@ import android.util.Log
 import androidx.annotation.RequiresPermission
 
 class AudioSender(
-    private val peerNode: uniffi.mimir.PeerNode,
+    private val mimirApp: uniffi.mimir.MimirApp,
     private val calleePubkey: ByteArray,
     private val sampleRate: Int = 44100,
     private val channelCount: Int = 1,
@@ -90,9 +90,9 @@ class AudioSender(
                     outBuffer.get(encoded)
                     outBuffer.clear()
 
-                    // Send encoded audio packet via Rust PeerNode
+                    // Send encoded audio packet via MimirApp
                     try {
-                        peerNode.sendCallPacket(calleePubkey, encoded)
+                        mimirApp.sendCallPacket(calleePubkey, encoded)
                     } catch (e: Exception) {
                         Log.w(name, "Failed to send call packet: ${e.message}")
                     }
