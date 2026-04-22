@@ -450,7 +450,7 @@ fun loadNotificationBitmap(context: Context, fileName: String?, sizeDp: Int = 48
 
 /**
  * Loads a group member avatar as a plain Bitmap suitable for notifications.
- * Accepts either a new-style relative subpath from MimirStorage or a legacy
+ * Accepts either a new-style relative subpath from MimirApp or a legacy
  * bare filename.
  */
 fun loadGroupMemberNotificationBitmap(context: Context, chatId: Long, fileName: String?, sizeDp: Int = 48): Bitmap? {

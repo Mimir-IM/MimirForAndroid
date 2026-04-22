@@ -107,7 +107,7 @@ class FilesActivity : BaseActivity(), FilesAdapter.Listener {
 
         // DB metadata for every sent/received attachment, keyed by on-disk filename.
         val dbMap: Map<String, uniffi.mimir.FileItem> =
-            getStorage().getAllFileItems().associateBy { it.storageName }
+            getMimir().getAllFileItems().associateBy { it.storageName }
 
         // Cache contact/group names so we don't re-query for every row.
         val contactNameCache = mutableMapOf<Long, String>()
@@ -116,10 +116,10 @@ class FilesActivity : BaseActivity(), FilesAdapter.Listener {
         fun resolveChatName(contactId: Long, chatId: Long): String {
             return when {
                 contactId > 0 -> contactNameCache.getOrPut(contactId) {
-                    getStorage().getContact(contactId)?.name ?: ""
+                    getMimir().getContact(contactId)?.name ?: ""
                 }
                 chatId > 0 -> groupNameCache.getOrPut(chatId) {
-                    getStorage().getGroupChat(chatId)?.name ?: ""
+                    getMimir().getGroupChat(chatId)?.name ?: ""
                 }
                 else -> ""
             }

@@ -96,7 +96,7 @@ class ContactSelectorActivity : BaseActivity(), View.OnClickListener {
     }
 
     private fun getFilteredContactItems(): List<ChatListItem> {
-        val storage = getStorage()
+        val storage = getMimir()
         val allContacts = storage.getContacts()
 
         // Filter out contacts if filter list provided

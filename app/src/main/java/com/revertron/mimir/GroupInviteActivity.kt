@@ -148,7 +148,7 @@ class GroupInviteActivity : BaseActivity() {
         }
 
         // Set from info - try to get contact name, fall back to hex string
-        val contactName = getStorage().getContactByPubkey(fromPubkey)?.name ?: ""
+        val contactName = getMimir().getContactByPubkey(fromPubkey)?.name ?: ""
         val senderDisplay = contactName.ifEmpty {
             Hex.toHexString(fromPubkey).take(16)
         }
@@ -200,7 +200,7 @@ class GroupInviteActivity : BaseActivity() {
 
         Thread {
             try {
-                val storage = getStorage()
+                val storage = getMimir()
 
                 // Delete locally
                 storage.deleteInvite(inviteId)

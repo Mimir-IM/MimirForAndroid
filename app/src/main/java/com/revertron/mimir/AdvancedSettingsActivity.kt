@@ -135,7 +135,7 @@ class AdvancedSettingsActivity : BaseActivity(), SettingsAdapter.Listener {
         // Run the fix in a background thread
         Thread {
             try {
-                val stats = getStorage().fixCorruptedGroupMessages()
+                val stats = getMimir().fixCorruptedGroupMessages()
                 val fixedCount = stats.fixed.toInt()
                 val scannedCount = stats.scanned.toInt()
 
@@ -184,7 +184,7 @@ class AdvancedSettingsActivity : BaseActivity(), SettingsAdapter.Listener {
             try {
                 // Any file referenced by a message (P2P or group, image or file)
                 // is not an orphan. Everything else in files/ can be reclaimed.
-                val validFileNames = getStorage().getAllFileItems()
+                val validFileNames = getMimir().getAllFileItems()
                     .map { it.storageName }
                     .toSet()
 

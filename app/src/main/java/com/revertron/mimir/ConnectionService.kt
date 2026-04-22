@@ -16,6 +16,7 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.preference.PreferenceManager
 import com.revertron.mimir.NotificationHelper.Companion.cancelCallNotifications
 import com.revertron.mimir.NotificationHelper.Companion.showCallNotification
+import com.revertron.mimir.net.MediatorManager
 import com.revertron.mimir.net.PeerStatus
 import com.revertron.mimir.storage.PeerProvider
 import com.revertron.mimir.ui.SettingsData
@@ -160,7 +161,7 @@ class ConnectionService : Service() {
             // The Rust callback only carries id/chat/from. Look up the rest in
             // storage to build a rich notification that deep-links into
             // GroupInviteActivity with all the bytes the activity expects.
-            val storage = App.app.mimirStorage ?: return
+            val storage = App.app.mimirApp ?: return
             val invite = storage.getPendingInvites().firstOrNull { it.id == inviteId } ?: return
             NotificationHelper.showGroupInviteNotification(
                 this@ConnectionService,
@@ -189,6 +190,23 @@ class ConnectionService : Service() {
                     putExtra("pubkey", pubkey)
                     putExtra("is_online", online)
                 }
+            )
+        }
+        override fun onMediatorAuthenticated(mediatorPubkey: ByteArray) {
+            // Fires as soon as auth succeeds with ANY mediator — covers the
+            // zero-group-chat user whose status dot would otherwise stay red
+            // (no chat to subscribe to, so no onGroupChatStatus(SUBSCRIBED)).
+            Log.i(TAG, "onMediatorAuthenticated: pubkey=${Hex.toHexString(mediatorPubkey).take(8)}")
+            App.app.mediatorStatus = App.MediatorStatus.Connected
+            LocalBroadcastManager.getInstance(this@ConnectionService).sendBroadcast(
+                Intent("ACTION_MEDIATOR_CONNECTED")
+            )
+        }
+        override fun onMediatorDisconnected(mediatorPubkey: ByteArray) {
+            Log.i(TAG, "onMediatorDisconnected: pubkey=${Hex.toHexString(mediatorPubkey).take(8)}")
+            App.app.mediatorStatus = App.MediatorStatus.Disconnected
+            LocalBroadcastManager.getInstance(this@ConnectionService).sendBroadcast(
+                Intent("ACTION_MEDIATOR_DISCONNECTED")
             )
         }
         override fun onIncomingCall(pubkey: ByteArray) {
@@ -335,11 +353,18 @@ class ConnectionService : Service() {
                 val preferences = PreferenceManager.getDefaultSharedPreferences(this.baseContext)
                 if (preferences.getBoolean("enabled", true)) {
                     if (mimirApp == null) {
+                        // MimirApp was constructed in App.onCreate (storage-only mode).
+                        // This service calls mimirApp.start(...) to light up networking.
+                        val app = App.app.mimirApp
+                        if (app == null) {
+                            Log.e(TAG, "MimirApp not initialized in App.onCreate — aborting service start")
+                            return START_NOT_STICKY
+                        }
                         val peerProvider = PeerProvider(this)
                         val yggPeers = peerProvider.getPeers()
                         val multicast = preferences.getBoolean("local_peer_discovery", false)
                         val trackers = listOf("$TRACKER_HEX1:$TRACKER_PORT", "$TRACKER_HEX2:$TRACKER_PORT")
-                        val mimirDir = File(filesDir, "mimir").absolutePath
+                        val mediators = listOf(MediatorManager.getDefaultMediatorPubkey())
 
                         val n = NotificationHelper.createForegroundServiceNotification(this, State.Offline, "", 0)
                         startForeground(1, n)
@@ -349,6 +374,7 @@ class ConnectionService : Service() {
                                 val config = AppConfig(
                                     yggPeers = yggPeers,
                                     trackers = trackers,
+                                    mediators,
                                     peerPort = PEER_PORT,
                                     mediatorPort = MEDIATOR_PORT,
                                     filesPort = FILES_PORT,
@@ -362,10 +388,9 @@ class ConnectionService : Service() {
                                     // land in the same place Android reads from.
                                     attachmentsDir = File(filesDir, "files").absolutePath,
                                 )
-                                val app = MimirApp(config, mimirDir, appEventListener)
+                                app.start(config, appEventListener)
                                 mimirApp = app
-                                App.app.mimirApp = app
-                                Log.i(TAG, "MimirApp started, pubkey=${Hex.toHexString(app.publicKey().take(4).toByteArray())}")
+                                Log.i(TAG, "MimirApp networking started, pubkey=${Hex.toHexString(app.publicKey().take(4).toByteArray())}")
                             } catch (e: Exception) {
                                 Log.e(TAG, "Failed to start MimirApp: ${e.message}", e)
                             }
@@ -520,12 +545,12 @@ class ConnectionService : Service() {
                     val myPubkey = app.publicKey()
                     val messageBytes = message.toByteArray()
                     val sendTime = getUtcTimeMs()
-                    val guid = App.app.mimirStorage?.generateGuid(sendTime, messageBytes) ?: sendTime
+                    val guid = App.app.mimirApp?.generateGuid(sendTime, messageBytes) ?: sendTime
 
                     if (pubkey.contentEquals(myPubkey)) {
                         // Saved message — store locally, no network send
                         try {
-                            val id = App.app.mimirStorage?.addMessage(
+                            val id = App.app.mimirApp?.addMessage(
                                 pubkey, guid, replyTo, false, true, sendTime, 0, type, messageBytes
                             ) ?: 0L
                             LocalBroadcastManager.getInstance(this).sendBroadcast(
@@ -541,7 +566,7 @@ class ConnectionService : Service() {
                         }
                     } else {
                         Log.i(TAG, "Sending message guid=$guid to ${Hex.toHexString(pubkey).take(8)}")
-                        val contactId = App.app.mimirStorage?.getContactId(pubkey) ?: 0L
+                        val contactId = App.app.mimirApp?.getContactId(pubkey) ?: 0L
                         Thread {
                             try {
                                 app.sendMessage(pubkey, guid, replyTo, sendTime, type, messageBytes)
@@ -553,7 +578,7 @@ class ConnectionService : Service() {
                                 }
                             }
                             // Show in chat immediately regardless of send result
-                            val msgId = App.app.mimirStorage?.getMessageByGuid(guid)?.id ?: 0L
+                            val msgId = App.app.mimirApp?.getMessageByGuid(guid)?.id ?: 0L
                             if (msgId > 0) {
                                 LocalBroadcastManager.getInstance(this).sendBroadcast(
                                     Intent("ACTION_MESSAGE_SENT").apply {
@@ -575,7 +600,7 @@ class ConnectionService : Service() {
                 val isGroupChat = intent.getBooleanExtra("group_chat", false)
                 val chatId = intent.getLongExtra("chat_id", 0L)
                 if (name != null && guid != 0L) {
-                    val ms = App.app.mimirStorage
+                    val ms = App.app.mimirApp
                     val metaBytes = if (isGroupChat) {
                         ms?.getGroupMessageByGuid(chatId, guid)?.data
                     } else {
@@ -687,7 +712,7 @@ class ConnectionService : Service() {
                         try {
                             val chatId = mimirApp?.createGroup(name, description, avatar) ?: 0L
                             if (chatId != 0L) {
-                                val mediatorAddress = App.app.mimirStorage
+                                val mediatorAddress = App.app.mimirApp
                                     ?.getGroupChat(chatId)?.mediatorPubkey
                                     ?: ByteArray(0)
                                 LocalBroadcastManager.getInstance(this).sendBroadcast(
@@ -900,9 +925,10 @@ class ConnectionService : Service() {
         Log.i(TAG, "ConnectionService destroying")
         stopAudioSession()
 
+        // Tear down networking only. MimirApp itself (and its DB handle) stays
+        // alive under App.app.mimirApp so activities can still read storage.
         mimirApp?.stop()
         mimirApp = null
-        App.app.mimirApp = null
 
         App.app.online = false
         App.app.trackerAnnounced = false

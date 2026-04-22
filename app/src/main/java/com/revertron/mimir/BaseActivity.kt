@@ -5,7 +5,7 @@ import android.os.Bundle
 import android.os.PersistableBundle
 import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
-import uniffi.mimir.MimirStorage
+import uniffi.mimir.MimirApp
 
 open class BaseActivity: AppCompatActivity() {
 
@@ -18,7 +18,8 @@ open class BaseActivity: AppCompatActivity() {
         animFromLeft = ActivityOptions.makeCustomAnimation(applicationContext, R.anim.slide_in_left, R.anim.hold_still)
     }
 
-    fun getStorage(): MimirStorage {
-        return App.app.mimirStorage!!
+    /** Single source of truth for both storage and networking. */
+    fun getMimir(): MimirApp {
+        return App.app.mimirApp!!
     }
 }

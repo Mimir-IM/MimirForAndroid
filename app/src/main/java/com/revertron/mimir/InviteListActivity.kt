@@ -67,7 +67,7 @@ class InviteListActivity : BaseActivity(), View.OnClickListener {
 
     private fun refreshInvites() {
         val recycler = findViewById<RecyclerView>(R.id.invites_list)
-        val invites = getStorage().getPendingInvites()
+        val invites = getMimir().getPendingInvites()
 
         if (recycler.adapter == null) {
             val adapter = InvitesAdapter(invites, this)

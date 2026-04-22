@@ -34,7 +34,7 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         toolbar.setOnMenuItemClickListener(this)
 
-        accountInfo = getStorage().getAccount(accountNumber)!!
+        accountInfo = getMimir().getAccount(accountNumber)!!
         var name = accountInfo.name
         val public = Hex.toHexString(accountInfo.pubkey).uppercase()
 
@@ -101,9 +101,9 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
 
     override fun onStop() {
         val newName = myNameEdit.text.toString()
-        getStorage().updateAccountName(accountNumber, newName)
+        getMimir().updateAccountName(accountNumber, newName)
         val newDescription = myDescriptionEdit.text.toString()
-        getStorage().updateAccountInfo(accountNumber, newDescription)
+        getMimir().updateAccountInfo(accountNumber, newDescription)
         super.onStop()
     }
 
@@ -137,7 +137,7 @@ class AccountsActivity: BaseActivity(), Toolbar.OnMenuItemClickListener {
                     } else {
                         bmp.compress(Bitmap.CompressFormat.JPEG, 95, bos)
                     }
-                    getStorage().updateAccountAvatar(accountNumber, bos.toByteArray())
+                    getMimir().updateAccountAvatar(accountNumber, bos.toByteArray())
                     runOnUiThread {
                         val avatarView = findViewById<AppCompatImageView>(R.id.avatar)
                         avatarView.setImageBitmap(bmp)

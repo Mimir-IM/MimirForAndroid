@@ -81,4 +81,13 @@
         <item name="cornerSize">6dp</item>
     </style>
 
+    <!-- Theme for SplashActivity (the launcher entry point). No action bar,
+         no layout — the window background shows the app logo for the brief
+         moment SplashActivity decides where to route. -->
+    <style name="Theme.Splash" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@drawable/splash_bg</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:statusBarColor">@color/gray_40</item>
+    </style>
+
 </resources>

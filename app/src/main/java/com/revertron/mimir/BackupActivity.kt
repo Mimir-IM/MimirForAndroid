@@ -33,14 +33,14 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
 
     companion object {
         private const val TAG = "BackupActivity"
-        /** On-disk SQLite filename managed by MimirStorage. */
+        /** On-disk SQLite filename managed by MimirApp. */
         private const val DATABASE_NAME = "mimir.db"
         /** Subdirectory of filesDir that holds the Rust-owned DB + sidecars. */
         private const val DATABASE_DIR = "mimir"
         private const val BACKUP_FILE_PREFIX = "mimir_backup_"
     }
 
-    /** Absolute File handle for the current MimirStorage database. */
+    /** Absolute File handle for the current MimirApp database. */
     private fun mimirDbFile(): File = File(File(filesDir, DATABASE_DIR), DATABASE_NAME)
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -189,8 +189,8 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
                 // safe while the app keeps running (it walks the DB under a
                 // read lock and writes a fresh .db with no WAL sidecar).
                 snapshotFile.delete() // VACUUM INTO refuses to overwrite.
-                App.app.mimirStorage?.backupTo(snapshotFile.absolutePath)
-                    ?: throw Exception("MimirStorage not available")
+                App.app.mimirApp?.backupTo(snapshotFile.absolutePath)
+                    ?: throw Exception("MimirApp not available")
 
                 ZipOutputStream(outputStream).use { zipOut ->
                     if (snapshotFile.exists()) {
@@ -306,14 +306,14 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
                 }
                 Thread.sleep(200)
 
-                // Close the MimirStorage handle so the file on disk is released
+                // Close the MimirApp handle so the DB file on disk is released
                 // before we overwrite it. We also null it out: the process is
                 // about to be killed and restarted, but if the user dismisses
                 // the restart dialog, any touch of the dangling handle would
                 // corrupt the restored DB. Better to NPE loudly.
                 Log.i(TAG, "Closing application database connection")
-                App.app.mimirStorage?.close()
-                App.app.mimirStorage = null
+                App.app.mimirApp?.close()
+                App.app.mimirApp = null
 
                 // Delete existing files before importing
                 deleteExistingData()
@@ -469,7 +469,7 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
 
     private fun deleteExistingData() {
         try {
-            // Delete database file + its WAL/SHM sidecars (MimirStorage-owned).
+            // Delete database file + its WAL/SHM sidecars (MimirApp-owned).
             val dbFile = mimirDbFile()
             if (dbFile.exists()) {
                 val deleted = dbFile.delete()

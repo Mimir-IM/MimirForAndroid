@@ -326,7 +326,7 @@ class NotificationHelper(private val context: Context) {
         fun showCallNotification(connectionService: ConnectionService, context: Context, inCall: Boolean, contact: ByteArray) {
             Log.i(TAG, "showCallNotification inCall: $inCall")
 
-            val storage = App.app.mimirStorage!!
+            val storage = App.app.mimirApp!!
             val contactId = storage.getContactId(contact)
             val name = storage.getContact(contactId)?.name ?: ""
 
@@ -478,7 +478,7 @@ class NotificationHelper(private val context: Context) {
             )
 
             // Try to get contact name, fall back to hex string if not found
-            val storage = App.app.mimirStorage!!
+            val storage = App.app.mimirApp!!
             val contactName = storage.getContactByPubkey(fromPubkey)?.name ?: ""
             val senderDisplay = if (contactName.isNotEmpty()) {
                 contactName
@@ -721,7 +721,7 @@ class NotificationHelper(private val context: Context) {
          * does not touch the UI directly, just the NotificationManager.
          */
         fun showMessageNotification(context: Context, contactId: Long, messageId: Long) {
-            val storage = App.app.mimirStorage ?: return
+            val storage = App.app.mimirApp ?: return
             val message = storage.getMessage(messageId) ?: return
             if (message.data == null || message.msgType == 2 || message.msgType == MSG_TYPE_REACTION) return
             if (storage.isContactMuted(contactId)) return
@@ -753,7 +753,7 @@ class NotificationHelper(private val context: Context) {
          * and muted groups.
          */
         fun showGroupMessageNotification(context: Context, chatId: Long, messageId: Long) {
-            val storage = App.app.mimirStorage ?: return
+            val storage = App.app.mimirApp ?: return
             val message = storage.getGroupMessage(chatId, messageId) ?: return
             if (message.data == null || message.msgType == 2 || message.msgType == MSG_TYPE_REACTION) return
 
@@ -793,7 +793,7 @@ class NotificationHelper(private val context: Context) {
         }
 
         private fun previewGroupText(context: Context, chatId: Long, message: StoredMessage): String {
-            val storage = App.app.mimirStorage ?: return ""
+            val storage = App.app.mimirApp ?: return ""
             // System messages need member lookup for nice formatting; delegate to
             // MessageProvider so notifications match what the chat list shows.
             val raw = if (message.msgType == 1000 && message.data != null) {
@@ -819,7 +819,7 @@ class NotificationHelper(private val context: Context) {
         }
 
         private fun buildSelfPerson(context: Context): Person {
-            val storage = App.app.mimirStorage
+            val storage = App.app.mimirApp
             val account = storage?.getAccount(1)
             val selfName = account?.name?.ifEmpty { null } ?: context.getString(R.string.you)
             val selfPubkey = account?.pubkey ?: ByteArray(0)
@@ -833,7 +833,7 @@ class NotificationHelper(private val context: Context) {
         }
 
         private fun buildGroupSenderPerson(context: Context, chatId: Long, senderId: Long): Person {
-            val storage = App.app.mimirStorage
+            val storage = App.app.mimirApp
             val pubkey = storage?.getMemberPubkey(chatId, senderId)
             val nickname = storage?.getMemberNickname(chatId, senderId)?.ifEmpty { null }
                 ?: context.getString(R.string.unknown_nickname)

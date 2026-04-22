@@ -100,12 +100,6 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
     var avatarDrawable: Drawable? = null
     lateinit var myPubKey: ByteArray
 
-    private val migrationReceiver2 = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            onMigrationComplete()
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -114,29 +108,15 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         setSupportActionBar(toolbar)
         supportActionBar?.setHomeActionContentDescription(R.string.account)
 
-        if (App.app.migrationNeeded) {
-            // Show migration overlay, defer everything else.
-            findViewById<View>(R.id.migration_overlay).visibility = View.VISIBLE
-            LocalBroadcastManager.getInstance(this).registerReceiver(
-                migrationReceiver2, IntentFilter(App.ACTION_MIGRATION_COMPLETE)
-            )
-            return
-        }
-
-        initAfterReady()
-    }
-
-    private fun initAfterReady() {
         if (intent?.hasExtra("no_service") != true) {
             startService()
         }
 
-        val account = getStorage().getAccount(1)
+        val account = getMimir().getAccount(1)
         myPubKey = account?.pubkey ?: ByteArray(0)
         if (account != null && account.avatar.isNotEmpty()) {
             avatarDrawable = loadRoundedAvatar(this, account.avatar)
             if (avatarDrawable != null) {
-                val toolbar = findViewById<Toolbar>(R.id.toolbar)
                 toolbar.navigationIcon = avatarDrawable
             }
         }
@@ -144,15 +124,8 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         recycler.addItemDecoration(DividerItemDecoration(baseContext, RecyclerView.VERTICAL))
     }
 
-    private fun onMigrationComplete() {
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(migrationReceiver2)
-        findViewById<View>(R.id.migration_overlay).visibility = View.GONE
-        initAfterReady()
-    }
-
     override fun onResume() {
         super.onResume()
-        if (App.app.migrationNeeded) return
         val recycler = findViewById<RecyclerView>(R.id.contacts_list)
         if (recycler.adapter == null) {
             val chatList = getChatList()
@@ -195,13 +168,6 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         LocalBroadcastManager.getInstance(this).unregisterReceiver(contactListRefreshReceiver)
     }
 
-    override fun onDestroy() {
-        try {
-            LocalBroadcastManager.getInstance(this).unregisterReceiver(migrationReceiver2)
-        } catch (_: Exception) { }
-        super.onDestroy()
-    }
-
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         super.onCreateOptionsMenu(menu)
         menuInflater.inflate(R.menu.menu_main, menu)
@@ -211,10 +177,10 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
         super.onPrepareOptionsMenu(menu)
 
-        val invites = getStorage().getPendingInvites()
+        val invites = getMimir().getPendingInvites()
         menu.findItem(R.id.group_invites).isVisible = invites.isNotEmpty()
 
-        val requestCount = getStorage().getContactRequests().size
+        val requestCount = getMimir().getContactRequests().size
         menu.findItem(R.id.contact_requests).isVisible = requestCount > 0
         return true
     }
@@ -405,7 +371,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         }
 
         // Check for pending contact requests
-        val requestCount = getStorage().getContactRequests().size
+        val requestCount = getMimir().getContactRequests().size
         if (requestCount > 0) {
             val root = findViewById<View>(android.R.id.content)
             Snackbar.make(root, getString(R.string.contact_requests_snackbar, requestCount), Snackbar.LENGTH_LONG)
@@ -451,7 +417,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         builder.setIcon(R.drawable.ic_contact_rename)
         builder.setPositiveButton(getString(R.string.rename)) { _, _ ->
             val newName = name.text.toString()
-            getStorage().renameContact(contact.id, newName, true)
+            getMimir().renameContact(contact.id, newName, true)
             refreshContacts()
         }
         builder.setNegativeButton(getString(R.string.cancel)) { dialog, _ ->
@@ -512,7 +478,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
         }
 
         // Dynamic mute/unmute title
-        val currentlyMuted = getStorage().getGroupChat(groupChat.chatId)?.muted ?: false
+        val currentlyMuted = getMimir().getGroupChat(groupChat.chatId)?.muted ?: false
         popup.menu.findItem(R.id.mute_group)?.title = if (currentlyMuted) {
             getString(R.string.unmute_group)
         } else {
@@ -544,9 +510,9 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
     }
 
     private fun toggleGroupMute(groupChat: ChatListItem.GroupChatItem) {
-        val currentlyMuted = getStorage().getGroupChat(groupChat.chatId)?.muted ?: false
+        val currentlyMuted = getMimir().getGroupChat(groupChat.chatId)?.muted ?: false
         val newMuted = !currentlyMuted
-        getStorage().setGroupChatMuted(groupChat.chatId, newMuted)
+        getMimir().setGroupChatMuted(groupChat.chatId, newMuted)
         val message = if (newMuted) getString(R.string.mute_group) else getString(R.string.unmute_group)
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
@@ -558,7 +524,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             .setMessage(getString(R.string.confirm_remove_contact, contact.name))
             .setIcon(R.drawable.ic_clean_chat_outline)
             .setPositiveButton(R.string.remove_contact) { _, _ ->
-                getStorage().removeContact(contact.id)
+                getMimir().removeContact(contact.id)
                 refreshContacts()
             }
             .setNegativeButton(R.string.cancel, null)
@@ -574,7 +540,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             .setPositiveButton(getString(R.string.clear)) { _, _ ->
                 Thread {
                     try {
-                        val attachments = App.app.mimirStorage!!.clearGroupChatHistory(groupChat.chatId)
+                        val attachments = App.app.mimirApp!!.clearGroupChatHistory(groupChat.chatId)
                         val filesDir = File(filesDir, "files")
                         val cacheFilesDir = File(cacheDir, "files")
                         for (name in attachments) {
@@ -616,7 +582,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             .setMessage(R.string.confirm_delete_group)
             .setPositiveButton(R.string.menu_delete) { _, _ ->
                 if (groupChat.readOnly) {
-                    getStorage().deleteGroupChat(groupChat.chatId)
+                    getMimir().deleteGroupChat(groupChat.chatId)
                     refreshContacts()
                 } else {
                     val intent = Intent(this, ConnectionService::class.java)
@@ -651,7 +617,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
     }
 
     private fun getChatList(): List<ChatListItem> {
-        val storage = getStorage()
+        val storage = getMimir()
         val contacts = storage.getContacts()
         val groupChats = storage.getGroupChats()
 

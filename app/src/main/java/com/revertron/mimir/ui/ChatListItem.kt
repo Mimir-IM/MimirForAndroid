@@ -18,7 +18,7 @@ sealed class ChatListItem {
 
     companion object {
         const val SAVED_MESSAGES_CONTACT_ID = -100L
-        /** Draft / chat-type discriminator used by MimirStorage.getDraft/saveDraft. */
+        /** Draft / chat-type discriminator used by MimirApp.getDraft/saveDraft. */
         const val CHAT_TYPE_CONTACT = 0
         const val CHAT_TYPE_GROUP = 1
     }

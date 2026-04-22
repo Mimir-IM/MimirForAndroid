@@ -18,17 +18,22 @@ class NotificationMarkReadReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val isGroup = intent.getBooleanExtra("is_group", false)
-        val storage = App.app.mimirStorage!!
+        val storage = App.app.mimirApp ?: return
 
         if (isGroup) {
             val chatId = intent.getLongExtra("chat_id", 0)
             if (chatId == 0L) return
             storage.markAllGroupRead(chatId)
+            // Tapping an action button does NOT trigger setAutoCancel(true),
+            // so without an explicit cancel the notification just sits there
+            // and the user sees "nothing happened".
+            NotificationHelper.cancelGroupChatNotification(context, chatId)
             Log.i(TAG, "Marked all messages read in group $chatId")
         } else {
             val contactId = intent.getLongExtra("contact_id", 0)
             if (contactId == 0L) return
             storage.markAllRead(contactId)
+            NotificationHelper.cancelMessageNotification(context, contactId)
             Log.i(TAG, "Marked all messages read for contact $contactId")
         }
     }

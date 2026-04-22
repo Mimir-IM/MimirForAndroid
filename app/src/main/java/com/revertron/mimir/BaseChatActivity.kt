@@ -182,7 +182,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         setupAttachmentUI()
         setupMessageInput()
 
-        myName = getStorage().getAccount(1)?.name ?: ""
+        myName = getMimir().getAccount(1)?.name ?: ""
         // UI is updated via LocalBroadcastManager receivers.
         loadEmojiUsageCounts()
     }
@@ -512,7 +512,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
 
             // Delete the draft since message was sent
             val chatType = if (isGroupChat()) ChatListItem.CHAT_TYPE_GROUP else ChatListItem.CHAT_TYPE_CONTACT
-            getStorage().deleteDraft(chatType, getChatId())
+            getMimir().deleteDraft(chatType, getChatId())
         } else if (text.isNotEmpty() || attachment != null) {
             // Normal send flow
             editText.text?.clear()
@@ -522,7 +522,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
 
             // Delete the draft since message was sent
             val chatType = if (isGroupChat()) ChatListItem.CHAT_TYPE_GROUP else ChatListItem.CHAT_TYPE_CONTACT
-            getStorage().deleteDraft(chatType, getChatId())
+            getMimir().deleteDraft(chatType, getChatId())
         }
     }
 
@@ -624,9 +624,9 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
 
     private fun markAllMessagesAsRead() {
         if (isGroupChat()) {
-            getStorage().markAllGroupRead(getChatId())
+            getMimir().markAllGroupRead(getChatId())
         } else {
-            getStorage().markAllRead(getChatId())
+            getMimir().markAllRead(getChatId())
         }
     }
 
@@ -1415,7 +1415,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         val messageJson = data.getStringExtra("FORWARD_MESSAGE_JSON")
 
         // Get current user's pubkey for saved messages
-        val myPubkey = getStorage().getAccount(1)?.pubkey ?: ByteArray(0)
+        val myPubkey = getMimir().getAccount(1)?.pubkey ?: ByteArray(0)
 
         // Send to ConnectionService which properly handles saved messages (sending to self)
         val serviceIntent = Intent(this, ConnectionService::class.java)
@@ -1502,10 +1502,10 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
 
         if (!messageText.isNullOrEmpty() || mediaUri != null) {
             val chatType = if (isGroupChat()) ChatListItem.CHAT_TYPE_GROUP else ChatListItem.CHAT_TYPE_CONTACT
-            getStorage().saveDraft(chatType, getChatId(), messageText, mediaUri, mediaType)
+            getMimir().saveDraft(chatType, getChatId(), messageText, mediaUri, mediaType)
         } else {
             val chatType = if (isGroupChat()) ChatListItem.CHAT_TYPE_GROUP else ChatListItem.CHAT_TYPE_CONTACT
-            getStorage().deleteDraft(chatType, getChatId())
+            getMimir().deleteDraft(chatType, getChatId())
         }
     }
 
@@ -1515,7 +1515,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
      */
     private fun restoreDraft() {
         val chatType = if (isGroupChat()) ChatListItem.CHAT_TYPE_GROUP else ChatListItem.CHAT_TYPE_CONTACT
-        val draft = getStorage().getDraft(chatType, getChatId())
+        val draft = getMimir().getDraft(chatType, getChatId())
 
         if (draft != null) {
             // Restore text
@@ -1574,7 +1574,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
                         attachmentPanel.visibility = View.VISIBLE
                     } else {
                         // File no longer exists, clear the draft
-                        getStorage().deleteDraft(chatType, getChatId())
+                        getMimir().deleteDraft(chatType, getChatId())
                     }
                 } catch (e: Exception) {
                     Log.w("BaseChatActivity", "Failed to restore draft attachment: ${e.message}")

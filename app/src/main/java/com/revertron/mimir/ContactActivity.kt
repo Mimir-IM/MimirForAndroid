@@ -32,8 +32,8 @@ class ContactActivity: BaseActivity() {
         name = intent.getStringExtra("name").apply { if (this == null) finish() }!!
         host = getMimirUriHost()
 
-        val id = getStorage().getContactId(pubkey)
-        val contact = getStorage().getContact(id)
+        val id = getMimir().getContactId(pubkey)
+        val contact = getMimir().getContact(id)
         val avatarDrawable = loadRoundedAvatar(this, contact?.avatar, 128, 8)
         if (avatarDrawable != null) {
             val avatarView = findViewById<AppCompatImageView>(R.id.avatar)
@@ -44,7 +44,7 @@ class ContactActivity: BaseActivity() {
         findViewById<AppCompatTextView>(R.id.contact_name).text = name
 
         // Set contact description if available
-        val contactInfo = getStorage().getContact(id)?.info
+        val contactInfo = getMimir().getContact(id)?.info
         if (!contactInfo.isNullOrEmpty()) {
             findViewById<View>(R.id.description_section).visibility = View.VISIBLE
             findViewById<AppCompatTextView>(R.id.description_text).text = contactInfo
@@ -75,11 +75,11 @@ class ContactActivity: BaseActivity() {
         }
 
         // Mute button
-        val contactId = getStorage().getContactId(pubkey)
+        val contactId = getMimir().getContactId(pubkey)
         updateMuteButton(contactId)
         findViewById<View>(R.id.btn_mute).setOnClickListener {
-            val isMuted = getStorage().isContactMuted(contactId)
-            getStorage().setContactMuted(contactId, !isMuted)
+            val isMuted = getMimir().isContactMuted(contactId)
+            getMimir().setContactMuted(contactId, !isMuted)
             updateMuteButton(contactId)
             val message = if (!isMuted) getString(R.string.mute) else getString(R.string.unmute)
             Toast.makeText(this, "$message: $name", Toast.LENGTH_SHORT).show()
@@ -88,11 +88,11 @@ class ContactActivity: BaseActivity() {
         // Block button
         updateBlockButton()
         findViewById<View>(R.id.btn_block).setOnClickListener {
-            val wasBlocked = getStorage().isContactBlocked(pubkey)
+            val wasBlocked = getMimir().isContactBlocked(pubkey)
             if (wasBlocked) {
-                getStorage().unblockContact(pubkey)
+                getMimir().unblockContact(pubkey)
             } else {
-                getStorage().blockContact(pubkey)
+                getMimir().blockContact(pubkey)
                 // Also disconnect any currently-open session so the block takes
                 // effect immediately instead of at next reconnect.
                 App.app.mimirApp?.disconnectContact(pubkey)
@@ -156,7 +156,7 @@ class ContactActivity: BaseActivity() {
     }
 
     private fun updateMuteButton(contactId: Long) {
-        val isMuted = getStorage().isContactMuted(contactId)
+        val isMuted = getMimir().isContactMuted(contactId)
         findViewById<AppCompatImageView>(R.id.mute_icon).setImageResource(
             if (isMuted) R.drawable.ic_volume_medium else R.drawable.ic_volume_off
         )
@@ -166,7 +166,7 @@ class ContactActivity: BaseActivity() {
     }
 
     private fun updateBlockButton() {
-        val isBlocked = getStorage().isContactBlocked(pubkey)
+        val isBlocked = getMimir().isContactBlocked(pubkey)
         findViewById<AppCompatTextView>(R.id.block_text).setText(
             if (isBlocked) R.string.unblock_contact else R.string.block_contact
         )

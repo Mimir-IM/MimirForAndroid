@@ -42,7 +42,7 @@ class ChatActivity : BaseChatActivity() {
 
     private lateinit var contact: Contact
     private var isSavedMessages = false
-    private val messageProvider by lazy { MimirMessageProvider(getStorage(), this) }
+    private val messageProvider by lazy { MimirMessageProvider(getMimir(), this) }
 
     private val peerStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent) {
@@ -110,17 +110,17 @@ class ChatActivity : BaseChatActivity() {
         if (isSavedMessages) {
             // For saved messages, use special ID and current user's pubkey
             id = ChatListItem.SAVED_MESSAGES_CONTACT_ID
-            pubkey = getStorage().getAccount(1)?.pubkey ?: ByteArray(0)
+            pubkey = getMimir().getAccount(1)?.pubkey ?: ByteArray(0)
         } else {
             // Normal contact flow
             pubkey = intent.getByteArrayExtra("pubkey").apply { if (this == null) finish() }!!
-            id = getStorage().getContactId(pubkey)
+            id = getMimir().getContactId(pubkey)
         }
 
         val avatarPic = if (isSavedMessages) {
             ContextCompat.getDrawable(this, R.drawable.ic_saved_messages)
         } else {
-            getStorage().getContact(id)?.avatar?.let { loadRoundedAvatar(this, it) }
+            getMimir().getContact(id)?.avatar?.let { loadRoundedAvatar(this, it) }
         }
         contact = Contact(id, pubkey, name, avatarPic)
 
@@ -218,11 +218,11 @@ class ChatActivity : BaseChatActivity() {
     }
 
     override fun getFirstUnreadMessageId(): Long? {
-        return getStorage().getFirstUnreadId(contact.id)
+        return getMimir().getFirstUnreadId(contact.id)
     }
 
     override fun deleteMessageByIdOrGuid(messageId: Long, guid: Long) {
-        val attachmentFileName = getStorage().deleteMessage(messageId)
+        val attachmentFileName = getMimir().deleteMessage(messageId)
         // Delete attachment files if present
         if (attachmentFileName != null) {
             File(File(filesDir, "files"), attachmentFileName).delete()
@@ -231,14 +231,14 @@ class ChatActivity : BaseChatActivity() {
     }
 
     override fun getMessageForReply(messageId: Long): Pair<String, String>? {
-        val stored = getStorage().getMessage(messageId) ?: return null
+        val stored = getMimir().getMessage(messageId) ?: return null
         val message = DisplayMessage.from(stored)
         val authorName = if (message.incoming) contact.name else myName
         return Pair(authorName, message.getText(this))
     }
 
     override fun getMessageFromStorage(messageId: Long): DisplayMessage? {
-        val stored = getStorage().getMessage(messageId) ?: return null
+        val stored = getMimir().getMessage(messageId) ?: return null
         return DisplayMessage.from(stored)
     }
 
@@ -254,10 +254,10 @@ class ChatActivity : BaseChatActivity() {
 
         // Generate GUID for the reaction message
         val sendTime = getUtcTime()
-        val guid = getStorage().generateGuid(sendTime, reactionData.toByteArray())
+        val guid = getMimir().generateGuid(sendTime, reactionData.toByteArray())
 
         // Store reaction locally (type = 10)
-        getStorage().addMessage(
+        getMimir().addMessage(
             contactPubkey = contact.pubkey,
             guid = guid,
             replyTo = targetGuid,
@@ -287,15 +287,15 @@ class ChatActivity : BaseChatActivity() {
     }
 
     override fun getUnseenReactionsCount(): Int {
-        return getStorage().getUnseenReactionsCount(contact.id).toInt()
+        return getMimir().getUnseenReactionsCount(contact.id).toInt()
     }
 
     override fun scrollToFirstUnseenReaction(): Boolean {
-        val target = getStorage().getFirstUnseenReaction(contact.id) ?: return false
+        val target = getMimir().getFirstUnseenReaction(contact.id) ?: return false
         val position = adapter.getMessageGuidPosition(target.targetGuid)
         if (position < 0) return false
         recyclerView.smoothScrollToPosition(position)
-        getStorage().markReactionAsSeen(contact.id, target.reactionGuid)
+        getMimir().markReactionAsSeen(contact.id, target.reactionGuid)
         adapter.notifyMessageChanged(target.targetGuid)
         return true
     }
@@ -354,7 +354,7 @@ class ChatActivity : BaseChatActivity() {
                     val pubkey = intent.getByteArrayExtra("pubkey") ?: return
                     val guid = intent.getLongExtra("guid", 0)
                     if (contact.pubkey.contentEquals(pubkey)) {
-                        val msg = getStorage().getMessageByGuid(guid)
+                        val msg = getMimir().getMessageByGuid(guid)
                         if (msg != null) {
                             onMessageDelivered(msg.id, true)
                         }
@@ -412,7 +412,7 @@ class ChatActivity : BaseChatActivity() {
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
         super.onPrepareOptionsMenu(menu)
         if (!isSavedMessages) {
-            val isMuted = getStorage().isContactMuted(contact.id)
+            val isMuted = getMimir().isContactMuted(contact.id)
             menu.findItem(R.id.mute_contact)?.title = if (isMuted) {
                 getString(R.string.unmute)
             } else {
@@ -472,9 +472,9 @@ class ChatActivity : BaseChatActivity() {
     }
 
     private fun toggleMuteContact() {
-        val isMuted = getStorage().isContactMuted(contact.id)
+        val isMuted = getMimir().isContactMuted(contact.id)
         val newMutedStatus = !isMuted
-        getStorage().setContactMuted(contact.id, newMutedStatus)
+        getMimir().setContactMuted(contact.id, newMutedStatus)
         val message = if (newMutedStatus) {
             getString(R.string.mute) + ": " + contact.name
         } else {
@@ -510,7 +510,7 @@ class ChatActivity : BaseChatActivity() {
         intent.putExtra("pubkey", contact.pubkey)
         startService(intent)
 
-        val storage = getStorage()
+        val storage = getMimir()
         val contactId = storage.getContactId(contact.pubkey)
         val name = storage.getContact(contactId)?.name ?: contact.name
 
@@ -545,7 +545,7 @@ class ChatActivity : BaseChatActivity() {
     private fun removeContact() {
         Thread {
             try {
-                getStorage().removeContact(contact.id)
+                getMimir().removeContact(contact.id)
                 Log.i(TAG, "Removed contact ${contact.id}")
                 runOnUiThread { finish() }
             } catch (e: Exception) {
@@ -572,7 +572,7 @@ class ChatActivity : BaseChatActivity() {
     private fun clearHistory() {
         Thread {
             try {
-                val attachments = getStorage().clearContactHistory(contact.id)
+                val attachments = getMimir().clearContactHistory(contact.id)
                 val filesDir = File(filesDir, "files")
                 val cacheFilesDir = File(cacheDir, "files")
                 for (name in attachments) {

@@ -64,7 +64,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
                     if (intentChatId == chatId) {
                         val userPubkey = intent.getByteArrayExtra("user_pubkey")
                         val memberName = if (userPubkey != null) {
-                            getStorage().getMemberInfo(chatId, userPubkey)?.nickname
+                            getMimir().getMemberInfo(chatId, userPubkey)?.nickname
                                 ?: Hex.toHexString(userPubkey).take(16)
                         } else {
                             "User"
@@ -81,7 +81,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
                         val permissions = intent.getIntExtra("permissions", 0)
 
                         val memberName = if (userPubkey != null) {
-                            getStorage().getMemberInfo(chatId, userPubkey)?.nickname
+                            getMimir().getMemberInfo(chatId, userPubkey)?.nickname
                                 ?: Hex.toHexString(userPubkey).take(16)
                         } else {
                             "User"
@@ -144,7 +144,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
         }
 
         // Get current user's public key from storage
-        val account = getStorage().getAccount(1)
+        val account = getMimir().getAccount(1)
         if (account != null) {
             currentUserPubkey = account.pubkey
         } else {
@@ -153,7 +153,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
         }
 
         // Load group chat info from database
-        val chatInfo = getStorage().getGroupChat(chatId)
+        val chatInfo = getMimir().getGroupChat(chatId)
         if (chatInfo != null) {
             ownerPubkey = chatInfo.ownerPubkey
         } else {
@@ -202,7 +202,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
         findViewById<AppCompatTextView>(R.id.group_name).text = chatName
 
         // Load and set avatar
-        val chatInfo2 = getStorage().getGroupChat(chatId)
+        val chatInfo2 = getMimir().getGroupChat(chatId)
         val avatarDrawable = loadRoundedAvatar(this, chatInfo2?.avatar, 128, 8)
         val avatarView = findViewById<AppCompatImageView>(R.id.avatar)
         if (avatarDrawable != null) {
@@ -215,7 +215,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
         }
 
         // Set member count
-        memberCount = getStorage().getMemberCount(chatId)
+        memberCount = getMimir().getMemberCount(chatId)
         updateMemberCount()
 
         // Set description if available
@@ -349,14 +349,14 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
     }
 
     private fun updateOnlineCount() {
-        onlineCount = getStorage().getOnlineMemberCount(chatId)
+        onlineCount = getMimir().getOnlineMemberCount(chatId)
         Log.d(TAG, "updateOnlineCount: chat=$chatId onlineCount=$onlineCount")
         updateMemberCount()
     }
 
     private fun loadMembers() {
         Thread {
-            val members = getStorage().getMembers(chatId).toMutableList()
+            val members = getMimir().getMembers(chatId).toMutableList()
 
             // Look up current user's permissions from member list
             val myPubkeyHex = Hex.toHexString(currentUserPubkey)
@@ -396,7 +396,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
     }
 
     private fun openContactSelector() {
-        val members = getStorage().getMembers(chatId)
+        val members = getMimir().getMembers(chatId)
         val memberPubkeys = members.map { Hex.decode(it.pubkey) }.toTypedArray()
 
         val intent = Intent(this, ContactSelectorActivity::class.java).apply {
@@ -431,7 +431,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
     }
 
     private fun refreshChatInfo() {
-        val chatInfo = getStorage().getGroupChat(chatId)
+        val chatInfo = getMimir().getGroupChat(chatId)
         if (chatInfo != null) {
             chatName = chatInfo.name
             chatDescription = chatInfo.description ?: ""
@@ -451,7 +451,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
             }
 
             // Update avatar
-            val refreshedChat = getStorage().getGroupChat(chatId)
+            val refreshedChat = getMimir().getGroupChat(chatId)
             val refreshedAvatar = loadRoundedAvatar(this, refreshedChat?.avatar, 128, 8)
             val avatarView = findViewById<AppCompatImageView>(R.id.avatar)
             if (refreshedAvatar != null) {
@@ -689,10 +689,10 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
     }
 
     private fun toggleMute() {
-        val currentlyMuted = getStorage().getGroupChat(chatId)?.muted ?: false
+        val currentlyMuted = getMimir().getGroupChat(chatId)?.muted ?: false
         val newMutedStatus = !currentlyMuted
 
-        getStorage().setGroupChatMuted(chatId, newMutedStatus)
+        getMimir().setGroupChatMuted(chatId, newMutedStatus)
         val message = if (newMutedStatus) {
             getString(R.string.mute_group)
         } else {
@@ -705,7 +705,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
     }
 
     private fun updateMuteButton() {
-        val currentlyMuted = getStorage().getGroupChat(chatId)?.muted ?: false
+        val currentlyMuted = getMimir().getGroupChat(chatId)?.muted ?: false
         val muteIcon = findViewById<AppCompatImageView>(R.id.mute_icon)
         val muteText = findViewById<AppCompatTextView>(R.id.mute_text)
 

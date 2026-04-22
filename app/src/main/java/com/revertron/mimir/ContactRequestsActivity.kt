@@ -40,7 +40,7 @@ class ContactRequestsActivity : BaseActivity(), ContactRequestsAdapter.Listener 
     }
 
     override fun onAccept(request: StoredContactRequest) {
-        val storage = getStorage()
+        val storage = getMimir()
         storage.acceptContactRequest(request.id)
 
         // Send acceptance response to the peer via ConnectionService
@@ -55,7 +55,7 @@ class ContactRequestsActivity : BaseActivity(), ContactRequestsAdapter.Listener 
     }
 
     override fun onDecline(request: StoredContactRequest) {
-        val storage = getStorage()
+        val storage = getMimir()
         storage.deleteContactRequest(request.id)
 
         startService(Intent(this, ConnectionService::class.java).apply {
@@ -70,7 +70,7 @@ class ContactRequestsActivity : BaseActivity(), ContactRequestsAdapter.Listener 
 
     private fun refreshRequests() {
         val recycler = findViewById<RecyclerView>(R.id.requests_list)
-        val requests = getStorage().getContactRequests()
+        val requests = getMimir().getContactRequests()
 
         if (recycler.adapter == null) {
             recycler.adapter = ContactRequestsAdapter(requests, this)

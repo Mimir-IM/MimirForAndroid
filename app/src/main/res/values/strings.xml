@@ -421,5 +421,16 @@
     <string name="sort_by_size">Sort by size</string>
     <string name="sort_by_date">Sort by date</string>
     <string name="migration_in_progress">Updating database, please wait…</string>
+    <string name="migration_progress_status">Step: %1$s · %2$d %%</string>
+    <string name="migration_failed_title">Migration failed</string>
+    <string name="migration_failed_body">Your data couldn\'t be imported: %1$s</string>
+    <string name="migration_retry">Retry</string>
+    <string name="channel_name_migration">Data import</string>
+    <string name="channel_description_migration">Shows progress while importing your existing Mimir data</string>
+    <string name="migration_notification_title">Importing Mimir data…</string>
+    <string name="migration_notification_body">%1$s · %2$d %%</string>
+    <string name="introduction_welcome_title">Welcome to Mimir</string>
+    <string name="introduction_welcome_body">A peer-to-peer, serverless messenger. No accounts, no phone numbers. Your messages stay on your device and travel directly to your contacts.</string>
+    <string name="introduction_get_started">Get started</string>
 
 </resources>

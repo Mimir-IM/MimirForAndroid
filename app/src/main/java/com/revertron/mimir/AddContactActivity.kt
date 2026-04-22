@@ -45,20 +45,20 @@ class AddContactActivity : BaseActivity() {
             val pubkey = Hex.decode(pubKeyString)
 
             // Check if it's our own key
-            val myPubkey = getStorage().getAccount(1)?.pubkey ?: ByteArray(0)
+            val myPubkey = getMimir().getAccount(1)?.pubkey ?: ByteArray(0)
             if (pubkey.contentEquals(myPubkey)) {
                 Toast.makeText(this, R.string.you_cant_add_yourself, Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
 
             // Check if contact already exists
-            val existingId = getStorage().getContactId(pubkey)
+            val existingId = getMimir().getContactId(pubkey)
             if (existingId > 0) {
                 Toast.makeText(this, R.string.contact_already_added, Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
 
-            getStorage().addContact(pubkey, name)
+            getMimir().addContact(pubkey, name)
 
             // Send a contact request so the other side can add us back
             val intent = Intent(this, ConnectionService::class.java).apply {

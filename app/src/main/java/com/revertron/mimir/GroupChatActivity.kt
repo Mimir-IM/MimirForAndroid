@@ -67,7 +67,7 @@ class GroupChatActivity : BaseChatActivity() {
     private var mediatorAddress: ByteArray? = null
     private lateinit var publicKey: ByteArray
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val messageProvider by lazy { MimirMessageProvider(App.app.mimirStorage!!, this) }
+    private val messageProvider by lazy { MimirMessageProvider(App.app.mimirApp!!, this) }
 
     private val mediatorReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -138,7 +138,7 @@ class GroupChatActivity : BaseChatActivity() {
                     val chatId = intent.getLongExtra("chat_id", 0)
                     val guid = intent.getLongExtra("guid", 0)
                     if (chatId == groupChat.chatId) {
-                        val msg = getStorage().getGroupMessageByGuid(chatId, guid)
+                        val msg = getMimir().getGroupMessageByGuid(chatId, guid)
                         if (msg != null) {
                             onGroupMessageDeleted(chatId, msg.id)
                         }
@@ -148,7 +148,7 @@ class GroupChatActivity : BaseChatActivity() {
                     val chatId = intent.getLongExtra("chat_id", 0)
                     val guid = intent.getLongExtra("guid", 0L)
                     if (chatId == groupChat.chatId) {
-                        val msg = getStorage().getGroupMessageByGuid(chatId, guid)
+                        val msg = getMimir().getGroupMessageByGuid(chatId, guid)
                         if (msg != null) {
                             mainHandler.post {
                                 adapter.setMessageDelivered(msg.id, true)
@@ -236,8 +236,8 @@ class GroupChatActivity : BaseChatActivity() {
         mediatorAddress = intent.getByteArrayExtra(EXTRA_MEDIATOR_ADDRESS)
             ?: MediatorManager.getDefaultMediatorPubkey()
 
-        val memberCount = getStorage().getMemberCount(chatId)
-        val readOnly = getStorage().getGroupChat(chatId)?.readOnly ?: false
+        val memberCount = getMimir().getMemberCount(chatId)
+        val readOnly = getMimir().getGroupChat(chatId)?.readOnly ?: false
 
         if (chatId == 0L || chatName == null || mediatorAddress == null) {
             Log.e(TAG, "Missing required extras: chat_id, chat_name, or mediator_address")
@@ -246,10 +246,10 @@ class GroupChatActivity : BaseChatActivity() {
         }
 
         // Get sender pubkey from account
-        publicKey = getStorage().getAccount(1)?.pubkey ?: ByteArray(0)
+        publicKey = getMimir().getAccount(1)?.pubkey ?: ByteArray(0)
 
         // Load avatar from storage — avatar path is on the group chat object
-        val avatarPath = getStorage().getGroupChat(chatId)?.avatar ?: ""
+        val avatarPath = getMimir().getGroupChat(chatId)?.avatar ?: ""
         val avatar = if (avatarPath.isNotEmpty()) loadRoundedAvatar(this, avatarPath) else null
         groupChat = GroupChat(
             chatId = chatId,
@@ -270,7 +270,7 @@ class GroupChatActivity : BaseChatActivity() {
         setToolbarTitle(groupChat.name)
         setToolbarSubtitle(getString(R.string.member_count,
             groupChat.memberCount,
-            getStorage().getOnlineMemberCount(groupChat.chatId)))
+            getMimir().getOnlineMemberCount(groupChat.chatId)))
         setupAvatar(groupChat.avatar)
 
         // Setup message list
@@ -335,7 +335,7 @@ class GroupChatActivity : BaseChatActivity() {
     }
 
     override fun getFirstUnreadMessageId(): Long? {
-        return getStorage().getFirstUnreadGroupMessageId(groupChat.chatId)
+        return getMimir().getFirstUnreadGroupMessageId(groupChat.chatId)
     }
 
     override fun deleteMessageByIdOrGuid(messageId: Long, guid: Long) {
@@ -346,7 +346,7 @@ class GroupChatActivity : BaseChatActivity() {
             putExtra("guid", guid)
         })
         // Delete locally and clean up attachment
-        val attachmentFileName = getStorage().deleteGroupMessageByGuid(groupChat.chatId, guid)
+        val attachmentFileName = getMimir().deleteGroupMessageByGuid(groupChat.chatId, guid)
         if (attachmentFileName != null) {
             File(File(filesDir, "files"), attachmentFileName).delete()
             File(File(cacheDir, "files"), attachmentFileName).delete()
@@ -354,10 +354,10 @@ class GroupChatActivity : BaseChatActivity() {
     }
 
     override fun getMessageForReply(messageId: Long): Pair<String, String>? {
-        val message = getStorage().getGroupMessageByGuid(groupChat.chatId, messageId) ?: return null
+        val message = getMimir().getGroupMessageByGuid(groupChat.chatId, messageId) ?: return null
         val authorName = if (message.incoming) {
-            val pubkey = getStorage().getMemberPubkey(groupChat.chatId, message.contactId)
-            val member = if (pubkey != null) getStorage().getMemberInfo(groupChat.chatId, pubkey) else null
+            val pubkey = getMimir().getMemberPubkey(groupChat.chatId, message.contactId)
+            val member = if (pubkey != null) getMimir().getMemberInfo(groupChat.chatId, pubkey) else null
             member?.nickname ?: getString(R.string.unknown_nickname)
         } else {
             myName
@@ -367,7 +367,7 @@ class GroupChatActivity : BaseChatActivity() {
     }
 
     override fun getMessageFromStorage(messageId: Long): DisplayMessage? {
-        val msg = getStorage().getGroupMessage(groupChat.chatId, messageId) ?: return null
+        val msg = getMimir().getGroupMessage(groupChat.chatId, messageId) ?: return null
         return DisplayMessage.from(msg)
     }
 
@@ -382,7 +382,7 @@ class GroupChatActivity : BaseChatActivity() {
         }.toString()
 
         val sendTime = System.currentTimeMillis()
-        val guid = getStorage().generateGuid(sendTime, reactionData.toByteArray())
+        val guid = getMimir().generateGuid(sendTime, reactionData.toByteArray())
 
         // Send reaction via ConnectionService — MimirApp handles storage + encryption
         val intent = Intent(this, ConnectionService::class.java)
@@ -401,15 +401,15 @@ class GroupChatActivity : BaseChatActivity() {
     }
 
     override fun getUnseenReactionsCount(): Int {
-        return getStorage().getGroupUnseenReactionsCount(groupChat.chatId).toInt()
+        return getMimir().getGroupUnseenReactionsCount(groupChat.chatId).toInt()
     }
 
     override fun scrollToFirstUnseenReaction(): Boolean {
-        val target = getStorage().getFirstUnseenGroupReaction(groupChat.chatId) ?: return false
+        val target = getMimir().getFirstUnseenGroupReaction(groupChat.chatId) ?: return false
         val position = adapter.getMessageGuidPosition(target.targetGuid)
         if (position < 0) return false
         recyclerView.smoothScrollToPosition(position)
-        getStorage().markGroupReactionAsSeen(groupChat.chatId, target.reactionGuid)
+        getMimir().markGroupReactionAsSeen(groupChat.chatId, target.reactionGuid)
         adapter.notifyMessageChanged(target.targetGuid)
         return true
     }
@@ -488,9 +488,9 @@ class GroupChatActivity : BaseChatActivity() {
     private fun onClickOnAvatar() = fun(it: View) {
         val memberId = it.tag as? Long
         if (memberId != null) {
-            val pubKey = getStorage().getMemberPubkey(groupChat.chatId, memberId)
+            val pubKey = getMimir().getMemberPubkey(groupChat.chatId, memberId)
             if (pubKey != null) {
-                val member = getStorage().getMemberInfo(groupChat.chatId, pubKey)
+                val member = getMimir().getMemberInfo(groupChat.chatId, pubKey)
                 val intent = Intent(this, ContactActivity::class.java)
                 intent.putExtra("pubkey", pubKey)
                 intent.putExtra("name", member?.nickname ?: Hex.toHexString(pubKey).take(16))
@@ -596,7 +596,7 @@ class GroupChatActivity : BaseChatActivity() {
 
         // Update mute/unmute menu item title based on current muted status
         val muteItem = menu.findItem(R.id.mute_group)
-        val currentlyMuted = getStorage().getGroupChat(groupChat.chatId)?.muted ?: false
+        val currentlyMuted = getMimir().getGroupChat(groupChat.chatId)?.muted ?: false
 
         muteItem?.title = if (currentlyMuted) {
             getString(R.string.unmute_group)
@@ -641,9 +641,9 @@ class GroupChatActivity : BaseChatActivity() {
                 true
             }
             R.id.mute_group -> {
-                val currentlyMuted = getStorage().getGroupChat(groupChat.chatId)?.muted ?: false
+                val currentlyMuted = getMimir().getGroupChat(groupChat.chatId)?.muted ?: false
                 val newMutedStatus = !currentlyMuted
-                getStorage().setGroupChatMuted(groupChat.chatId, newMutedStatus)
+                getMimir().setGroupChatMuted(groupChat.chatId, newMutedStatus)
                 val message = if (newMutedStatus) {
                     getString(R.string.mute_group)
                 } else {
@@ -709,7 +709,7 @@ class GroupChatActivity : BaseChatActivity() {
             .setPositiveButton(R.string.menu_delete) { _, _ ->
                 if (groupChat.readOnly) {
                     // Read-only chat: just delete locally, no mediator call needed
-                    getStorage().deleteGroupChat(groupChat.chatId)
+                    getMimir().deleteGroupChat(groupChat.chatId)
                     Log.i(TAG, "Deleted read-only chat ${groupChat.chatId} from local storage")
                     finish()
                 } else {
@@ -749,7 +749,7 @@ class GroupChatActivity : BaseChatActivity() {
     private fun clearHistory() {
         Thread {
             try {
-                val attachments = getStorage().clearGroupChatHistory(groupChat.chatId)
+                val attachments = getMimir().clearGroupChatHistory(groupChat.chatId)
                 val filesDir = File(filesDir, "files")
                 val cacheFilesDir = File(cacheDir, "files")
                 for (name in attachments) {
@@ -784,7 +784,7 @@ class GroupChatActivity : BaseChatActivity() {
     fun onGroupMessageReceived(chatId: Long, id: Long, contactId: Long, type: Int, replyTo: Long): Boolean {
         if (chatId == groupChat.chatId) {
             runOnUiThread {
-                val message = getStorage().getGroupMessage(chatId, id)
+                val message = getMimir().getGroupMessage(chatId, id)
                 if (message != null) {
                     if (type == MSG_TYPE_REACTION) {
                         adapter.notifyMessageChanged(replyTo)
@@ -831,8 +831,8 @@ class GroupChatActivity : BaseChatActivity() {
     }
 
     private fun updateMemberCount() {
-        val total = getStorage().getMemberCount(groupChat.chatId)
-        val online = getStorage().getOnlineMemberCount(groupChat.chatId)
+        val total = getMimir().getMemberCount(groupChat.chatId)
+        val online = getMimir().getOnlineMemberCount(groupChat.chatId)
 
         groupChat = groupChat.copy(memberCount = total)
         findViewById<AppCompatTextView>(R.id.subtitle).text =
@@ -846,7 +846,7 @@ class GroupChatActivity : BaseChatActivity() {
     // Invite member functionality
 
     private fun openContactSelector() {
-        val members = getStorage().getMembers(groupChat.chatId)
+        val members = getMimir().getMembers(groupChat.chatId)
         val memberPubkeys = members.map { it.pubkey }.toTypedArray()
 
         val intent = Intent(this, ContactSelectorActivity::class.java).apply {

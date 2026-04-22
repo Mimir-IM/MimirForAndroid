@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/transparent" />
+    <item
+        android:drawable="@drawable/ic_mannaz_notification"
+        android:gravity="center"
+        android:width="96dp"
+        android:height="96dp" />
+</layer-list>

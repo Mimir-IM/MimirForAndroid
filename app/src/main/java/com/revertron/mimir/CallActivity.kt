@@ -145,8 +145,8 @@ class CallActivity: BaseActivity() {
             outgoing = true
         }
 
-        val id = getStorage().getContactId(pubkey)
-        val avatarPath = getStorage().getContact(id)?.avatar
+        val id = getMimir().getContactId(pubkey)
+        val avatarPath = getMimir().getContact(id)?.avatar
         val avatarPic = if (!avatarPath.isNullOrEmpty()) loadRoundedAvatar(this, avatarPath, 128, 6) else null
         contact = Contact(id, pubkey, name, avatarPic)
 

@@ -153,7 +153,7 @@ class ForwardSelectorActivity : BaseActivity(), View.OnClickListener {
     }
 
     private fun getChatList(): List<ChatListItem> {
-        val storage = getStorage()
+        val storage = getMimir()
         val contacts = storage.getContacts()
         val groupChats = storage.getGroupChats()
 

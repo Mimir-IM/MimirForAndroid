@@ -55,7 +55,7 @@ class NotificationReplyReceiver : BroadcastReceiver() {
         val chatId = intent.getLongExtra("chat_id", 0)
         if (chatId == 0L) return
 
-        val storage = App.app.mimirStorage!!
+        val storage = App.app.mimirApp!!
         val messageBytes = replyText.toByteArray()
         val sendTime = getUtcTimeMs()
         val guid = storage.generateGuid(sendTime, messageBytes)

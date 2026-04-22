@@ -183,7 +183,7 @@ class GroupChatEditActivity : BaseActivity() {
         descriptionEdit.setText(originalDescription)
 
         // Load avatar from database
-        val chatInfo = getStorage().getGroupChat(chatId)
+        val chatInfo = getMimir().getGroupChat(chatId)
         if (chatInfo?.avatar != null && chatInfo.avatar.isNotEmpty()) {
             val avatar = loadRoundedAvatar(this, chatInfo.avatar, 128, 8)
             avatarImage.setImageDrawable(avatar)

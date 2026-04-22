@@ -68,17 +68,23 @@ class NetState(val context: Context) : ConnectivityManager.NetworkCallback() {
     }
 
     override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
-        val interfaces = getInterfaces(linkProperties)
-        val serialized = interfaces.map { "${it.name},${it.index},${it.addrs.joinToString("|")}" }.toTypedArray()
-        val intent = Intent(context, ConnectionService::class.java)
-        intent.putExtra("command", "interfaces")
-        intent.putExtra("interfaces", serialized)
+        // This fires on ConnectivityThread (an Android system thread). Any
+        // uncaught exception here kills the process, so wrap the whole handler.
         try {
-            context.startService(intent)
-        } catch (e: IllegalStateException) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
+            val interfaces = getInterfaces(linkProperties)
+            val serialized = interfaces.map { "${it.name},${it.index},${it.addrs.joinToString("|")}" }.toTypedArray()
+            val intent = Intent(context, ConnectionService::class.java)
+            intent.putExtra("command", "interfaces")
+            intent.putExtra("interfaces", serialized)
+            try {
+                context.startService(intent)
+            } catch (e: IllegalStateException) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                }
             }
+        } catch (t: Throwable) {
+            Log.w(TAG, "onLinkPropertiesChanged: swallowed ${t.javaClass.simpleName}: ${t.message}")
         }
     }
 
@@ -126,17 +132,30 @@ class NetState(val context: Context) : ConnectivityManager.NetworkCallback() {
 
     fun getInterfaces(linkProps: LinkProperties): List<AndroidNetworkInterface> {
         val name = linkProps.interfaceName ?: return emptyList()
-        val iface = NetworkInterface.getByName(name) ?: return emptyList()
+        // NetworkInterface.getByName can crash deep inside Android's libcore
+        // ("Attempt to read from field 'java.util.List java.net.NetworkInterface.childs'
+        // on a null object reference") when the interface is in a transient state
+        // during rapid network churn. That exception fires on ConnectivityThread,
+        // so an uncaught throw tears down the whole process. Swallow it —
+        // returning an empty list just means this interface update is skipped
+        // and the next onLinkPropertiesChanged will try again.
+        val iface = try {
+            NetworkInterface.getByName(name)
+        } catch (t: Throwable) {
+            Log.w(TAG, "NetworkInterface.getByName($name) threw ${t.javaClass.simpleName}: ${t.message}")
+            return emptyList()
+        } ?: return emptyList()
         val addrs = linkProps.linkAddresses
             .map { it.address }
             .filterIsInstance<Inet6Address>()
             .filter { it.isLinkLocalAddress }
             .mapNotNull { it.hostAddress }
 
+        val index = try { iface.index.toUInt() } catch (t: Throwable) { return emptyList() }
         return listOf(
             AndroidNetworkInterface(
                 name = name,
-                index = iface.index.toUInt(),
+                index = index,
                 addrs = addrs
             )
         )
