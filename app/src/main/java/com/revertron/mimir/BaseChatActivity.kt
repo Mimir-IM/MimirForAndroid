@@ -1706,6 +1706,15 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             findViewById<View>(R.id.recording_overlay).visibility = View.GONE
         }
         saveDraft()
+        // Clear the foreground-chat marker so notifications resume.
+        // Compare-and-clear so a switch to a sibling chat (which already
+        // overwrote the marker in onResume) doesn't accidentally clear it.
+        val id = getChatId()
+        if (isGroupChat()) {
+            if (App.app.foregroundGroupChatId == id) App.app.foregroundGroupChatId = null
+        } else {
+            if (App.app.foregroundContactId == id) App.app.foregroundContactId = null
+        }
     }
 
     override fun onStop() {
@@ -1726,9 +1735,11 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         if (isGroupChat()) {
             NotificationHelper.cancelGroupChatNotification(this, id)
             NotificationHelper.clearGroupMessageHistory(id)
+            App.app.foregroundGroupChatId = id
         } else {
             NotificationHelper.cancelMessageNotification(this, id)
             NotificationHelper.clearMessageHistory(id)
+            App.app.foregroundContactId = id
         }
     }
 

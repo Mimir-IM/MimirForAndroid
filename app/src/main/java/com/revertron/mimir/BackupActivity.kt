@@ -29,19 +29,63 @@ import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import kotlin.system.exitProcess
 
+/**
+ * Backup/restore for the Mimir data directory.
+ *
+ * On-disk layout (must match what the Rust storage layer writes — see
+ * `MimirStorage::new` and `save_avatar`):
+ * ```
+ * <filesDir>/mimir/                 ← data_dir passed to MimirApp.open
+ *     mimir.db (+ -wal, -shm)       ← SQLite database
+ *     avatars/                      ← account + contact avatars
+ *     group_avatars/<chat_id>/      ← chat picture + per-member avatars
+ *         chat.avatar
+ *         <pubkey_hex>.avatar
+ *     invite_avatars/               ← pending group invite previews
+ *     request_avatars/              ← pending contact request previews
+ * <filesDir>/files/                 ← message attachments (configured via
+ *                                     AppConfig.attachmentsDir)
+ * <appDataDir>/shared_prefs/        ← Android SharedPreferences
+ * ```
+ *
+ * Backup archive entry format:
+ *   `mimir.db`                              — DB snapshot via VACUUM INTO
+ *   `mimir/avatars/<file>`                  — every file under data_dir
+ *   `mimir/group_avatars/<chat_id>/<file>`    (excluding the live DB +
+ *   `mimir/invite_avatars/<file>`             sidecars; those go through
+ *   `mimir/request_avatars/<file>`            VACUUM INTO instead)
+ *   `files/<file>`                          — attachments
+ *   `shared_prefs/<file>`                   — preferences
+ *
+ * On import, both the new layout and the legacy intermediate layout
+ * (top-level `avatars/` etc.) are recognized so users restoring an old
+ * backup made by the broken release still get something useful.
+ */
 class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
 
     companion object {
         private const val TAG = "BackupActivity"
         /** On-disk SQLite filename managed by MimirApp. */
         private const val DATABASE_NAME = "mimir.db"
-        /** Subdirectory of filesDir that holds the Rust-owned DB + sidecars. */
-        private const val DATABASE_DIR = "mimir"
+        /** Subdirectory of filesDir that holds the Rust-owned DB + sidecars
+         *  + every avatar subdir. Single rooted path makes export/import
+         *  one walk and one delete. */
+        private const val MIMIR_DIR = "mimir"
         private const val BACKUP_FILE_PREFIX = "mimir_backup_"
+
+        /** Subdirectories under `<filesDir>/mimir/` that the Rust storage
+         *  layer writes to. Used by export and import-clean alike so the
+         *  list lives in one place. */
+        private val MIMIR_SUBDIRS = listOf(
+            "avatars",
+            "group_avatars",
+            "invite_avatars",
+            "request_avatars",
+        )
     }
 
     /** Absolute File handle for the current MimirApp database. */
-    private fun mimirDbFile(): File = File(File(filesDir, DATABASE_DIR), DATABASE_NAME)
+    private fun mimirDbFile(): File = File(File(filesDir, MIMIR_DIR), DATABASE_NAME)
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var progressDialog: AlertDialog? = null
@@ -174,9 +218,8 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
         showProgressDialog(R.string.backup_exporting)
 
         // Capture paths on main thread before background work
-        val avatarsDir = File(filesDir, "avatars")
-        val mediaFilesDir = File(filesDir, "files")
-        val appFilesDir = filesDir
+        val mimirDir = File(filesDir, MIMIR_DIR)
+        val attachmentsDir = File(filesDir, "files")
         val prefsDir = File(applicationInfo.dataDir, "shared_prefs")
         val snapshotFile = File(cacheDir, "backup_snapshot.db")
 
@@ -197,24 +240,23 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
                         addFileToZip(zipOut, snapshotFile, DATABASE_NAME)
                     }
 
-                    // Export avatars directory
-                    if (avatarsDir.exists()) {
-                        addDirectoryToZip(zipOut, avatarsDir, "avatars")
-                    }
-
-                    // Export files directory
-                    if (mediaFilesDir.exists()) {
-                        addDirectoryToZip(zipOut, mediaFilesDir, "files")
-                    }
-
-                    // Export group chat avatars directories (avatars_*)
-                    appFilesDir.listFiles()?.forEach { file ->
-                        if (file.isDirectory && file.name.startsWith("avatars_")) {
-                            addDirectoryToZip(zipOut, file, file.name)
+                    // Walk every Rust-managed avatar subdir under the data
+                    // dir. Each one becomes `mimir/<sub>/...` inside the
+                    // archive so import can put it back without ambiguity.
+                    for (sub in MIMIR_SUBDIRS) {
+                        val dir = File(mimirDir, sub)
+                        if (dir.exists()) {
+                            addDirectoryToZip(zipOut, dir, "$MIMIR_DIR/$sub")
                         }
                     }
 
-                    // Export shared preferences
+                    // Message attachments live OUTSIDE mimir/ — they sit in
+                    // <filesDir>/files/ because the attachments dir is
+                    // configured separately in AppConfig.attachmentsDir.
+                    if (attachmentsDir.exists()) {
+                        addDirectoryToZip(zipOut, attachmentsDir, "files")
+                    }
+
                     if (prefsDir.exists()) {
                         addDirectoryToZip(zipOut, prefsDir, "shared_prefs")
                         Log.i(TAG, "Exported shared preferences")
@@ -271,6 +313,7 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
 
         // Capture paths on main thread before background work
         val dbPath = mimirDbFile()
+        val mimirDir = File(filesDir, MIMIR_DIR)
         val appFilesDir = filesDir
         val appDataDir = applicationInfo.dataDir
 
@@ -324,41 +367,20 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
                         val entryName = entry.name
 
                         if (entry.isDirectory) {
-                            // Create directory
-                            val dir = if (entryName.startsWith("avatars") || entryName.startsWith("files")) {
-                                File(appFilesDir, entryName)
-                            } else {
-                                File(appFilesDir, entryName)
-                            }
-                            dir.mkdirs()
+                            // Create directory mirror of whatever the entry
+                            // names — placement is decided when we hit a
+                            // file inside it, so just ensure path exists.
+                            val dir = resolveImportPath(entryName, appFilesDir, appDataDir, dbPath)
+                            dir?.mkdirs()
                         } else {
-                            // Extract file
-                            val targetFile = when {
-                                entryName == DATABASE_NAME -> {
-                                    dbPath.parentFile?.mkdirs()
-                                    dbPath
-                                }
-                                entryName.startsWith("avatars/") ||
-                                entryName.startsWith("files/") ||
-                                entryName.startsWith("avatars_") -> {
-                                    val file = File(appFilesDir, entryName)
-                                    file.parentFile?.mkdirs()
-                                    file
-                                }
-                                entryName.startsWith("shared_prefs/") -> {
-                                    val file = File(appDataDir, entryName)
-                                    file.parentFile?.mkdirs()
-                                    file
-                                }
-                                else -> {
-                                    Log.w(TAG, "Skipping unknown file: $entryName")
-                                    zipIn.closeEntry()
-                                    entry = zipIn.nextEntry
-                                    continue
-                                }
+                            val targetFile = resolveImportPath(entryName, appFilesDir, appDataDir, dbPath)
+                            if (targetFile == null) {
+                                Log.w(TAG, "Skipping unknown file: $entryName")
+                                zipIn.closeEntry()
+                                entry = zipIn.nextEntry
+                                continue
                             }
-
-                            // Write file
+                            targetFile.parentFile?.mkdirs()
                             FileOutputStream(targetFile).use { output ->
                                 zipIn.copyTo(output)
                             }
@@ -414,6 +436,44 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
         }.start()
     }
 
+    /**
+     * Map a zip entry name to the on-disk destination, recognizing both
+     * the new layout and the legacy intermediate layout. Returns `null`
+     * when the entry name doesn't match any known prefix (caller should
+     * skip it).
+     */
+    private fun resolveImportPath(entryName: String, appFilesDir: File, appDataDir: String, dbPath: File): File? {
+        // Normalize away any leading "./" some zip writers produce.
+        val name = entryName.trimStart('/').removePrefix("./")
+        return when {
+            // The DB always lives at the top of the archive.
+            name == DATABASE_NAME -> dbPath
+            // New layout: everything under mimir/ goes back into <filesDir>/mimir/.
+            name.startsWith("$MIMIR_DIR/") -> File(appFilesDir, name)
+            // Attachments are stored at the top level by both layouts.
+            name == "files" || name.startsWith("files/") -> File(appFilesDir, name)
+            // Shared prefs live under the app's data dir, not filesDir.
+            name == "shared_prefs" || name.startsWith("shared_prefs/") -> File(appDataDir, name)
+            // Legacy layout (intermediate broken release): top-level
+            // `avatars/`, `avatars_<chat_id>/` directories. Re-home them
+            // under the new <filesDir>/mimir/ tree so a restored backup
+            // matches what the current Rust code actually reads.
+            name == "avatars" || name.startsWith("avatars/") ->
+                File(File(appFilesDir, MIMIR_DIR), name)
+            name.startsWith("avatars_") -> {
+                // Legacy per-chat dir like avatars_123/<pubkey>.jpg —
+                // move into group_avatars/<chat_id>/<...>.
+                val rest = name.removePrefix("avatars_")
+                val slashIdx = rest.indexOf('/')
+                if (slashIdx <= 0) return null
+                val chatId = rest.substring(0, slashIdx)
+                val tail = rest.substring(slashIdx + 1)
+                File(File(appFilesDir, MIMIR_DIR), "group_avatars/$chatId/$tail")
+            }
+            else -> null
+        }
+    }
+
     private fun isValidBackupFile(uri: Uri): Boolean {
         try {
             val inputStream = contentResolver.openInputStream(uri) ?: return false
@@ -424,7 +484,7 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
             ZipInputStream(inputStream).use { zipIn ->
                 var entry = zipIn.nextEntry
                 while (entry != null) {
-                    val entryName = entry.name
+                    val entryName = entry.name.trimStart('/').removePrefix("./")
                     foundEntries.add(entryName)
 
                     // Check for required database file
@@ -432,15 +492,15 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
                         hasDatabaseFile = true
                     }
 
-                    // Validate that all entries match expected patterns
+                    // Validate that all entries match expected patterns —
+                    // both new (`mimir/...`) and legacy (`avatars/...`,
+                    // `avatars_*`) layouts are accepted.
                     val isValidEntry = entryName == DATABASE_NAME ||
-                            entryName.startsWith("avatars/") ||
-                            entryName.startsWith("files/") ||
-                            entryName.startsWith("avatars_") ||
-                            entryName.startsWith("shared_prefs/") ||
-                            entryName == "avatars" ||
-                            entryName == "files" ||
-                            entryName == "shared_prefs"
+                            entryName == MIMIR_DIR || entryName.startsWith("$MIMIR_DIR/") ||
+                            entryName == "files" || entryName.startsWith("files/") ||
+                            entryName == "shared_prefs" || entryName.startsWith("shared_prefs/") ||
+                            entryName == "avatars" || entryName.startsWith("avatars/") ||
+                            entryName.startsWith("avatars_")
 
                     if (!isValidEntry) {
                         Log.w(TAG, "Invalid entry found in backup: $entryName")
@@ -467,49 +527,49 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
         }
     }
 
+    /**
+     * Wipe the on-disk state the importer is about to repopulate. Covers
+     * BOTH the new and legacy layouts so a re-import doesn't leave stale
+     * files (e.g. an old `<filesDir>/avatars/` from before this release)
+     * lying around to be picked up by some future code path that scans
+     * legacy locations.
+     */
     private fun deleteExistingData() {
         try {
-            // Delete database file + its WAL/SHM sidecars (MimirApp-owned).
-            val dbFile = mimirDbFile()
-            if (dbFile.exists()) {
-                val deleted = dbFile.delete()
-                Log.i(TAG, "Database file deleted: $deleted")
-            }
-            val walFile = File(dbFile.absolutePath + "-wal")
-            if (walFile.exists()) {
-                val deleted = walFile.delete()
-                Log.i(TAG, "WAL file deleted: $deleted")
-            }
-            val shmFile = File(dbFile.absolutePath + "-shm")
-            if (shmFile.exists()) {
-                val deleted = shmFile.delete()
-                Log.i(TAG, "SHM file deleted: $deleted")
+            val appFilesDir = filesDir
+
+            // New layout — entire <filesDir>/mimir/ gets nuked. The DB
+            // file gets re-extracted from the archive immediately after.
+            val mimirDir = File(appFilesDir, MIMIR_DIR)
+            if (mimirDir.exists()) {
+                val deleted = mimirDir.deleteRecursively()
+                Log.i(TAG, "Mimir data dir deleted: $deleted")
             }
 
-            // Delete avatars directory
-            val avatarsDir = File(filesDir, "avatars")
-            if (avatarsDir.exists()) {
-                val deleted = avatarsDir.deleteRecursively()
-                Log.i(TAG, "Avatars directory deleted: $deleted")
+            // Attachments dir — outside mimir/ in both layouts.
+            val attachmentsDir = File(appFilesDir, "files")
+            if (attachmentsDir.exists()) {
+                val deleted = attachmentsDir.deleteRecursively()
+                Log.i(TAG, "Attachments directory deleted: $deleted")
             }
 
-            // Delete files directory
-            val filesDirectory = File(filesDir, "files")
-            if (filesDirectory.exists()) {
-                val deleted = filesDirectory.deleteRecursively()
-                Log.i(TAG, "Files directory deleted: $deleted")
+            // Legacy paths — only present on devices upgraded from the
+            // intermediate broken release. Sweep them so a no-op restore
+            // can't resurrect stale avatars under names the new code no
+            // longer reads.
+            val legacyAvatars = File(appFilesDir, "avatars")
+            if (legacyAvatars.exists()) {
+                legacyAvatars.deleteRecursively()
+                Log.i(TAG, "Legacy avatars/ dir deleted")
             }
-
-            // Delete group chat avatars directories (avatars_*)
-            val appFilesDir = getFilesDir()
             appFilesDir.listFiles()?.forEach { file ->
                 if (file.isDirectory && file.name.startsWith("avatars_")) {
-                    val deleted = file.deleteRecursively()
-                    Log.i(TAG, "Group avatars directory ${file.name} deleted: $deleted")
+                    file.deleteRecursively()
+                    Log.i(TAG, "Legacy ${file.name}/ dir deleted")
                 }
             }
 
-            // Delete shared preferences directory
+            // Shared preferences directory.
             val prefsDir = File(applicationInfo.dataDir, "shared_prefs")
             if (prefsDir.exists()) {
                 val deleted = prefsDir.deleteRecursively()

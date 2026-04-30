@@ -412,6 +412,30 @@
     <string name="file_server_pubkey_dialog_title">File server public key</string>
     <string name="file_server_pubkey_hint">Hex-encoded public key</string>
 
+    <string name="call_mediator_pubkey">Call mediator</string>
+    <string name="call_mediator_pubkey_desc">Public key of the server that relays audio for group calls.</string>
+    <string name="call_mediator_pubkey_dialog_title">Call mediator public key</string>
+    <string name="call_mediator_pubkey_hint">Hex-encoded public key (64 chars)</string>
+
+    <string name="new_group_call">New group call</string>
+    <string name="group_call">Group call</string>
+    <string name="group_call_needs_mediator">Set a call mediator in Advanced settings first.</string>
+    <string name="group_call_invite_link">Invite link</string>
+    <string name="group_call_copy_link">Copy link</string>
+    <string name="group_call_invite_users">Invite users</string>
+    <string name="group_call_link_copied">Invite link copied</string>
+    <string name="group_call_leave">Leave</string>
+    <string name="group_call_display_name_hint">Your name in this call</string>
+    <string name="group_call_start">Start</string>
+    <string name="group_call_join">Join</string>
+    <string name="group_call_invalid_link">Invalid group-call invite link.</string>
+    <string name="unknown_link">Unknown Mimir link.</string>
+    <string name="group_call_mute">Mute</string>
+    <string name="group_call_unmute">Unmute</string>
+    <string name="group_call_speaker">Speaker</string>
+    <string name="group_call_you">you</string>
+    <string name="group_call_mic_permission_denied">Microphone permission is required for calls.</string>
+
     <string name="manage_files">Manage files</string>
     <string name="manage_files_desc">View and delete stored files</string>
     <string name="no_files">No files stored</string>
@@ -432,5 +456,6 @@
     <string name="introduction_welcome_title">Welcome to Mimir</string>
     <string name="introduction_welcome_body">A peer-to-peer, serverless messenger. No accounts, no phone numbers. Your messages stay on your device and travel directly to your contacts.</string>
     <string name="introduction_get_started">Get started</string>
+    <string name="use_this_name">Use this name:</string>
 
 </resources>

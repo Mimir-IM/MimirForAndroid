@@ -358,9 +358,9 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
         Thread {
             val members = getMimir().getMembers(chatId).toMutableList()
 
-            // Look up current user's permissions from member list
-            val myPubkeyHex = Hex.toHexString(currentUserPubkey)
-            val me = members.find { it.pubkey == myPubkeyHex }
+            // Look up current user's permissions from member list. Pubkey is
+            // a raw 32-byte ByteArray now — compare bytes, not hex strings.
+            val me = members.find { it.pubkey.contentEquals(currentUserPubkey) }
             val perms = me?.permissions ?: 0
 
             // Sort members: online first, then owner, then admins/moderators, then everyone else
@@ -368,7 +368,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
                 { !it.online }, // Online members first
                 { (it.permissions and PERM_OWNER) == 0 }, // Owner first among online/offline groups
                 { (it.permissions and (PERM_ADMIN or PERM_MOD)) == 0 }, // Admins/moderators second
-                { it.nickname.ifEmpty { it.pubkey.take(16) } } // Then by name
+                { it.nickname.ifEmpty { Hex.toHexString(it.pubkey).take(16) } } // Then by name
             ))
 
             runOnUiThread {
@@ -397,7 +397,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
 
     private fun openContactSelector() {
         val members = getMimir().getMembers(chatId)
-        val memberPubkeys = members.map { Hex.decode(it.pubkey) }.toTypedArray()
+        val memberPubkeys = members.map { it.pubkey }.toTypedArray()
 
         val intent = Intent(this, ContactSelectorActivity::class.java).apply {
             putExtra(ContactSelectorActivity.EXTRA_TITLE, getString(R.string.add_member))
@@ -501,8 +501,8 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
         if (member != null) {
             // Open ContactActivity for this member
             val intent = Intent(this, ContactActivity::class.java)
-            intent.putExtra("pubkey", Hex.decode(member.pubkey))
-            intent.putExtra("name", member.nickname.ifEmpty { member.pubkey.take(16) })
+            intent.putExtra("pubkey", member.pubkey)
+            intent.putExtra("name", member.nickname.ifEmpty { Hex.toHexString(member.pubkey).take(16) })
             startActivity(intent, animFromRight.toBundle())
         }
     }
@@ -556,7 +556,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
     }
 
     private fun banUser(member: StoredMember) {
-        val memberName = member.nickname.ifEmpty { member.pubkey.take(16) }
+        val memberName = member.nickname.ifEmpty { Hex.toHexString(member.pubkey).take(16) }
 
         // Show confirmation dialog
         val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
@@ -568,7 +568,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
                 val intent = Intent(this, ConnectionService::class.java)
                 intent.putExtra("command", "mediator_ban_user")
                 intent.putExtra("chat_id", chatId)
-                intent.putExtra("user_pubkey", Hex.decode(member.pubkey))
+                intent.putExtra("user_pubkey", member.pubkey)
                 startService(intent)
 
                 Log.i(TAG, "Sent ban user request to ConnectionService")
@@ -579,7 +579,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
     }
 
     private fun changeUserRole(member: StoredMember) {
-        val memberName = member.nickname.ifEmpty { member.pubkey.take(16) }
+        val memberName = member.nickname.ifEmpty { Hex.toHexString(member.pubkey).take(16) }
 
         val PERM_USER = 0x10
 
@@ -614,7 +614,7 @@ class GroupInfoActivity : BaseActivity(), View.OnClickListener, View.OnLongClick
                     val intent = Intent(this, ConnectionService::class.java)
                     intent.putExtra("command", "mediator_change_role")
                     intent.putExtra("chat_id", chatId)
-                    intent.putExtra("user_pubkey", Hex.decode(member.pubkey))
+                    intent.putExtra("user_pubkey", member.pubkey)
                     intent.putExtra("permissions", newPermissions)
                     startService(intent)
 

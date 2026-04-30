@@ -81,6 +81,16 @@
         <item name="cornerSize">6dp</item>
     </style>
 
+    <!-- Secondary action button for in-call / similar screens. OutlinedButton
+         base + an explicit day/night foreground colour so the outline and text
+         don't fade into the surface on dark theme. -->
+    <style name="MimirOutlinedButton" parent="Widget.MaterialComponents.Button.OutlinedButton">
+        <item name="strokeColor">@color/secondary_button_fg</item>
+        <item name="android:textColor">@color/secondary_button_fg</item>
+        <item name="rippleColor">@color/secondary_button_fg</item>
+        <item name="iconTint">@color/secondary_button_fg</item>
+    </style>
+
     <!-- Theme for SplashActivity (the launcher entry point). No action bar,
          no layout — the window background shows the app logo for the brief
          moment SplashActivity decides where to route. -->

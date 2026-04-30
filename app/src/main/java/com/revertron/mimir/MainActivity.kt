@@ -210,6 +210,18 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                 startActivity(intent, animFromRight.toBundle())
                 return true
             }
+            R.id.new_group_call -> {
+                val sp = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+                val mediatorHex = sp.getString(com.revertron.mimir.ui.SettingsData.KEY_CALL_MEDIATOR_PUBKEY, null)
+                if (mediatorHex.isNullOrBlank()) {
+                    Toast.makeText(this, R.string.group_call_needs_mediator, Toast.LENGTH_LONG).show()
+                } else {
+                    val intent = Intent(this, GroupCallActivity::class.java)
+                        .putExtra(GroupCallActivity.EXTRA_MODE, GroupCallActivity.MODE_CREATE)
+                    startActivity(intent, animFromRight.toBundle())
+                }
+                return true
+            }
             android.R.id.home -> {
                 val intent = Intent(this, AccountsActivity::class.java)
                 startActivity(intent, animFromLeft.toBundle())

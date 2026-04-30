@@ -153,6 +153,23 @@ class MigrationService : Service() {
             prefs.edit { putBoolean(PREF_MIGRATED, true) }
             App.app.migrationNeeded = false
 
+            // The legacy database (and its WAL/SHM sidecars) is no longer
+            // needed — every row has been copied into mimir.db, the
+            // checkpoint above flushed the WAL, and PREF_MIGRATED is set
+            // so SplashActivity won't re-enter migration. Delete it so
+            // users don't permanently double-pay for storage.
+            //
+            // Best-effort: a failure here is logged but doesn't fail the
+            // migration (migration *did* succeed; the worst outcome is a
+            // few MB of stale file on disk).
+            runCatching {
+                if (oldDbFile.exists() && oldDbFile.delete()) {
+                    Log.i(TAG, "deleted legacy data.db after successful migration")
+                }
+                File(oldDbFile.path + "-wal").delete()
+                File(oldDbFile.path + "-shm").delete()
+            }.onFailure { Log.w(TAG, "could not remove legacy data.db: ${it.message}") }
+
             Log.i(TAG, "migration completed successfully")
             LocalBroadcastManager.getInstance(this)
                 .sendBroadcast(Intent(ACTION_MIGRATION_COMPLETE))

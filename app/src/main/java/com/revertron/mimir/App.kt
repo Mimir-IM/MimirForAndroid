@@ -39,6 +39,14 @@ class App: Application() {
     @Volatile var migrationNeeded: Boolean = false
     lateinit var callback: NetState
 
+    /** Currently-foreground 1:1 chat (contact id) — set by ChatActivity in
+     *  onResume / cleared in onPause. ConnectionService consults this to
+     *  suppress notifications for messages whose chat the user is already
+     *  reading. `null` means no chat is in the foreground. */
+    @Volatile var foregroundContactId: Long? = null
+    /** Currently-foreground group chat id. See `foregroundContactId`. */
+    @Volatile var foregroundGroupChatId: Long? = null
+
     override fun onCreate() {
         super.onCreate()
 

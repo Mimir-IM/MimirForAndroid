@@ -13,4 +13,6 @@
     <color name="transparent">#00000000</color>
 
     <color name="outgoing_link_color">@color/mimir_dark</color>
+
+    <color name="secondary_button_fg">#FFCCCCCC</color>
 </resources>

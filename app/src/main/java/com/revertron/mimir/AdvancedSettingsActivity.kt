@@ -58,6 +58,13 @@ class AdvancedSettingsActivity : BaseActivity(), SettingsAdapter.Listener {
                 checked = false
             ),
             SettingsAdapter.Item(
+                id = R.string.call_mediator_pubkey,
+                titleRes = R.string.call_mediator_pubkey,
+                descriptionRes = R.string.call_mediator_pubkey_desc,
+                isSwitch = false,
+                checked = false
+            ),
+            SettingsAdapter.Item(
                 id = R.string.collect_logs,
                 titleRes = R.string.collect_logs,
                 descriptionRes = R.string.collect_logs_desc,
@@ -111,6 +118,9 @@ class AdvancedSettingsActivity : BaseActivity(), SettingsAdapter.Listener {
             }
             R.string.file_server_pubkey -> {
                 showFileServerPubkeyDialog()
+            }
+            R.string.call_mediator_pubkey -> {
+                showCallMediatorPubkeyDialog()
             }
             R.string.collect_logs -> {
                 val intent = Intent(this, LogActivity::class.java)
@@ -269,6 +279,34 @@ class AdvancedSettingsActivity : BaseActivity(), SettingsAdapter.Listener {
                 val newKey = editText.text.toString().trim()
                 if (newKey.length == 64) {
                     sp.edit().putString(SettingsData.KEY_FILE_SERVER_PUBKEY, newKey).apply()
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showCallMediatorPubkeyDialog() {
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        val sp = PreferenceManager.getDefaultSharedPreferences(this)
+        val currentKey = sp.getString(SettingsData.KEY_CALL_MEDIATOR_PUBKEY, "") ?: ""
+
+        val editText = EditText(wrapper).apply {
+            setText(currentKey)
+            hint = getString(R.string.call_mediator_pubkey_hint)
+            isSingleLine = true
+            setPadding(48, 32, 48, 32)
+        }
+
+        AlertDialog.Builder(wrapper)
+            .setTitle(R.string.call_mediator_pubkey_dialog_title)
+            .setView(editText)
+            .setPositiveButton(R.string.save_button) { _, _ ->
+                val newKey = editText.text.toString().trim().lowercase()
+                val editor = sp.edit()
+                if (newKey.isEmpty()) {
+                    editor.remove(SettingsData.KEY_CALL_MEDIATOR_PUBKEY).apply()
+                } else if (newKey.length == 64 && newKey.all { it.isDigit() || it in 'a'..'f' }) {
+                    editor.putString(SettingsData.KEY_CALL_MEDIATOR_PUBKEY, newKey).apply()
                 }
             }
             .setNegativeButton(R.string.cancel, null)

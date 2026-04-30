@@ -25,6 +25,7 @@ import uniffi.mimir.AndroidNetworkInterface
 import uniffi.mimir.AppConfig
 import uniffi.mimir.AppEventListener
 import uniffi.mimir.CallStatus
+import uniffi.mimir.GroupCallParticipant
 import uniffi.mimir.MimirApp
 import java.io.File
 import java.lang.Thread.sleep
@@ -44,7 +45,11 @@ class ConnectionService : Service() {
             )
         }
         override fun onMessageReceived(contactId: Long, messageId: Long, msgType: Int, replyTo: Long) {
-            NotificationHelper.showMessageNotification(this@ConnectionService, contactId, messageId)
+            // Don't pop a notification if the user is already reading this
+            // chat — the broadcast below updates the open ChatActivity.
+            if (App.app.foregroundContactId != contactId) {
+                NotificationHelper.showMessageNotification(this@ConnectionService, contactId, messageId)
+            }
             LocalBroadcastManager.getInstance(this@ConnectionService).sendBroadcast(
                 Intent("ACTION_MESSAGE_RECEIVED").apply {
                     putExtra("contact_id", contactId)
@@ -82,7 +87,12 @@ class ConnectionService : Service() {
             )
         }
         override fun onGroupMessageReceived(chatId: Long, messageId: Long, msgType: Int, replyTo: Long) {
-            NotificationHelper.showGroupMessageNotification(this@ConnectionService, chatId, messageId)
+            // Suppress the notification if the user is currently in this
+            // group chat — the broadcast still fires so the open
+            // GroupChatActivity adds the row.
+            if (App.app.foregroundGroupChatId != chatId) {
+                NotificationHelper.showGroupMessageNotification(this@ConnectionService, chatId, messageId)
+            }
             LocalBroadcastManager.getInstance(this@ConnectionService).sendBroadcast(
                 Intent("ACTION_GROUP_MESSAGE_RECEIVED").apply {
                     putExtra("chat_id", chatId)
@@ -246,6 +256,80 @@ class ConnectionService : Service() {
         override fun onCallPacket(pubkey: ByteArray, data: ByteArray) {
             activeAudioReceiver?.receivePacket(data)
         }
+        override fun onGroupCallJoined(sessionId: ByteArray) {
+            Log.i(TAG, "onGroupCallJoined sid=${shortHex(sessionId)}")
+            LocalBroadcastManager.getInstance(this@ConnectionService).sendBroadcast(
+                Intent(ACTION_GROUP_CALL_JOINED).putExtra("session_id", sessionId)
+            )
+        }
+        override fun onGroupCallParticipants(sessionId: ByteArray, participants: List<GroupCallParticipant>) {
+            // Cache the roster on the service so a late-binding activity can
+            // read it without waiting for the next push.
+            groupCallParticipants = participants
+            Log.i(TAG, "onGroupCallParticipants n=${participants.size}: ${participants.joinToString { shortHex(it.pubkey) + "/" + it.displayName }}")
+            LocalBroadcastManager.getInstance(this@ConnectionService).sendBroadcast(
+                Intent(ACTION_GROUP_CALL_PARTICIPANTS).putExtra("session_id", sessionId)
+            )
+        }
+        override fun onGroupCallParticipantEvent(sessionId: ByteArray, event: UByte, pubkey: ByteArray, displayName: String) {
+            Log.i(TAG, "onGroupCallParticipantEvent event=$event pk=${shortHex(pubkey)} name=$displayName")
+            // Mediator sends PARTICIPANT_UPDATE only to the new joiner; existing
+            // members get just this event. Keep the cached roster in sync so
+            // GroupCallActivity.onRosterChanged can wire decoders for joiners.
+            val current = groupCallParticipants
+            val filtered = current.filterNot { it.pubkey.contentEquals(pubkey) }
+            groupCallParticipants = when (event.toInt()) {
+                GROUP_CALL_EVT_JOINED -> filtered + GroupCallParticipant(pubkey, displayName, ByteArray(0), 0L)
+                GROUP_CALL_EVT_LEFT -> filtered
+                else -> current
+            }
+            LocalBroadcastManager.getInstance(this@ConnectionService).sendBroadcast(
+                Intent(ACTION_GROUP_CALL_PARTICIPANT_EVENT).apply {
+                    putExtra("session_id", sessionId)
+                    putExtra("event", event.toInt())
+                    putExtra("pubkey", pubkey)
+                    putExtra("display_name", displayName)
+                }
+            )
+        }
+        override fun onGroupCallAudio(sessionId: ByteArray, fromPubkey: ByteArray, seq: UInt, aacFrame: ByteArray) {
+            // Audio is hot-path (~50 pkt/s × N participants): don't broadcast —
+            // dispatch directly to a registered sink if any. Task 8 wires the
+            // per-sender mixer here.
+            val sink = groupAudioSink
+            if (sink == null) {
+                val c = (groupAudioNoSinkCount[shortHex(fromPubkey)] ?: 0) + 1
+                groupAudioNoSinkCount[shortHex(fromPubkey)] = c
+                if (c == 1 || c % 100 == 0) {
+                    Log.w(TAG, "onGroupCallAudio but no sink (pk=${shortHex(fromPubkey)} seq=$seq bytes=${aacFrame.size} count=$c)")
+                }
+                return
+            }
+            val key = shortHex(fromPubkey)
+            val c = (groupAudioRxCount[key] ?: 0) + 1
+            groupAudioRxCount[key] = c
+            if (c == 1) {
+                Log.i(TAG, "onGroupCallAudio first frame from $key: seq=$seq bytes=${aacFrame.size}")
+            } else if (c % 100 == 0) {
+                Log.d(TAG, "onGroupCallAudio from $key: $c frames, lastSeq=$seq lastBytes=${aacFrame.size}")
+            }
+            sink.invoke(fromPubkey, seq, aacFrame)
+        }
+        override fun onGroupCallError(code: UByte, message: String) {
+            Log.w(TAG, "onGroupCallError code=$code msg=$message")
+            LocalBroadcastManager.getInstance(this@ConnectionService).sendBroadcast(
+                Intent(ACTION_GROUP_CALL_ERROR).apply {
+                    putExtra("code", code.toInt())
+                    putExtra("message", message)
+                }
+            )
+        }
+        override fun onGroupCallDisconnected() {
+            groupCallParticipants = emptyList()
+            LocalBroadcastManager.getInstance(this@ConnectionService).sendBroadcast(
+                Intent(ACTION_GROUP_CALL_DISCONNECTED)
+            )
+        }
         override fun onFileProgress(guid: Long, bytesDone: Long, totalBytes: Long, isUpload: Boolean) {
             handler.post { broadcastFileProgress(guid, bytesDone, totalBytes, isUpload) }
         }
@@ -283,6 +367,40 @@ class ConnectionService : Service() {
 
     companion object {
         const val TAG = "ConnectionService"
+
+        const val ACTION_GROUP_CALL_JOINED = "ACTION_GROUP_CALL_JOINED"
+        const val ACTION_GROUP_CALL_PARTICIPANTS = "ACTION_GROUP_CALL_PARTICIPANTS"
+        const val ACTION_GROUP_CALL_PARTICIPANT_EVENT = "ACTION_GROUP_CALL_PARTICIPANT_EVENT"
+        const val ACTION_GROUP_CALL_ERROR = "ACTION_GROUP_CALL_ERROR"
+        const val ACTION_GROUP_CALL_DISCONNECTED = "ACTION_GROUP_CALL_DISCONNECTED"
+
+        // Must match Rust `call::protocol::EVT_JOINED` / `EVT_LEFT`.
+        private const val GROUP_CALL_EVT_JOINED = 0x01
+        private const val GROUP_CALL_EVT_LEFT = 0x02
+
+        /** Singleton hook for the active GroupCallActivity to receive decoded
+         *  audio frames without going through LocalBroadcastManager (too hot
+         *  a path for broadcast marshalling). Cleared on activity destroy. */
+        @Volatile @JvmStatic
+        var groupAudioSink: ((ByteArray, UInt, ByteArray) -> Unit)? = null
+
+        /** Latest roster snapshot; read by GroupCallActivity on first bind. */
+        @Volatile @JvmStatic
+        var groupCallParticipants: List<GroupCallParticipant> = emptyList()
+
+        /** Per-sender counters for audio frames (diagnostics only). */
+        private val groupAudioRxCount = java.util.concurrent.ConcurrentHashMap<String, Int>()
+        private val groupAudioNoSinkCount = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+        /** Short hex prefix (first 4 bytes → 8 hex chars) for compact log tags. */
+        private fun shortHex(b: ByteArray): String {
+            val sb = StringBuilder(8)
+            for (i in 0 until minOf(4, b.size)) {
+                sb.append("0123456789abcdef"[(b[i].toInt() ushr 4) and 0xF])
+                sb.append("0123456789abcdef"[b[i].toInt() and 0xF])
+            }
+            return sb.toString()
+        }
 
         // Ed25519 public key hex for the default tracker (port 69)
         private const val TRACKER_HEX1 = "0000118d965a512ce8a37896957ef15b4108f89a9954ae9365448c6bf049c48d"
@@ -389,6 +507,12 @@ class ConnectionService : Service() {
                                     attachmentsDir = File(filesDir, "files").absolutePath,
                                 )
                                 app.start(config, appEventListener)
+                                // Apply the persisted "accept-messages from"
+                                // policy now that networking is live; the
+                                // settings activity does the same on every
+                                // change so the gate stays in sync.
+                                val acceptPref = preferences.getString(SettingsData.KEY_ACCEPT_MESSAGES, "everyone")
+                                app.setAcceptOnlyFromContacts(acceptPref == "contacts")
                                 mimirApp = app
                                 Log.i(TAG, "MimirApp networking started, pubkey=${Hex.toHexString(app.publicKey().take(4).toByteArray())}")
                             } catch (e: Exception) {
@@ -548,10 +672,14 @@ class ConnectionService : Service() {
                     val guid = App.app.mimirApp?.generateGuid(sendTime, messageBytes) ?: sendTime
 
                     if (pubkey.contentEquals(myPubkey)) {
-                        // Saved message — store locally, no network send
+                        // Saved Messages — store under the sentinel
+                        // contact_id (-100) WITHOUT auto-creating a real
+                        // `contacts` row for our own pubkey. Routing this
+                        // through addMessage would have buried the message
+                        // under an "Unknown" contact equal to ourselves.
                         try {
-                            val id = App.app.mimirApp?.addMessage(
-                                pubkey, guid, replyTo, false, true, sendTime, 0, type, messageBytes
+                            val id = App.app.mimirApp?.addLocalMessage(
+                                -100L, guid, replyTo, false, true, sendTime, 0, type, messageBytes
                             ) ?: 0L
                             LocalBroadcastManager.getInstance(this).sendBroadcast(
                                 Intent("ACTION_MESSAGE_SENT").apply {

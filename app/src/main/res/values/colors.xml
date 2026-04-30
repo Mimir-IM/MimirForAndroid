@@ -30,4 +30,9 @@
     <color name="transparent">#00000000</color>
 
     <color name="outgoing_link_color">@color/black</color>
+
+    <!-- Foreground colour for secondary outlined buttons (stroke + text + ripple).
+         Night variant in values-night/colors.xml is lighter so the outline stays
+         readable against a near-black surface. -->
+    <color name="secondary_button_fg">#FF505050</color>
 </resources>

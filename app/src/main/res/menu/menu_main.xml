@@ -21,6 +21,10 @@
         android:title="@string/create_chat"
         android:icon="@drawable/ic_message_plus_outline"
         app:showAsAction="ifRoom" />
+    <item android:id="@+id/new_group_call"
+        android:orderInCategory="5"
+        android:title="@string/new_group_call"
+        app:showAsAction="never" />
     <item
         android:id="@+id/action_settings"
         android:orderInCategory="100"

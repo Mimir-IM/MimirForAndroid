@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/groupCallTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/group_call"
+        android:textAppearance="?android:attr/textAppearanceLarge"
+        android:paddingBottom="12dp" />
+
+    <!-- Pre-join: ask for display name, then a single action button. -->
+    <LinearLayout
+        android:id="@+id/preJoinGroup"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/use_this_name"
+            android:layout_marginBottom="8dp" />
+
+        <EditText
+            android:id="@+id/displayNameEdit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/group_call_display_name_hint"
+            android:inputType="textPersonName"
+            android:maxLength="64"
+            android:importantForAutofill="no" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/joinOrCreateButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:layout_marginTop="12dp"
+            style="@style/MimirOutlinedButton"
+            android:text="@string/group_call_join" />
+    </LinearLayout>
+
+    <!-- In-call: participant list fills the space above the action bar. -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/participantsList"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:visibility="gone" />
+
+    <!-- Secondary actions row: equal-width text buttons above the big round ones. -->
+    <LinearLayout
+        android:id="@+id/secondaryActions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingStart="0dp"
+        android:paddingEnd="0dp"
+        android:visibility="gone">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/inviteUsersButton"
+            style="@style/MimirOutlinedButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginEnd="8dp"
+            android:text="@string/group_call_invite_users" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/copyLinkButton"
+            style="@style/MimirOutlinedButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:text="@string/group_call_copy_link" />
+    </LinearLayout>
+
+    <!-- In-call action bar: big round buttons, styled after incoming_call_activity. -->
+    <LinearLayout
+        android:id="@+id/inCallButtons"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:paddingTop="16dp"
+        android:paddingBottom="16dp"
+        android:visibility="gone">
+
+        <androidx.appcompat.widget.AppCompatImageButton
+            android:id="@+id/muteButton"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
+            android:src="@drawable/ic_microphone_outline"
+            android:background="@drawable/ic_launcher_background"
+            android:contentDescription="@string/group_call_mute" />
+
+        <androidx.appcompat.widget.AppCompatImageButton
+            android:id="@+id/speakerButton"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
+            android:src="@drawable/ic_volume_high"
+            android:background="@drawable/ic_launcher_background"
+            android:contentDescription="@string/group_call_speaker" />
+
+        <androidx.appcompat.widget.AppCompatImageButton
+            android:id="@+id/leaveButton"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
+            android:src="@drawable/ic_phone_hangup_outline"
+            android:background="@drawable/button_rounded_red"
+            android:contentDescription="@string/group_call_leave" />
+    </LinearLayout>
+</LinearLayout>

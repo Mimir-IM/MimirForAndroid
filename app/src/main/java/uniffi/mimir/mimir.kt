@@ -668,24 +668,42 @@ internal interface UniffiCallbackInterfaceAppEventListenerMethod17 : com.sun.jna
     fun callback(`uniffiHandle`: Long,`pubkey`: RustBuffer.ByValue,`data`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
 internal interface UniffiCallbackInterfaceAppEventListenerMethod18 : com.sun.jna.Callback {
-    fun callback(`uniffiHandle`: Long,`guid`: Long,`bytesDone`: Long,`totalBytes`: Long,`isUpload`: Byte,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+    fun callback(`uniffiHandle`: Long,`sessionId`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
 internal interface UniffiCallbackInterfaceAppEventListenerMethod19 : com.sun.jna.Callback {
-    fun callback(`uniffiHandle`: Long,`pubkey`: RustBuffer.ByValue,`guid`: Long,`metaJson`: RustBuffer.ByValue,`filePath`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+    fun callback(`uniffiHandle`: Long,`sessionId`: RustBuffer.ByValue,`participants`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
 internal interface UniffiCallbackInterfaceAppEventListenerMethod20 : com.sun.jna.Callback {
-    fun callback(`uniffiHandle`: Long,`chatId`: Long,`guid`: Long,`filePath`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+    fun callback(`uniffiHandle`: Long,`sessionId`: RustBuffer.ByValue,`event`: Byte,`pubkey`: RustBuffer.ByValue,`displayName`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
 internal interface UniffiCallbackInterfaceAppEventListenerMethod21 : com.sun.jna.Callback {
-    fun callback(`uniffiHandle`: Long,`requestId`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+    fun callback(`uniffiHandle`: Long,`sessionId`: RustBuffer.ByValue,`fromPubkey`: RustBuffer.ByValue,`seq`: Int,`aacFrame`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
 internal interface UniffiCallbackInterfaceAppEventListenerMethod22 : com.sun.jna.Callback {
-    fun callback(`uniffiHandle`: Long,`pubkey`: RustBuffer.ByValue,`accepted`: Byte,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+    fun callback(`uniffiHandle`: Long,`code`: Byte,`message`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
 internal interface UniffiCallbackInterfaceAppEventListenerMethod23 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfaceAppEventListenerMethod24 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`guid`: Long,`bytesDone`: Long,`totalBytes`: Long,`isUpload`: Byte,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfaceAppEventListenerMethod25 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`pubkey`: RustBuffer.ByValue,`guid`: Long,`metaJson`: RustBuffer.ByValue,`filePath`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfaceAppEventListenerMethod26 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`chatId`: Long,`guid`: Long,`filePath`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfaceAppEventListenerMethod27 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`requestId`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfaceAppEventListenerMethod28 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`pubkey`: RustBuffer.ByValue,`accepted`: Byte,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfaceAppEventListenerMethod29 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`ok`: Byte,`ttl`: Int,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-@Structure.FieldOrder("uniffiFree", "uniffiClone", "onConnectivityChanged", "onMessageReceived", "onMessageDelivered", "onContactConnected", "onContactDisconnected", "onGroupMessageReceived", "onGroupMessageDeleted", "onGroupMessageDelivered", "onOutgoingMessageStored", "onGroupChatStatus", "onGroupInviteReceived", "onGroupMembersChanged", "onGroupMemberOnline", "onMediatorAuthenticated", "onMediatorDisconnected", "onIncomingCall", "onCallStatusChanged", "onCallPacket", "onFileProgress", "onFileReceived", "onFileDownloaded", "onContactRequestReceived", "onContactResponse", "onTrackerAnnounce")
+@Structure.FieldOrder("uniffiFree", "uniffiClone", "onConnectivityChanged", "onMessageReceived", "onMessageDelivered", "onContactConnected", "onContactDisconnected", "onGroupMessageReceived", "onGroupMessageDeleted", "onGroupMessageDelivered", "onOutgoingMessageStored", "onGroupChatStatus", "onGroupInviteReceived", "onGroupMembersChanged", "onGroupMemberOnline", "onMediatorAuthenticated", "onMediatorDisconnected", "onIncomingCall", "onCallStatusChanged", "onCallPacket", "onGroupCallJoined", "onGroupCallParticipants", "onGroupCallParticipantEvent", "onGroupCallAudio", "onGroupCallError", "onGroupCallDisconnected", "onFileProgress", "onFileReceived", "onFileDownloaded", "onContactRequestReceived", "onContactResponse", "onTrackerAnnounce")
 internal open class UniffiVTableCallbackInterfaceAppEventListener(
     @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
     @JvmField internal var `uniffiClone`: UniffiCallbackInterfaceClone? = null,
@@ -707,12 +725,18 @@ internal open class UniffiVTableCallbackInterfaceAppEventListener(
     @JvmField internal var `onIncomingCall`: UniffiCallbackInterfaceAppEventListenerMethod15? = null,
     @JvmField internal var `onCallStatusChanged`: UniffiCallbackInterfaceAppEventListenerMethod16? = null,
     @JvmField internal var `onCallPacket`: UniffiCallbackInterfaceAppEventListenerMethod17? = null,
-    @JvmField internal var `onFileProgress`: UniffiCallbackInterfaceAppEventListenerMethod18? = null,
-    @JvmField internal var `onFileReceived`: UniffiCallbackInterfaceAppEventListenerMethod19? = null,
-    @JvmField internal var `onFileDownloaded`: UniffiCallbackInterfaceAppEventListenerMethod20? = null,
-    @JvmField internal var `onContactRequestReceived`: UniffiCallbackInterfaceAppEventListenerMethod21? = null,
-    @JvmField internal var `onContactResponse`: UniffiCallbackInterfaceAppEventListenerMethod22? = null,
-    @JvmField internal var `onTrackerAnnounce`: UniffiCallbackInterfaceAppEventListenerMethod23? = null,
+    @JvmField internal var `onGroupCallJoined`: UniffiCallbackInterfaceAppEventListenerMethod18? = null,
+    @JvmField internal var `onGroupCallParticipants`: UniffiCallbackInterfaceAppEventListenerMethod19? = null,
+    @JvmField internal var `onGroupCallParticipantEvent`: UniffiCallbackInterfaceAppEventListenerMethod20? = null,
+    @JvmField internal var `onGroupCallAudio`: UniffiCallbackInterfaceAppEventListenerMethod21? = null,
+    @JvmField internal var `onGroupCallError`: UniffiCallbackInterfaceAppEventListenerMethod22? = null,
+    @JvmField internal var `onGroupCallDisconnected`: UniffiCallbackInterfaceAppEventListenerMethod23? = null,
+    @JvmField internal var `onFileProgress`: UniffiCallbackInterfaceAppEventListenerMethod24? = null,
+    @JvmField internal var `onFileReceived`: UniffiCallbackInterfaceAppEventListenerMethod25? = null,
+    @JvmField internal var `onFileDownloaded`: UniffiCallbackInterfaceAppEventListenerMethod26? = null,
+    @JvmField internal var `onContactRequestReceived`: UniffiCallbackInterfaceAppEventListenerMethod27? = null,
+    @JvmField internal var `onContactResponse`: UniffiCallbackInterfaceAppEventListenerMethod28? = null,
+    @JvmField internal var `onTrackerAnnounce`: UniffiCallbackInterfaceAppEventListenerMethod29? = null,
 ) : Structure() {
     class UniffiByValue(
         `uniffiFree`: UniffiCallbackInterfaceFree? = null,
@@ -735,13 +759,19 @@ internal open class UniffiVTableCallbackInterfaceAppEventListener(
         `onIncomingCall`: UniffiCallbackInterfaceAppEventListenerMethod15? = null,
         `onCallStatusChanged`: UniffiCallbackInterfaceAppEventListenerMethod16? = null,
         `onCallPacket`: UniffiCallbackInterfaceAppEventListenerMethod17? = null,
-        `onFileProgress`: UniffiCallbackInterfaceAppEventListenerMethod18? = null,
-        `onFileReceived`: UniffiCallbackInterfaceAppEventListenerMethod19? = null,
-        `onFileDownloaded`: UniffiCallbackInterfaceAppEventListenerMethod20? = null,
-        `onContactRequestReceived`: UniffiCallbackInterfaceAppEventListenerMethod21? = null,
-        `onContactResponse`: UniffiCallbackInterfaceAppEventListenerMethod22? = null,
-        `onTrackerAnnounce`: UniffiCallbackInterfaceAppEventListenerMethod23? = null,
-    ): UniffiVTableCallbackInterfaceAppEventListener(`uniffiFree`,`uniffiClone`,`onConnectivityChanged`,`onMessageReceived`,`onMessageDelivered`,`onContactConnected`,`onContactDisconnected`,`onGroupMessageReceived`,`onGroupMessageDeleted`,`onGroupMessageDelivered`,`onOutgoingMessageStored`,`onGroupChatStatus`,`onGroupInviteReceived`,`onGroupMembersChanged`,`onGroupMemberOnline`,`onMediatorAuthenticated`,`onMediatorDisconnected`,`onIncomingCall`,`onCallStatusChanged`,`onCallPacket`,`onFileProgress`,`onFileReceived`,`onFileDownloaded`,`onContactRequestReceived`,`onContactResponse`,`onTrackerAnnounce`,), Structure.ByValue
+        `onGroupCallJoined`: UniffiCallbackInterfaceAppEventListenerMethod18? = null,
+        `onGroupCallParticipants`: UniffiCallbackInterfaceAppEventListenerMethod19? = null,
+        `onGroupCallParticipantEvent`: UniffiCallbackInterfaceAppEventListenerMethod20? = null,
+        `onGroupCallAudio`: UniffiCallbackInterfaceAppEventListenerMethod21? = null,
+        `onGroupCallError`: UniffiCallbackInterfaceAppEventListenerMethod22? = null,
+        `onGroupCallDisconnected`: UniffiCallbackInterfaceAppEventListenerMethod23? = null,
+        `onFileProgress`: UniffiCallbackInterfaceAppEventListenerMethod24? = null,
+        `onFileReceived`: UniffiCallbackInterfaceAppEventListenerMethod25? = null,
+        `onFileDownloaded`: UniffiCallbackInterfaceAppEventListenerMethod26? = null,
+        `onContactRequestReceived`: UniffiCallbackInterfaceAppEventListenerMethod27? = null,
+        `onContactResponse`: UniffiCallbackInterfaceAppEventListenerMethod28? = null,
+        `onTrackerAnnounce`: UniffiCallbackInterfaceAppEventListenerMethod29? = null,
+    ): UniffiVTableCallbackInterfaceAppEventListener(`uniffiFree`,`uniffiClone`,`onConnectivityChanged`,`onMessageReceived`,`onMessageDelivered`,`onContactConnected`,`onContactDisconnected`,`onGroupMessageReceived`,`onGroupMessageDeleted`,`onGroupMessageDelivered`,`onOutgoingMessageStored`,`onGroupChatStatus`,`onGroupInviteReceived`,`onGroupMembersChanged`,`onGroupMemberOnline`,`onMediatorAuthenticated`,`onMediatorDisconnected`,`onIncomingCall`,`onCallStatusChanged`,`onCallPacket`,`onGroupCallJoined`,`onGroupCallParticipants`,`onGroupCallParticipantEvent`,`onGroupCallAudio`,`onGroupCallError`,`onGroupCallDisconnected`,`onFileProgress`,`onFileReceived`,`onFileDownloaded`,`onContactRequestReceived`,`onContactResponse`,`onTrackerAnnounce`,), Structure.ByValue
 
    internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceAppEventListener) {
         `uniffiFree` = other.`uniffiFree`
@@ -764,6 +794,12 @@ internal open class UniffiVTableCallbackInterfaceAppEventListener(
         `onIncomingCall` = other.`onIncomingCall`
         `onCallStatusChanged` = other.`onCallStatusChanged`
         `onCallPacket` = other.`onCallPacket`
+        `onGroupCallJoined` = other.`onGroupCallJoined`
+        `onGroupCallParticipants` = other.`onGroupCallParticipants`
+        `onGroupCallParticipantEvent` = other.`onGroupCallParticipantEvent`
+        `onGroupCallAudio` = other.`onGroupCallAudio`
+        `onGroupCallError` = other.`onGroupCallError`
+        `onGroupCallDisconnected` = other.`onGroupCallDisconnected`
         `onFileProgress` = other.`onFileProgress`
         `onFileReceived` = other.`onFileReceived`
         `onFileDownloaded` = other.`onFileDownloaded`
@@ -828,6 +864,8 @@ external fun uniffi_mimir_checksum_method_mimirapp_add_contact_request(
 ): Short
 external fun uniffi_mimir_checksum_method_mimirapp_add_group_message(
 ): Short
+external fun uniffi_mimir_checksum_method_mimirapp_add_local_message(
+): Short
 external fun uniffi_mimir_checksum_method_mimirapp_add_message(
 ): Short
 external fun uniffi_mimir_checksum_method_mimirapp_announce_to_trackers(
@@ -859,6 +897,8 @@ external fun uniffi_mimir_checksum_method_mimirapp_close_all_connections(
 external fun uniffi_mimir_checksum_method_mimirapp_connect_to_contact(
 ): Short
 external fun uniffi_mimir_checksum_method_mimirapp_create_group(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_create_group_call(
 ): Short
 external fun uniffi_mimir_checksum_method_mimirapp_delete_contact_request(
 ): Short
@@ -996,7 +1036,11 @@ external fun uniffi_mimir_checksum_method_mimirapp_is_contact_muted(
 ): Short
 external fun uniffi_mimir_checksum_method_mimirapp_is_member_online(
 ): Short
+external fun uniffi_mimir_checksum_method_mimirapp_join_group_call(
+): Short
 external fun uniffi_mimir_checksum_method_mimirapp_leave_group(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_leave_group_call(
 ): Short
 external fun uniffi_mimir_checksum_method_mimirapp_mark_all_group_read(
 ): Short
@@ -1042,11 +1086,15 @@ external fun uniffi_mimir_checksum_method_mimirapp_send_contact_request(
 ): Short
 external fun uniffi_mimir_checksum_method_mimirapp_send_contact_response(
 ): Short
+external fun uniffi_mimir_checksum_method_mimirapp_send_group_call_audio(
+): Short
 external fun uniffi_mimir_checksum_method_mimirapp_send_group_chat_message(
 ): Short
 external fun uniffi_mimir_checksum_method_mimirapp_send_group_message(
 ): Short
 external fun uniffi_mimir_checksum_method_mimirapp_send_message(
+): Short
+external fun uniffi_mimir_checksum_method_mimirapp_set_accept_only_from_contacts(
 ): Short
 external fun uniffi_mimir_checksum_method_mimirapp_set_contact_muted(
 ): Short
@@ -1150,6 +1198,18 @@ external fun uniffi_mimir_checksum_method_appeventlistener_on_call_status_change
 ): Short
 external fun uniffi_mimir_checksum_method_appeventlistener_on_call_packet(
 ): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_group_call_joined(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_group_call_participants(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_group_call_participant_event(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_group_call_audio(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_group_call_error(
+): Short
+external fun uniffi_mimir_checksum_method_appeventlistener_on_group_call_disconnected(
+): Short
 external fun uniffi_mimir_checksum_method_appeventlistener_on_file_progress(
 ): Short
 external fun uniffi_mimir_checksum_method_appeventlistener_on_file_received(
@@ -1197,6 +1257,8 @@ external fun uniffi_mimir_fn_method_mimirapp_add_contact_request(`ptr`: Long,`pu
 ): Long
 external fun uniffi_mimir_fn_method_mimirapp_add_group_message(`ptr`: Long,`chatId`: Long,`serverMsgId`: Long,`guid`: Long,`authorPubkey`: RustBuffer.ByValue,`sendTime`: Long,`msgType`: Int,`system`: Byte,`data`: RustBuffer.ByValue,`replyTo`: Long,`fromSync`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
+external fun uniffi_mimir_fn_method_mimirapp_add_local_message(`ptr`: Long,`contactId`: Long,`guid`: Long,`replyTo`: Long,`incoming`: Byte,`delivered`: Byte,`sendTime`: Long,`editTime`: Long,`msgType`: Int,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
 external fun uniffi_mimir_fn_method_mimirapp_add_message(`ptr`: Long,`contactPubkey`: RustBuffer.ByValue,`guid`: Long,`replyTo`: Long,`incoming`: Byte,`delivered`: Byte,`sendTime`: Long,`editTime`: Long,`msgType`: Int,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
 external fun uniffi_mimir_fn_method_mimirapp_announce_to_trackers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1229,6 +1291,8 @@ external fun uniffi_mimir_fn_method_mimirapp_connect_to_contact(`ptr`: Long,`pub
 ): Unit
 external fun uniffi_mimir_fn_method_mimirapp_create_group(`ptr`: Long,`name`: RustBuffer.ByValue,`description`: RustBuffer.ByValue,`avatar`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
+external fun uniffi_mimir_fn_method_mimirapp_create_group_call(`ptr`: Long,`callMediatorPubkey`: RustBuffer.ByValue,`mode`: Byte,`displayName`: RustBuffer.ByValue,`audioConfig`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 external fun uniffi_mimir_fn_method_mimirapp_delete_contact_request(`ptr`: Long,`requestId`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 external fun uniffi_mimir_fn_method_mimirapp_delete_draft(`ptr`: Long,`chatType`: Int,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1365,7 +1429,11 @@ external fun uniffi_mimir_fn_method_mimirapp_is_contact_muted(`ptr`: Long,`id`: 
 ): Byte
 external fun uniffi_mimir_fn_method_mimirapp_is_member_online(`ptr`: Long,`chatId`: Long,`pubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
+external fun uniffi_mimir_fn_method_mimirapp_join_group_call(`ptr`: Long,`callMediatorPubkey`: RustBuffer.ByValue,`sessionId`: RustBuffer.ByValue,`sessionKey`: RustBuffer.ByValue,`displayName`: RustBuffer.ByValue,`audioConfig`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 external fun uniffi_mimir_fn_method_mimirapp_leave_group(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_leave_group_call(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 external fun uniffi_mimir_fn_method_mimirapp_mark_all_group_read(`ptr`: Long,`chatId`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -1411,11 +1479,15 @@ external fun uniffi_mimir_fn_method_mimirapp_send_contact_request(`ptr`: Long,`p
 ): Unit
 external fun uniffi_mimir_fn_method_mimirapp_send_contact_response(`ptr`: Long,`pubkey`: RustBuffer.ByValue,`accepted`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+external fun uniffi_mimir_fn_method_mimirapp_send_group_call_audio(`ptr`: Long,`aacFrame`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 external fun uniffi_mimir_fn_method_mimirapp_send_group_chat_message(`ptr`: Long,`chatId`: Long,`replyTo`: Long,`text`: RustBuffer.ByValue,`attachment`: RustBuffer.ByValue,`fileServerPubkey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
 external fun uniffi_mimir_fn_method_mimirapp_send_group_message(`ptr`: Long,`chatId`: Long,`guid`: Long,`replyTo`: Long,`sendTime`: Long,`msgType`: Int,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
 external fun uniffi_mimir_fn_method_mimirapp_send_message(`ptr`: Long,`pubkey`: RustBuffer.ByValue,`guid`: Long,`replyTo`: Long,`sendTime`: Long,`msgType`: Int,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_mimir_fn_method_mimirapp_set_accept_only_from_contacts(`ptr`: Long,`onlyContacts`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 external fun uniffi_mimir_fn_method_mimirapp_set_contact_muted(`ptr`: Long,`id`: Long,`muted`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -1672,6 +1744,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_mimir_checksum_method_mimirapp_add_group_message() != 29338.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_mimir_checksum_method_mimirapp_add_local_message() != 20312.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_mimir_checksum_method_mimirapp_add_message() != 45448.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1718,6 +1793,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_mimir_checksum_method_mimirapp_create_group() != 42309.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirapp_create_group_call() != 64860.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_mimir_checksum_method_mimirapp_delete_contact_request() != 14572.toShort()) {
@@ -1924,7 +2002,13 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_mimir_checksum_method_mimirapp_is_member_online() != 27454.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_mimir_checksum_method_mimirapp_join_group_call() != 53550.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_mimir_checksum_method_mimirapp_leave_group() != 60291.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirapp_leave_group_call() != 45154.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_mimir_checksum_method_mimirapp_mark_all_group_read() != 55175.toShort()) {
@@ -1993,6 +2077,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_mimir_checksum_method_mimirapp_send_contact_response() != 65383.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_mimir_checksum_method_mimirapp_send_group_call_audio() != 16490.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_mimir_checksum_method_mimirapp_send_group_chat_message() != 24212.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -2000,6 +2087,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_mimir_checksum_method_mimirapp_send_message() != 30698.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_mimirapp_set_accept_only_from_contacts() != 10405.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_mimir_checksum_method_mimirapp_set_contact_muted() != 21448.toShort()) {
@@ -2153,6 +2243,24 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_mimir_checksum_method_appeventlistener_on_call_packet() != 26962.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_group_call_joined() != 30281.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_group_call_participants() != 14131.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_group_call_participant_event() != 59038.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_group_call_audio() != 11555.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_group_call_error() != 48722.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_mimir_checksum_method_appeventlistener_on_group_call_disconnected() != 4358.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_mimir_checksum_method_appeventlistener_on_file_progress() != 14051.toShort()) {
@@ -2717,6 +2825,13 @@ public interface MimirAppInterface {
     
     fun `addGroupMessage`(`chatId`: kotlin.Long, `serverMsgId`: kotlin.Long, `guid`: kotlin.Long, `authorPubkey`: kotlin.ByteArray, `sendTime`: kotlin.Long, `msgType`: kotlin.Int, `system`: kotlin.Boolean, `data`: kotlin.ByteArray, `replyTo`: kotlin.Long, `fromSync`: kotlin.Boolean): kotlin.Long
     
+    /**
+     * Self-send: store under a literal `contact_id` (use -100 for the
+     * Saved Messages sentinel) without auto-creating a `contacts` row
+     * for the author.
+     */
+    fun `addLocalMessage`(`contactId`: kotlin.Long, `guid`: kotlin.Long, `replyTo`: kotlin.Long, `incoming`: kotlin.Boolean, `delivered`: kotlin.Boolean, `sendTime`: kotlin.Long, `editTime`: kotlin.Long, `msgType`: kotlin.Int, `data`: kotlin.ByteArray): kotlin.Long
+    
     fun `addMessage`(`contactPubkey`: kotlin.ByteArray, `guid`: kotlin.Long, `replyTo`: kotlin.Long, `incoming`: kotlin.Boolean, `delivered`: kotlin.Boolean, `sendTime`: kotlin.Long, `editTime`: kotlin.Long, `msgType`: kotlin.Int, `data`: kotlin.ByteArray): kotlin.Long
     
     fun `announceToTrackers`()
@@ -2748,6 +2863,8 @@ public interface MimirAppInterface {
     fun `connectToContact`(`pubkey`: kotlin.ByteArray)
     
     fun `createGroup`(`name`: kotlin.String, `description`: kotlin.String, `avatar`: kotlin.ByteArray?): kotlin.Long
+    
+    fun `createGroupCall`(`callMediatorPubkey`: kotlin.ByteArray, `mode`: kotlin.UByte, `displayName`: kotlin.String, `audioConfig`: kotlin.ByteArray): GroupCallSession
     
     fun `deleteContactRequest`(`requestId`: kotlin.Long)
     
@@ -2885,7 +3002,11 @@ public interface MimirAppInterface {
     
     fun `isMemberOnline`(`chatId`: kotlin.Long, `pubkey`: kotlin.ByteArray): kotlin.Boolean
     
+    fun `joinGroupCall`(`callMediatorPubkey`: kotlin.ByteArray, `sessionId`: kotlin.ByteArray, `sessionKey`: kotlin.ByteArray, `displayName`: kotlin.String, `audioConfig`: kotlin.ByteArray)
+    
     fun `leaveGroup`(`chatId`: kotlin.Long)
+    
+    fun `leaveGroupCall`()
     
     fun `markAllGroupRead`(`chatId`: kotlin.Long)
     
@@ -2931,11 +3052,19 @@ public interface MimirAppInterface {
     
     fun `sendContactResponse`(`pubkey`: kotlin.ByteArray, `accepted`: kotlin.Boolean)
     
+    fun `sendGroupCallAudio`(`aacFrame`: kotlin.ByteArray)
+    
     fun `sendGroupChatMessage`(`chatId`: kotlin.Long, `replyTo`: kotlin.Long, `text`: kotlin.String, `attachment`: AttachmentSpec?, `fileServerPubkey`: kotlin.ByteArray?): kotlin.Long
     
     fun `sendGroupMessage`(`chatId`: kotlin.Long, `guid`: kotlin.Long, `replyTo`: kotlin.Long, `sendTime`: kotlin.Long, `msgType`: kotlin.Int, `data`: kotlin.ByteArray): kotlin.Long
     
     fun `sendMessage`(`pubkey`: kotlin.ByteArray, `guid`: kotlin.Long, `replyTo`: kotlin.Long, `sendTime`: kotlin.Long, `msgType`: kotlin.Int, `data`: kotlin.ByteArray)
+    
+    /**
+     * Set "accept messages from contacts only" policy. When true,
+     * strangers are treated as blocked at the gate. Default false.
+     */
+    fun `setAcceptOnlyFromContacts`(`onlyContacts`: kotlin.Boolean)
     
     fun `setContactMuted`(`id`: kotlin.Long, `muted`: kotlin.Boolean)
     
@@ -3181,6 +3310,25 @@ open class MimirApp: Disposable, AutoCloseable, MimirAppInterface
     
 
     
+    /**
+     * Self-send: store under a literal `contact_id` (use -100 for the
+     * Saved Messages sentinel) without auto-creating a `contacts` row
+     * for the author.
+     */
+    @Throws(MimirException::class)override fun `addLocalMessage`(`contactId`: kotlin.Long, `guid`: kotlin.Long, `replyTo`: kotlin.Long, `incoming`: kotlin.Boolean, `delivered`: kotlin.Boolean, `sendTime`: kotlin.Long, `editTime`: kotlin.Long, `msgType`: kotlin.Int, `data`: kotlin.ByteArray): kotlin.Long {
+            return FfiConverterLong.lift(
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_add_local_message(
+        it,
+        FfiConverterLong.lower(`contactId`),FfiConverterLong.lower(`guid`),FfiConverterLong.lower(`replyTo`),FfiConverterBoolean.lower(`incoming`),FfiConverterBoolean.lower(`delivered`),FfiConverterLong.lower(`sendTime`),FfiConverterLong.lower(`editTime`),FfiConverterInt.lower(`msgType`),FfiConverterByteArray.lower(`data`),_status)
+}
+    }
+    )
+    }
+    
+
+    
     @Throws(MimirException::class)override fun `addMessage`(`contactPubkey`: kotlin.ByteArray, `guid`: kotlin.Long, `replyTo`: kotlin.Long, `incoming`: kotlin.Boolean, `delivered`: kotlin.Boolean, `sendTime`: kotlin.Long, `editTime`: kotlin.Long, `msgType`: kotlin.Int, `data`: kotlin.ByteArray): kotlin.Long {
             return FfiConverterLong.lift(
     callWithHandle {
@@ -3382,6 +3530,20 @@ open class MimirApp: Disposable, AutoCloseable, MimirAppInterface
     UniffiLib.uniffi_mimir_fn_method_mimirapp_create_group(
         it,
         FfiConverterString.lower(`name`),FfiConverterString.lower(`description`),FfiConverterOptionalByteArray.lower(`avatar`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(MimirException::class)override fun `createGroupCall`(`callMediatorPubkey`: kotlin.ByteArray, `mode`: kotlin.UByte, `displayName`: kotlin.String, `audioConfig`: kotlin.ByteArray): GroupCallSession {
+            return FfiConverterTypeGroupCallSession.lift(
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_create_group_call(
+        it,
+        FfiConverterByteArray.lower(`callMediatorPubkey`),FfiConverterUByte.lower(`mode`),FfiConverterString.lower(`displayName`),FfiConverterByteArray.lower(`audioConfig`),_status)
 }
     }
     )
@@ -4272,6 +4434,19 @@ open class MimirApp: Disposable, AutoCloseable, MimirAppInterface
     
 
     
+    @Throws(MimirException::class)override fun `joinGroupCall`(`callMediatorPubkey`: kotlin.ByteArray, `sessionId`: kotlin.ByteArray, `sessionKey`: kotlin.ByteArray, `displayName`: kotlin.String, `audioConfig`: kotlin.ByteArray)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_join_group_call(
+        it,
+        FfiConverterByteArray.lower(`callMediatorPubkey`),FfiConverterByteArray.lower(`sessionId`),FfiConverterByteArray.lower(`sessionKey`),FfiConverterString.lower(`displayName`),FfiConverterByteArray.lower(`audioConfig`),_status)
+}
+    }
+    
+    
+
+    
     @Throws(MimirException::class)override fun `leaveGroup`(`chatId`: kotlin.Long)
         = 
     callWithHandle {
@@ -4279,6 +4454,18 @@ open class MimirApp: Disposable, AutoCloseable, MimirAppInterface
     UniffiLib.uniffi_mimir_fn_method_mimirapp_leave_group(
         it,
         FfiConverterLong.lower(`chatId`),_status)
+}
+    }
+    
+    
+
+    override fun `leaveGroupCall`()
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_leave_group_call(
+        it,
+        _status)
 }
     }
     
@@ -4573,6 +4760,19 @@ open class MimirApp: Disposable, AutoCloseable, MimirAppInterface
     
 
     
+    @Throws(MimirException::class)override fun `sendGroupCallAudio`(`aacFrame`: kotlin.ByteArray)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(MimirException) { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_send_group_call_audio(
+        it,
+        FfiConverterByteArray.lower(`aacFrame`),_status)
+}
+    }
+    
+    
+
+    
     @Throws(MimirException::class)override fun `sendGroupChatMessage`(`chatId`: kotlin.Long, `replyTo`: kotlin.Long, `text`: kotlin.String, `attachment`: AttachmentSpec?, `fileServerPubkey`: kotlin.ByteArray?): kotlin.Long {
             return FfiConverterLong.lift(
     callWithHandle {
@@ -4608,6 +4808,22 @@ open class MimirApp: Disposable, AutoCloseable, MimirAppInterface
     UniffiLib.uniffi_mimir_fn_method_mimirapp_send_message(
         it,
         FfiConverterByteArray.lower(`pubkey`),FfiConverterLong.lower(`guid`),FfiConverterLong.lower(`replyTo`),FfiConverterLong.lower(`sendTime`),FfiConverterInt.lower(`msgType`),FfiConverterByteArray.lower(`data`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Set "accept messages from contacts only" policy. When true,
+     * strangers are treated as blocked at the gate. Default false.
+     */override fun `setAcceptOnlyFromContacts`(`onlyContacts`: kotlin.Boolean)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_mimir_fn_method_mimirapp_set_accept_only_from_contacts(
+        it,
+        FfiConverterBoolean.lower(`onlyContacts`),_status)
 }
     }
     
@@ -5450,6 +5666,102 @@ public object FfiConverterTypeFixStats: FfiConverterRustBuffer<FixStats> {
     override fun write(value: FixStats, buf: ByteBuffer) {
             FfiConverterUInt.write(value.`scanned`, buf)
             FfiConverterUInt.write(value.`fixed`, buf)
+    }
+}
+
+
+
+/**
+ * One participant in a group call, as delivered by
+ * on_group_call_participants. `audio_config` is the AAC AudioSpecificConfig
+ * bytes (may be empty if the participant hasn't sent one yet).
+ */
+data class GroupCallParticipant (
+    var `pubkey`: kotlin.ByteArray
+    , 
+    var `displayName`: kotlin.String
+    , 
+    var `audioConfig`: kotlin.ByteArray
+    , 
+    var `joinedAt`: kotlin.Long
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeGroupCallParticipant: FfiConverterRustBuffer<GroupCallParticipant> {
+    override fun read(buf: ByteBuffer): GroupCallParticipant {
+        return GroupCallParticipant(
+            FfiConverterByteArray.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterLong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: GroupCallParticipant) = (
+            FfiConverterByteArray.allocationSize(value.`pubkey`) +
+            FfiConverterString.allocationSize(value.`displayName`) +
+            FfiConverterByteArray.allocationSize(value.`audioConfig`) +
+            FfiConverterLong.allocationSize(value.`joinedAt`)
+    )
+
+    override fun write(value: GroupCallParticipant, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`pubkey`, buf)
+            FfiConverterString.write(value.`displayName`, buf)
+            FfiConverterByteArray.write(value.`audioConfig`, buf)
+            FfiConverterLong.write(value.`joinedAt`, buf)
+    }
+}
+
+
+
+/**
+ * Return of create_group_call. `session_id` is 16 raw bytes, `session_key`
+ * is 32 raw bytes; both go into the mimir://gc/ invite link (session_id
+ * in the path as base32; session_key in the URL fragment as base64url).
+ */
+data class GroupCallSession (
+    var `sessionId`: kotlin.ByteArray
+    , 
+    var `sessionKey`: kotlin.ByteArray
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeGroupCallSession: FfiConverterRustBuffer<GroupCallSession> {
+    override fun read(buf: ByteBuffer): GroupCallSession {
+        return GroupCallSession(
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: GroupCallSession) = (
+            FfiConverterByteArray.allocationSize(value.`sessionId`) +
+            FfiConverterByteArray.allocationSize(value.`sessionKey`)
+    )
+
+    override fun write(value: GroupCallSession, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`sessionId`, buf)
+            FfiConverterByteArray.write(value.`sessionKey`, buf)
     }
 }
 
@@ -6397,7 +6709,7 @@ data class StoredMember (
     , 
     var `chatId`: kotlin.Long
     , 
-    var `pubkey`: kotlin.String
+    var `pubkey`: kotlin.ByteArray
     , 
     var `nickname`: kotlin.String
     , 
@@ -6436,7 +6748,7 @@ public object FfiConverterTypeStoredMember: FfiConverterRustBuffer<StoredMember>
         return StoredMember(
             FfiConverterLong.read(buf),
             FfiConverterLong.read(buf),
-            FfiConverterString.read(buf),
+            FfiConverterByteArray.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
@@ -6453,7 +6765,7 @@ public object FfiConverterTypeStoredMember: FfiConverterRustBuffer<StoredMember>
     override fun allocationSize(value: StoredMember) = (
             FfiConverterLong.allocationSize(value.`id`) +
             FfiConverterLong.allocationSize(value.`chatId`) +
-            FfiConverterString.allocationSize(value.`pubkey`) +
+            FfiConverterByteArray.allocationSize(value.`pubkey`) +
             FfiConverterString.allocationSize(value.`nickname`) +
             FfiConverterString.allocationSize(value.`info`) +
             FfiConverterString.allocationSize(value.`avatar`) +
@@ -6469,7 +6781,7 @@ public object FfiConverterTypeStoredMember: FfiConverterRustBuffer<StoredMember>
     override fun write(value: StoredMember, buf: ByteBuffer) {
             FfiConverterLong.write(value.`id`, buf)
             FfiConverterLong.write(value.`chatId`, buf)
-            FfiConverterString.write(value.`pubkey`, buf)
+            FfiConverterByteArray.write(value.`pubkey`, buf)
             FfiConverterString.write(value.`nickname`, buf)
             FfiConverterString.write(value.`info`, buf)
             FfiConverterString.write(value.`avatar`, buf)
@@ -7041,6 +7353,39 @@ public interface AppEventListener {
     
     fun `onCallPacket`(`pubkey`: kotlin.ByteArray, `data`: kotlin.ByteArray)
     
+    /**
+     * Our CALL_JOIN was accepted by the call-mediator.
+     */
+    fun `onGroupCallJoined`(`sessionId`: kotlin.ByteArray)
+    
+    /**
+     * Full participant roster for the active call. Fires right after we join
+     * and again on any subsequent server-pushed roster refresh.
+     */
+    fun `onGroupCallParticipants`(`sessionId`: kotlin.ByteArray, `participants`: List<GroupCallParticipant>)
+    
+    /**
+     * Single participant joined/left event. `event` is 1 = joined, 2 = left.
+     */
+    fun `onGroupCallParticipantEvent`(`sessionId`: kotlin.ByteArray, `event`: kotlin.UByte, `pubkey`: kotlin.ByteArray, `displayName`: kotlin.String)
+    
+    /**
+     * Decrypted AAC audio frame from another participant. `seq` is the
+     * sender's monotonic sequence number (use for reorder / dedup on the
+     * jitter buffer).
+     */
+    fun `onGroupCallAudio`(`sessionId`: kotlin.ByteArray, `fromPubkey`: kotlin.ByteArray, `seq`: kotlin.UInt, `aacFrame`: kotlin.ByteArray)
+    
+    /**
+     * Server-reported protocol error (e.g. unknown session, session full).
+     */
+    fun `onGroupCallError`(`code`: kotlin.UByte, `message`: kotlin.String)
+    
+    /**
+     * Control connection to the call-mediator dropped.
+     */
+    fun `onGroupCallDisconnected`()
+    
     fun `onFileProgress`(`guid`: kotlin.Long, `bytesDone`: kotlin.Long, `totalBytes`: kotlin.Long, `isUpload`: kotlin.Boolean)
     
     fun `onFileReceived`(`pubkey`: kotlin.ByteArray, `guid`: kotlin.Long, `metaJson`: kotlin.String, `filePath`: kotlin.String)
@@ -7295,7 +7640,86 @@ internal object uniffiCallbackInterfaceAppEventListener {
             uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
         }
     }
-    internal object `onFileProgress`: UniffiCallbackInterfaceAppEventListenerMethod18 {
+    internal object `onGroupCallJoined`: UniffiCallbackInterfaceAppEventListenerMethod18 {
+        override fun callback(`uniffiHandle`: Long,`sessionId`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onGroupCallJoined`(
+                    FfiConverterByteArray.lift(`sessionId`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onGroupCallParticipants`: UniffiCallbackInterfaceAppEventListenerMethod19 {
+        override fun callback(`uniffiHandle`: Long,`sessionId`: RustBuffer.ByValue,`participants`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onGroupCallParticipants`(
+                    FfiConverterByteArray.lift(`sessionId`),
+                    FfiConverterSequenceTypeGroupCallParticipant.lift(`participants`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onGroupCallParticipantEvent`: UniffiCallbackInterfaceAppEventListenerMethod20 {
+        override fun callback(`uniffiHandle`: Long,`sessionId`: RustBuffer.ByValue,`event`: Byte,`pubkey`: RustBuffer.ByValue,`displayName`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onGroupCallParticipantEvent`(
+                    FfiConverterByteArray.lift(`sessionId`),
+                    FfiConverterUByte.lift(`event`),
+                    FfiConverterByteArray.lift(`pubkey`),
+                    FfiConverterString.lift(`displayName`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onGroupCallAudio`: UniffiCallbackInterfaceAppEventListenerMethod21 {
+        override fun callback(`uniffiHandle`: Long,`sessionId`: RustBuffer.ByValue,`fromPubkey`: RustBuffer.ByValue,`seq`: Int,`aacFrame`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onGroupCallAudio`(
+                    FfiConverterByteArray.lift(`sessionId`),
+                    FfiConverterByteArray.lift(`fromPubkey`),
+                    FfiConverterUInt.lift(`seq`),
+                    FfiConverterByteArray.lift(`aacFrame`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onGroupCallError`: UniffiCallbackInterfaceAppEventListenerMethod22 {
+        override fun callback(`uniffiHandle`: Long,`code`: Byte,`message`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onGroupCallError`(
+                    FfiConverterUByte.lift(`code`),
+                    FfiConverterString.lift(`message`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onGroupCallDisconnected`: UniffiCallbackInterfaceAppEventListenerMethod23 {
+        override fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onGroupCallDisconnected`(
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onFileProgress`: UniffiCallbackInterfaceAppEventListenerMethod24 {
         override fun callback(`uniffiHandle`: Long,`guid`: Long,`bytesDone`: Long,`totalBytes`: Long,`isUpload`: Byte,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
             val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -7310,7 +7734,7 @@ internal object uniffiCallbackInterfaceAppEventListener {
             uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
         }
     }
-    internal object `onFileReceived`: UniffiCallbackInterfaceAppEventListenerMethod19 {
+    internal object `onFileReceived`: UniffiCallbackInterfaceAppEventListenerMethod25 {
         override fun callback(`uniffiHandle`: Long,`pubkey`: RustBuffer.ByValue,`guid`: Long,`metaJson`: RustBuffer.ByValue,`filePath`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
             val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -7325,7 +7749,7 @@ internal object uniffiCallbackInterfaceAppEventListener {
             uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
         }
     }
-    internal object `onFileDownloaded`: UniffiCallbackInterfaceAppEventListenerMethod20 {
+    internal object `onFileDownloaded`: UniffiCallbackInterfaceAppEventListenerMethod26 {
         override fun callback(`uniffiHandle`: Long,`chatId`: Long,`guid`: Long,`filePath`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
             val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -7339,7 +7763,7 @@ internal object uniffiCallbackInterfaceAppEventListener {
             uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
         }
     }
-    internal object `onContactRequestReceived`: UniffiCallbackInterfaceAppEventListenerMethod21 {
+    internal object `onContactRequestReceived`: UniffiCallbackInterfaceAppEventListenerMethod27 {
         override fun callback(`uniffiHandle`: Long,`requestId`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
             val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -7351,7 +7775,7 @@ internal object uniffiCallbackInterfaceAppEventListener {
             uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
         }
     }
-    internal object `onContactResponse`: UniffiCallbackInterfaceAppEventListenerMethod22 {
+    internal object `onContactResponse`: UniffiCallbackInterfaceAppEventListenerMethod28 {
         override fun callback(`uniffiHandle`: Long,`pubkey`: RustBuffer.ByValue,`accepted`: Byte,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
             val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -7364,7 +7788,7 @@ internal object uniffiCallbackInterfaceAppEventListener {
             uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
         }
     }
-    internal object `onTrackerAnnounce`: UniffiCallbackInterfaceAppEventListenerMethod23 {
+    internal object `onTrackerAnnounce`: UniffiCallbackInterfaceAppEventListenerMethod29 {
         override fun callback(`uniffiHandle`: Long,`ok`: Byte,`ttl`: Int,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
             val uniffiObj = FfiConverterTypeAppEventListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -7411,6 +7835,12 @@ internal object uniffiCallbackInterfaceAppEventListener {
         `onIncomingCall`,
         `onCallStatusChanged`,
         `onCallPacket`,
+        `onGroupCallJoined`,
+        `onGroupCallParticipants`,
+        `onGroupCallParticipantEvent`,
+        `onGroupCallAudio`,
+        `onGroupCallError`,
+        `onGroupCallDisconnected`,
         `onFileProgress`,
         `onFileReceived`,
         `onFileDownloaded`,
@@ -7921,6 +8351,34 @@ public object FfiConverterSequenceTypeFileItem: FfiConverterRustBuffer<List<File
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeFileItem.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeGroupCallParticipant: FfiConverterRustBuffer<List<GroupCallParticipant>> {
+    override fun read(buf: ByteBuffer): List<GroupCallParticipant> {
+        val len = buf.getInt()
+        return List<GroupCallParticipant>(len) {
+            FfiConverterTypeGroupCallParticipant.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<GroupCallParticipant>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeGroupCallParticipant.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<GroupCallParticipant>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeGroupCallParticipant.write(it, buf)
         }
     }
 }

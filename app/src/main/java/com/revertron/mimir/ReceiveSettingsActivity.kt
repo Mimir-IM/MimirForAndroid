@@ -110,6 +110,10 @@ class ReceiveSettingsActivity : BaseActivity(), SettingsAdapter.Listener {
                     putString(SettingsData.KEY_ACCEPT_MESSAGES, value)
                     commit()
                 }
+                // Push the new value through to the Rust gate immediately.
+                // Without this the toggle is purely cosmetic until the
+                // process restarts and ConnectionService re-reads the pref.
+                App.app.mimirApp?.setAcceptOnlyFromContacts(value == "contacts")
                 dialog.dismiss()
                 refreshList()
             }

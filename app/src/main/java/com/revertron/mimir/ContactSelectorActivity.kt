@@ -109,7 +109,8 @@ class ContactSelectorActivity : BaseActivity(), View.OnClickListener {
             allContacts
         }
 
-        // Convert to ChatListItem
+        // Convert to ChatListItem, most-recently-active first. Contacts with
+        // no messages have lastMessageTime=0 and sink to the bottom.
         return contacts.map { contact ->
             val avatarDrawable = loadRoundedAvatar(this, contact.avatar.ifEmpty { null }, 48, 6)
             val lastMessage = storage.getLastMessage(contact.id)
@@ -124,7 +125,7 @@ class ContactSelectorActivity : BaseActivity(), View.OnClickListener {
                 unreadCount = storage.getUnreadCount(contact.id),
                 avatar = avatarDrawable
             )
-        }
+        }.sortedByDescending { it.lastMessageTime }
     }
 
     override fun onClick(view: View) {

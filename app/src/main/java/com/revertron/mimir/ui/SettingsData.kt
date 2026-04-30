@@ -16,6 +16,7 @@ object SettingsData {
     const val KEY_AUTO_DOWNLOAD_GROUPS = "auto-download-groups"
     const val KEY_VOICE_QUALITY = "voice-quality"
     const val KEY_FILE_SERVER_PUBKEY = "file-server-pubkey"
+    const val KEY_CALL_MEDIATOR_PUBKEY = "call-mediator-pubkey"
 
     fun create(context: Context): List<SettingsAdapter.Item> {
         val sp = PreferenceManager.getDefaultSharedPreferences(context)

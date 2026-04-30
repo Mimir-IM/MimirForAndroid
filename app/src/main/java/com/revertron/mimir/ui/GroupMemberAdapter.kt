@@ -11,6 +11,7 @@ import com.revertron.mimir.R
 import com.revertron.mimir.formatLastSeen
 import com.revertron.mimir.getAvatarColor
 import com.revertron.mimir.loadRoundedAvatar
+import org.bouncycastle.util.encoders.Hex
 import uniffi.mimir.StoredMember
 
 class GroupMemberAdapter(
@@ -56,8 +57,9 @@ class GroupMemberAdapter(
         val member = members[position]
         val context = holder.itemView.context
 
-        // Set member name (pubkey is already hex string in StoredMember)
-        val pubKeyShort = member.pubkey.take(8)
+        // Pubkey is now a raw 32-byte BLOB — render as hex for the UI.
+        val pubKeyHex = Hex.toHexString(member.pubkey)
+        val pubKeyShort = pubKeyHex.take(8)
         val displayName = member.nickname.ifEmpty { pubKeyShort }
         holder.memberName.text = displayName
 
@@ -107,7 +109,7 @@ class GroupMemberAdapter(
         } else {
             // Use default avatar with color based on pubkey
             holder.avatar.setImageResource(R.drawable.button_rounded_white)
-            val avatarColor = getAvatarColor(member.pubkey.toByteArray())
+            val avatarColor = getAvatarColor(member.pubkey)
             holder.avatar.setColorFilter(avatarColor, PorterDuff.Mode.MULTIPLY)
         }
 

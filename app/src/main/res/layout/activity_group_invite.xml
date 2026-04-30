@@ -83,7 +83,7 @@
                 tools:text="Invited by: a1b2c3d4e5f6g7h8" />
 
             <!-- Buttons -->
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/button_accept"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -91,16 +91,16 @@
                 android:textSize="16sp"
                 android:padding="16dp"
                 android:layout_marginBottom="12dp"
-                style="@style/Widget.MaterialComponents.Button" />
+                style="@style/MimirOutlinedButton" />
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/button_reject"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@android:string/cancel"
                 android:textSize="16sp"
                 android:padding="16dp"
-                style="@style/Widget.MaterialComponents.Button.TextButton" />
+                style="@style/MimirOutlinedButton" />
 
         </androidx.appcompat.widget.LinearLayoutCompat>
     </ScrollView>

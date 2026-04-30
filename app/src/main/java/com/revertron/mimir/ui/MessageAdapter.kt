@@ -432,8 +432,9 @@ class MessageAdapter(
             holder.avatar?.visibility = View.GONE
         }
 
-        // Get message text (system messages need provider-side parsing + member lookup)
-        val messageText = if (message.type == 1000 && message.data != null) {
+        // Get message text (system messages need provider-side parsing + member lookup).
+        // msgType=1000 means "system message" only in group chats; in 1:1 chats it's plain text.
+        val messageText = if (groupChat && message.type == 1000 && message.data != null) {
             provider.formatSystemMessage(holder.itemView.context, chatId, message.data)
                 ?: holder.itemView.context.getString(R.string.system_message)
         } else {
