@@ -179,6 +179,12 @@
     <string name="voice_quality_32">Low (32 kbps)</string>
     <string name="voice_quality_64">Medium (64 kbps)</string>
     <string name="voice_quality_128">High (128 kbps)</string>
+    <string name="video_release_to_send">Release to send · slide up to cancel</string>
+    <string name="video_cancel_armed">Release to cancel</string>
+    <string name="video_processing">Processing video…</string>
+    <string name="video_too_short">Hold longer to record a video</string>
+    <string name="video_message">Video message</string>
+    <string name="video_permissions_required">Camera and microphone permissions are required</string>
     <string name="resize_big_pics">Resize big images</string>
     <string name="resize_big_pics_desc">Before sending resize images bigger than 5 megabytes.</string>
     <string name="image_settings">Image settings</string>

@@ -755,22 +755,30 @@ class ConnectionService : Service() {
                             }
                         }.start()
                     } else {
-                        // Legacy P2P download
+                        // Legacy P2P download. The adapter only passes chat_id
+                        // (which for a 1:1 chat is the contact id), so resolve the
+                        // contact pubkey from it rather than an intent extra.
                         val hash = intent.getStringExtra("hash")
                         val size = intent.getLongExtra("size", 0L)
-                        val pubkey = if (!isGroupChat) ms?.getContactByPubkey(intent.getByteArrayExtra("contact_pubkey") ?: ByteArray(0))?.pubkey else null
-                        if (hash != null) {
-                            val contactPubkey = intent.getByteArrayExtra("contact_pubkey")
-                            if (contactPubkey != null) {
-                                Thread {
-                                    try {
-                                        mimirApp?.requestFile(contactPubkey, guid, name, hash, size)
-                                    } catch (e: Exception) {
-                                        Log.w(TAG, "requestFile failed: ${e.message}")
-                                        try { mimirApp?.connectToContact(contactPubkey) } catch (_: Exception) {}
-                                    }
-                                }.start()
-                            }
+                        val contactPubkey = ms?.getContact(chatId)?.pubkey
+                        if (hash != null && contactPubkey != null) {
+                            Thread {
+                                try {
+                                    mimirApp?.requestFile(contactPubkey, guid, name, hash, size)
+                                } catch (e: Exception) {
+                                    // Peer not connected — reset the message back to its
+                                    // download-button state instead of leaving a stuck
+                                    // spinner, and nudge a reconnect so the next tap can
+                                    // succeed. ACTION_FILE_DOWNLOADED just refreshes the
+                                    // row; with no file on disk it rebinds to the button.
+                                    Log.w(TAG, "requestFile failed (${e.message}); resetting download state")
+                                    broadcastFileDownloadReset(guid)
+                                    try { mimirApp?.connectToContact(contactPubkey) } catch (_: Exception) {}
+                                }
+                            }.start()
+                        } else {
+                            Log.e(TAG, "request_file: cannot resolve contact for chatId=$chatId (hash=${hash != null})")
+                            broadcastFileDownloadReset(guid)
                         }
                     }
                 }
@@ -1109,6 +1117,15 @@ class ConnectionService : Service() {
                 putExtra("name", name)
                 putExtra("pubkey", pubkey)
             }
+        )
+    }
+
+    /** Clears the "Downloading…" spinner for a message whose download couldn't
+     *  start. Reuses ACTION_FILE_DOWNLOADED (a plain row refresh) — with no file
+     *  on disk the row rebinds to its download button so the user can retry. */
+    private fun broadcastFileDownloadReset(guid: Long) {
+        LocalBroadcastManager.getInstance(this).sendBroadcast(
+            Intent("ACTION_FILE_DOWNLOADED").putExtra("guid", guid)
         )
     }
 

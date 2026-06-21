@@ -68,6 +68,15 @@ import kotlin.math.min
 const val PICTURE_MAX_SIZE = 5 * 1024 * 1024
 const val MAX_FILE_SIZE = 1024 * 1024 * 1024
 const val MAX_GROUP_FILE_SIZE = 500L * 1024 * 1024
+
+/**
+ * Stored message-type code (the `type` column / AttachmentSpec.msgType) for a
+ * video message — a square, rounded-corner video shot in the chat.
+ * Stored-type space: 1=image, 2=call info, 3=file/voice, 4=video message,
+ * 10=reaction, 1000=text/system. This is NOT the net.MSG_TYPE_* wire-protocol
+ * space (where 4 means CHALLENGE2) — keep the two apart.
+ */
+const val MSG_TYPE_VIDEO_MESSAGE = 4
 const val UPDATE_SERVER = "https://update.mimir-app.net"
 const val IP_CACHE_DEFAULT_TTL = 900
 
@@ -709,6 +718,32 @@ fun stageVoiceRecording(file: File): StagedAttachment {
  */
 fun allocateVoiceRecordingFile(context: Context): File =
     File(attachmentStagingDir(context), "voice_${randomString(12)}.m4a")
+
+/**
+ * Allocates a fresh file in the staging dir for the video-message pipeline.
+ * CameraX records the raw take here; the transcoder then writes the final
+ * square/compressed mp4 to a sibling file before sending.
+ */
+fun allocateVideoRecordingFile(context: Context): File =
+    File(attachmentStagingDir(context), "video_${randomString(12)}.mp4")
+
+/**
+ * Wraps a finished (already square-cropped + compressed) video-message file
+ * as a StagedAttachment. msgType is [MSG_TYPE_VIDEO_MESSAGE] so the UI renders
+ * it as a square rounded video bubble rather than a generic file row.
+ */
+fun stageVideoForSending(file: File): StagedAttachment {
+    return StagedAttachment(
+        spec = uniffi.mimir.AttachmentSpec(
+            filePath = file.absolutePath,
+            originalName = "video_message.mp4",
+            mimeType = "video/mp4",
+            msgType = MSG_TYPE_VIDEO_MESSAGE,
+        ),
+        size = file.length(),
+        stagedFile = file,
+    )
+}
 
 /**
  * Builds a StagedAttachment for a forward operation where the source file

@@ -55,6 +55,13 @@ class ChatActivity : BaseChatActivity() {
                 val from = intent.getStringExtra("contact")
                 if (from != null && contact.pubkey.contentEquals(Hex.decode(from))) {
                     showOnlineState(status)
+                    // A dropped 1:1 connection means any in-flight download in this
+                    // chat is dead (e.g. the request went out over a stale socket).
+                    // Reset their spinners back to download buttons so the user can
+                    // retry, rather than leaving them stuck "Downloading…".
+                    if (status == PeerStatus.NotConnected || status == PeerStatus.ErrorConnecting) {
+                        adapter.resetActiveDownloads()
+                    }
                 }
             }
         }

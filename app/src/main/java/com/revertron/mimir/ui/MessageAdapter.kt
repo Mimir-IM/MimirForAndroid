@@ -4,8 +4,10 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.PorterDuff
 import android.graphics.drawable.Drawable
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.text.Spannable
 import android.text.SpannableString
@@ -33,7 +35,9 @@ import androidx.core.view.updateMargins
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.AudioPlaybackService
 import com.revertron.mimir.ConnectionService
+import com.revertron.mimir.MSG_TYPE_VIDEO_MESSAGE
 import com.revertron.mimir.R
+import com.revertron.mimir.VideoActivity
 import com.revertron.mimir.getAvatarColor
 import org.json.JSONException
 import org.json.JSONObject
@@ -41,6 +45,7 @@ import java.io.File
 import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 import androidx.core.net.toUri
 import kotlin.math.abs
 
@@ -258,6 +263,9 @@ class MessageAdapter(
         val fileName: AppCompatTextView = view.findViewById(R.id.file_name)
         val fileSize: AppCompatTextView = view.findViewById(R.id.file_size)
         val fileProgress: CircularProgressIndicator = view.findViewById(R.id.file_progress)
+        val videoPanel: View = view.findViewById(R.id.video_panel)
+        val videoPoster: AppCompatImageView = view.findViewById(R.id.video_poster)
+        val videoDuration: AppCompatTextView = view.findViewById(R.id.video_duration)
         val time: AppCompatTextView = view.findViewById(R.id.time)
         val sent: AppCompatImageView = view.findViewById(R.id.status_image)
         val replyToName: AppCompatTextView = view.findViewById(R.id.reply_contact_name)
@@ -454,6 +462,7 @@ class MessageAdapter(
         holder.message.visibility = View.VISIBLE
         holder.message.setCompoundDrawables(null, null, null ,null)
         holder.sent.visibility = if (message.incoming || message.type == 1000) View.GONE else View.VISIBLE
+        holder.videoPanel.visibility = View.GONE
 
         when (message.type) {
             1 -> {
@@ -614,6 +623,11 @@ class MessageAdapter(
                 }
                 holder.picture.setImageDrawable(null)
                 holder.picturePanel.visibility = View.GONE
+            }
+            MSG_TYPE_VIDEO_MESSAGE -> {
+                holder.picture.setImageDrawable(null)
+                holder.picturePanel.visibility = View.GONE
+                bindVideoMessage(holder, message)
             }
             1000 -> {
                 holder.filePanel.visibility = View.GONE
@@ -891,6 +905,16 @@ class MessageAdapter(
         notifyItemChangedByGuid(guid)
     }
 
+    /** Clears any active "Downloading…" state (e.g. the peer disconnected and
+     *  in-flight downloads can no longer complete) so each row rebinds to its
+     *  download button for a retry. */
+    fun resetActiveDownloads() {
+        if (downloadingProgress.isEmpty()) return
+        val guids = downloadingProgress.keys.toList()
+        downloadingProgress.clear()
+        for (g in guids) notifyItemChangedByGuid(g)
+    }
+
     private fun notifyItemChangedByGuid(guid: Long) {
         val cached = guidPositionCache[guid]
         if (cached != null && cached in messageIds.indices) {
@@ -957,6 +981,101 @@ class MessageAdapter(
             holder.fileProgress.setProgressCompat(0, false)
             holder.fileSize.text = formatFileSize(totalSize)
         }
+    }
+
+    private fun bindVideoMessage(holder: ViewHolder, message: DisplayMessage) {
+        val data = message.data ?: run {
+            holder.videoPanel.visibility = View.GONE
+            holder.filePanel.visibility = View.GONE
+            return
+        }
+        val context = holder.itemView.context
+        try {
+            val json = JSONObject(String(data))
+            val name = json.getString("name")
+            val size = json.optLong("size", 0L)
+            val caption = json.optString("text", "")
+            val file = File(File(context.filesDir, "files"), name)
+
+            // Only show the text line when there's a real caption (getText()
+            // otherwise returns the "Video message" label, which we don't want
+            // duplicated under the tile).
+            holder.message.visibility = if (caption.isEmpty()) View.GONE else View.VISIBLE
+
+            if (file.exists()) {
+                holder.filePanel.visibility = View.GONE
+                holder.videoPanel.visibility = View.VISIBLE
+                holder.videoDuration.text = ""
+                bindVideoThumb(holder, file, name)
+                holder.videoPanel.setOnClickListener {
+                    val intent = Intent(context, VideoActivity::class.java)
+                    intent.data = Uri.fromFile(file)
+                    context.startActivity(intent)
+                }
+            } else if (message.incoming) {
+                // Not downloaded yet — show a download prompt in the file panel.
+                holder.videoPanel.visibility = View.GONE
+                val isDownloading = downloadingProgress.containsKey(message.guid)
+                holder.fileIcon.setImageResource(R.drawable.ic_folder_download_outline)
+                if (isDownloading) {
+                    holder.fileName.text = context.getString(R.string.downloading_file)
+                    bindFileProgress(holder, message.guid, size)
+                    holder.filePanel.setOnClickListener(null)
+                } else {
+                    holder.fileName.text = context.getString(R.string.video_message)
+                    holder.fileSize.text = formatFileSize(size)
+                    holder.fileProgress.visibility = View.GONE
+                    holder.fileIcon.visibility = View.VISIBLE
+                    holder.filePanel.setOnClickListener {
+                        downloadingProgress[message.guid] = Pair(0L, 0L)
+                        notifyItemChanged(holder.bindingAdapterPosition)
+                        requestFileDownload(context, message.guid, message.data)
+                    }
+                }
+                holder.filePanel.visibility = View.VISIBLE
+            } else {
+                holder.videoPanel.visibility = View.GONE
+                holder.filePanel.visibility = View.GONE
+            }
+        } catch (_: JSONException) {
+            holder.videoPanel.visibility = View.GONE
+            holder.filePanel.visibility = View.GONE
+        }
+    }
+
+    /** Extracts the poster frame + duration off the UI thread, caching the
+     *  poster JPEG under cacheDir/files so later binds are instant. */
+    private fun bindVideoThumb(holder: ViewHolder, file: File, name: String) {
+        val context = holder.itemView.context
+        val cacheDir = File(context.cacheDir, "files").apply { mkdirs() }
+        val poster = File(cacheDir, "vthumb_$name.jpg")
+        if (poster.exists()) {
+            holder.videoPoster.setImageURI(Uri.fromFile(poster))
+        } else {
+            holder.videoPoster.setImageDrawable(null)
+        }
+        Thread {
+            try {
+                val retriever = MediaMetadataRetriever()
+                retriever.setDataSource(file.absolutePath)
+                val durMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                var frame: Bitmap? = null
+                if (!poster.exists()) {
+                    frame = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                }
+                retriever.release()
+                if (frame != null) {
+                    poster.outputStream().use { frame.compress(Bitmap.CompressFormat.JPEG, 80, it) }
+                }
+                holder.itemView.post {
+                    if (poster.exists()) holder.videoPoster.setImageURI(Uri.fromFile(poster))
+                    val s = durMs / 1000
+                    holder.videoDuration.text = String.format(Locale.US, "%d:%02d", s / 60, s % 60)
+                }
+            } catch (e: Exception) {
+                Log.w("MessageAdapter", "Video thumb failed: ${e.message}")
+            }
+        }.start()
     }
 
     private fun getFileIconForMimeType(mimeType: String): Int {

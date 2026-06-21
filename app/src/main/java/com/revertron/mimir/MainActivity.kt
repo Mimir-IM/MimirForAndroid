@@ -623,6 +623,10 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                     if (text.isNotEmpty()) text
                     else json.optString("originalName", json.optString("name", getString(R.string.draft_attachment)))
                 }
+                MSG_TYPE_VIDEO_MESSAGE -> {
+                    val json = org.json.JSONObject(String(msg.data!!))
+                    json.optString("text", "").ifEmpty { getString(R.string.video_message) }
+                }
                 else -> String(msg.data!!)
             }
         } catch (_: Exception) { String(msg.data!!) }
@@ -641,6 +645,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             val lastMsgText = when (lastMessage?.msgType) {
                 1 -> "\uD83D\uDDBC\uFE0F " + (getStoredMessageText(lastMessage) ?: "")
                 3 -> "\uD83D\uDCC4 " + (getStoredMessageText(lastMessage) ?: "")
+                MSG_TYPE_VIDEO_MESSAGE -> "\uD83D\uDCF9 " + (getStoredMessageText(lastMessage) ?: "")
                 else -> getStoredMessageText(lastMessage)
             }
             val draft = storage.getDraft(CHAT_TYPE_CONTACT, contact.id)
@@ -668,6 +673,7 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
             val lastMessageText = when (lastMessage?.msgType) {
                 1 -> "\uD83D\uDDBC\uFE0F " + (getStoredMessageText(lastMessage) ?: "")
                 3 -> "\uD83D\uDCC4 " + (getStoredMessageText(lastMessage) ?: "")
+                MSG_TYPE_VIDEO_MESSAGE -> "\uD83D\uDCF9 " + (getStoredMessageText(lastMessage) ?: "")
                 else -> getStoredMessageText(lastMessage)
             }
 

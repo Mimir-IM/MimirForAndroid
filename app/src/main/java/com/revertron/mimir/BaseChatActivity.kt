@@ -40,9 +40,14 @@ import androidx.appcompat.widget.Toolbar
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.camera.view.PreviewView
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.transformer.Transformer
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.revertron.mimir.video.VideoMessageRecorder
+import com.revertron.mimir.video.VideoMessageTranscoder
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.revertron.mimir.ui.ChatListItem
 import com.revertron.mimir.ui.MessageAdapter
@@ -85,6 +90,15 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         const val PICK_FILE_REQUEST_CODE = 125
         const val REQUEST_FORWARD_MESSAGE = 126
         private const val PREF_EMOJI_USAGE = "emoji_usage_counts"
+
+        // Record-button mode (short tap toggles voice <-> video)
+        private const val PREF_RECORD_MODE = "record_mode"
+        private const val RECORD_MODE_VOICE = 0
+        private const val RECORD_MODE_VIDEO = 1
+        // Press shorter than this is a tap (toggle mode); longer starts recording.
+        private const val HOLD_THRESHOLD_MS = 250L
+        private const val VIDEO_MIN_DURATION_MS = 3000L
+        private const val VIDEO_MAX_DURATION_MS = 60000L
 
         val REACTION_EMOJIS = listOf(
             "\uD83D\uDC4D",  // 👍
@@ -157,6 +171,20 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     private var recordingStartTime: Long = 0L
     private val recordingHandler = Handler(Looper.getMainLooper())
 
+    // Record-button mode + video-message recording state
+    private var recordMode = RECORD_MODE_VOICE
+    private var pressInProgress = false
+    private var holdFired = false
+    private var holdRunnable: Runnable? = null
+    private var pressDownY = 0f
+    private var videoRecorder: VideoMessageRecorder? = null
+    private var isVideoRecording = false
+    private var videoRecordFile: File? = null
+    private var videoRecordStartTime = 0L
+    private var videoCancelArmed = false
+    private var pendingVideoCancelled = false
+    private var videoTranscoder: Transformer? = null
+
     // Permission launchers
     protected val cameraPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
@@ -173,6 +201,17 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             else Toast.makeText(this, "Microphone permission required", Toast.LENGTH_SHORT).show()
         }
 
+    // Video messages need both CAMERA and RECORD_AUDIO. We don't auto-start on
+    // grant (the user already released by then) — they hold the button again.
+    private val videoPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+            val granted = result[Manifest.permission.CAMERA] == true &&
+                    result[Manifest.permission.RECORD_AUDIO] == true
+            if (!granted) {
+                Toast.makeText(this, R.string.video_permissions_required, Toast.LENGTH_SHORT).show()
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(getLayoutResId())
@@ -180,6 +219,8 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         setupToolbar()
         setupReplyPanel()
         setupAttachmentUI()
+        recordMode = PreferenceManager.getDefaultSharedPreferences(this)
+            .getInt(PREF_RECORD_MODE, RECORD_MODE_VOICE)
         setupMessageInput()
 
         myName = getMimir().getAccount(1)?.name ?: ""
@@ -412,12 +453,25 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         val sendButton = findViewById<AppCompatImageButton>(R.id.send_button)
         val isForwardMode = intent.getBooleanExtra("FORWARD_MODE", false)
         if (editText.text.isNullOrBlank() && attachment == null && !isForwardMode) {
-            sendButton.setImageResource(R.drawable.ic_microphone_outline)
+            // "Record mode" — voice or video depending on the toggled sub-mode.
+            if (recordMode == RECORD_MODE_VIDEO) {
+                sendButton.setImageResource(R.drawable.ic_video_outline)
+            } else {
+                sendButton.setImageResource(R.drawable.ic_microphone_outline)
+            }
             isInMicMode = true
         } else {
             sendButton.setImageResource(R.drawable.ic_arrow_up_right)
             isInMicMode = false
         }
+    }
+
+    /** Short tap on the record button flips voice <-> video. */
+    private fun toggleRecordMode() {
+        recordMode = if (recordMode == RECORD_MODE_VIDEO) RECORD_MODE_VOICE else RECORD_MODE_VIDEO
+        PreferenceManager.getDefaultSharedPreferences(this).edit()
+            .putInt(PREF_RECORD_MODE, recordMode).apply()
+        updateSendButtonIcon()
     }
 
     @android.annotation.SuppressLint("ClickableViewAccessibility")
@@ -435,15 +489,36 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             if (isInMicMode) {
                 when (event.action) {
                     MotionEvent.ACTION_DOWN -> {
-                        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                            startVoiceRecording()
-                        } else {
-                            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        // Distinguish a short tap (toggle voice/video) from a
+                        // hold (start recording the current mode).
+                        pressInProgress = true
+                        holdFired = false
+                        videoCancelArmed = false
+                        pressDownY = event.rawY
+                        val r = Runnable {
+                            holdFired = true
+                            holdRunnable = null
+                            if (pressInProgress) startRecordingForCurrentMode()
                         }
+                        holdRunnable = r
+                        recordingHandler.postDelayed(r, HOLD_THRESHOLD_MS)
+                        true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        if (isVideoRecording) updateVideoCancelState(event.rawY)
                         true
                     }
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        stopVoiceRecording()
+                        pressInProgress = false
+                        holdRunnable?.let { recordingHandler.removeCallbacks(it) }
+                        holdRunnable = null
+                        val cancelled = event.action == MotionEvent.ACTION_CANCEL
+                        when {
+                            isRecording -> stopVoiceRecording()
+                            holdFired -> stopVideoRecording(cancelled || videoCancelArmed)
+                            !cancelled -> toggleRecordMode()
+                        }
+                        holdFired = false
                         true
                     }
                     else -> false
@@ -1037,8 +1112,8 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         menuPopup.inputMethodMode = PopupWindow.INPUT_METHOD_NOT_NEEDED
         menuPopup.elevation = 8f * resources.displayMetrics.density
 
-        // Hide "Save" and "Delete file" menu items for messages without file attachments (type != 1 and type != 3)
-        if (messageType != 1 && messageType != 3) {
+        // Hide "Save" and "Delete file" menu items for messages without file attachments (type != 1, 3, video)
+        if (messageType != 1 && messageType != 3 && messageType != MSG_TYPE_VIDEO_MESSAGE) {
             menuView.findViewById<View>(R.id.menu_save).visibility = View.GONE
             menuView.findViewById<View>(R.id.menu_delete_file).visibility = View.GONE
         }
@@ -1255,8 +1330,8 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         intent.putExtra("FORWARD_MESSAGE_TYPE", message.type)
         intent.putExtra("FORWARD_MESSAGE_TEXT", message.getText(this))
 
-        // Include media JSON for images/files
-        if (message.type == 1 || message.type == 3) {
+        // Include media JSON for images/files/video
+        if (message.type == 1 || message.type == 3 || message.type == MSG_TYPE_VIDEO_MESSAGE) {
             message.data?.let {
                 intent.putExtra("FORWARD_MESSAGE_JSON", String(it))
             }
@@ -1277,8 +1352,8 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             return false
         }
 
-        // Only save image (type 1) or file (type 3) attachments
-        if (message.type != 1 && message.type != 3) {
+        // Only save image (type 1), file (type 3) or video-message attachments
+        if (message.type != 1 && message.type != 3 && message.type != MSG_TYPE_VIDEO_MESSAGE) {
             Toast.makeText(this, "This message has no file to save", Toast.LENGTH_SHORT).show()
             return false
         }
@@ -1322,7 +1397,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             return false
         }
 
-        if (message.type != 1 && message.type != 3) {
+        if (message.type != 1 && message.type != 3 && message.type != MSG_TYPE_VIDEO_MESSAGE) {
             return false
         }
 
@@ -1423,7 +1498,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         serviceIntent.putExtra("pubkey", myPubkey)
         serviceIntent.putExtra("replyTo", 0L)
 
-        if (messageType == 1 || messageType == 3) {
+        if (messageType == 1 || messageType == 3 || messageType == MSG_TYPE_VIDEO_MESSAGE) {
             // Media message
             serviceIntent.putExtra("type", messageType)
             serviceIntent.putExtra("message", messageJson ?: messageText)
@@ -1683,6 +1758,154 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         updateSendButtonIcon()
     }
 
+    // Video Message Recording
+
+    private fun startRecordingForCurrentMode() {
+        if (recordMode == RECORD_MODE_VIDEO) {
+            val camOk = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+            val micOk = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+            if (camOk && micOk) {
+                startVideoRecording()
+            } else {
+                videoPermissionLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
+            }
+        } else {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                startVoiceRecording()
+            } else {
+                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        }
+    }
+
+    private fun startVideoRecording() {
+        val previewView = findViewById<PreviewView>(R.id.video_preview)
+        val file = allocateVideoRecordingFile(this)
+        videoRecordFile = file
+        videoCancelArmed = false
+        pendingVideoCancelled = false
+
+        findViewById<AppCompatTextView>(R.id.video_hint).setText(R.string.video_release_to_send)
+        findViewById<AppCompatTextView>(R.id.video_timer).text = "0:00"
+        findViewById<View>(R.id.video_recording_overlay).visibility = View.VISIBLE
+        findViewById<AppCompatImageButton>(R.id.send_button).setColorFilter(Color.RED)
+
+        val recorder = VideoMessageRecorder(this, previewView)
+        videoRecorder = recorder
+        recorder.onStarted = {
+            isVideoRecording = true
+            videoRecordStartTime = System.currentTimeMillis()
+            recordingHandler.post(videoTimerRunnable)
+            recordingHandler.postDelayed({ stopVideoRecording(false) }, VIDEO_MAX_DURATION_MS)
+        }
+        recorder.onError = {
+            Toast.makeText(this, "Failed to start camera", Toast.LENGTH_SHORT).show()
+            recorder.release()
+            videoRecorder = null
+            isVideoRecording = false
+            cleanupVideoRecordingUi()
+            videoRecordFile?.delete()
+            videoRecordFile = null
+        }
+        recorder.onFinalized = { f, hasError, durMs -> onVideoFinalized(f, hasError, durMs) }
+        recorder.start(file)
+    }
+
+    private fun updateVideoCancelState(rawY: Float) {
+        val threshold = 100f * resources.displayMetrics.density
+        val armed = (pressDownY - rawY) > threshold
+        if (armed != videoCancelArmed) {
+            videoCancelArmed = armed
+            findViewById<AppCompatTextView>(R.id.video_hint).setText(
+                if (armed) R.string.video_cancel_armed else R.string.video_release_to_send
+            )
+        }
+    }
+
+    private fun stopVideoRecording(cancelled: Boolean) {
+        val recorder = videoRecorder ?: return
+        recordingHandler.removeCallbacks(videoTimerRunnable)
+
+        if (!isVideoRecording) {
+            // Camera was still warming up — abort without producing a message.
+            recorder.release()
+            videoRecorder = null
+            cleanupVideoRecordingUi()
+            videoRecordFile?.delete()
+            videoRecordFile = null
+            return
+        }
+
+        isVideoRecording = false
+        pendingVideoCancelled = cancelled
+        cleanupVideoRecordingUi()
+        // Triggers the Finalize event -> onVideoFinalized, which decides the
+        // too-short check against the ACTUAL encoded duration (not wall-clock,
+        // which over-counts encoder warm-up).
+        recorder.stop()
+    }
+
+    private fun onVideoFinalized(file: File, hasError: Boolean, durationMs: Long) {
+        videoRecorder?.release()
+        videoRecorder = null
+        videoRecordFile = null
+
+        val cancelled = pendingVideoCancelled
+        pendingVideoCancelled = false
+        val tooShort = durationMs < VIDEO_MIN_DURATION_MS
+
+        if (hasError || cancelled || tooShort || !file.exists() || file.length() == 0L) {
+            file.delete()
+            if (tooShort && !cancelled && !hasError) {
+                Toast.makeText(this, R.string.video_too_short, Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+        transcodeAndSendVideo(file)
+    }
+
+    @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
+    private fun transcodeAndSendVideo(input: File) {
+        Toast.makeText(this, R.string.video_processing, Toast.LENGTH_SHORT).show()
+        val output = File(input.parentFile, "out_${input.nameWithoutExtension}.mp4")
+        videoTranscoder = VideoMessageTranscoder.transcode(
+            this, input, output,
+            onSuccess = {
+                videoTranscoder = null
+                input.delete()
+                attachment = stageVideoForSending(output)
+                performSend()
+            },
+            onError = {
+                videoTranscoder = null
+                input.delete()
+                output.delete()
+                Toast.makeText(this, "Failed to process video", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    private val videoTimerRunnable = object : Runnable {
+        override fun run() {
+            val elapsed = (System.currentTimeMillis() - videoRecordStartTime) / 1000
+            findViewById<AppCompatTextView>(R.id.video_timer).text =
+                String.format(Locale.US, "%d:%02d", elapsed / 60, elapsed % 60)
+            recordingHandler.postDelayed(this, 500)
+        }
+    }
+
+    private fun cleanupVideoRecordingUi() {
+        findViewById<View>(R.id.video_recording_overlay).visibility = View.GONE
+        findViewById<AppCompatImageButton>(R.id.send_button).clearColorFilter()
+        videoCancelArmed = false
+    }
+
+    @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
+    private fun cancelTranscode() {
+        videoTranscoder?.let { try { it.cancel() } catch (_: Exception) {} }
+        videoTranscoder = null
+    }
+
     // Lifecycle
 
     override fun onStart() {
@@ -1705,6 +1928,20 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             sendButton.clearColorFilter()
             findViewById<View>(R.id.recording_overlay).visibility = View.GONE
         }
+        // Discard any in-progress video recording / transcode
+        pressInProgress = false
+        holdRunnable?.let { recordingHandler.removeCallbacks(it) }
+        holdRunnable = null
+        if (videoRecorder != null) {
+            recordingHandler.removeCallbacks(videoTimerRunnable)
+            isVideoRecording = false
+            videoRecorder?.release()
+            videoRecorder = null
+            videoRecordFile?.delete()
+            videoRecordFile = null
+            cleanupVideoRecordingUi()
+        }
+        cancelTranscode()
         saveDraft()
         // Clear the foreground-chat marker so notifications resume.
         // Compare-and-clear so a switch to a sibling chat (which already

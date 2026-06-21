@@ -127,6 +127,7 @@
 
         <activity android:name=".ContactActivity" android:exported="false" />
         <activity android:name=".PictureActivity" android:exported="false" />
+        <activity android:name=".VideoActivity" android:exported="false" />
 
         <activity
             android:name=".CallActivity"
