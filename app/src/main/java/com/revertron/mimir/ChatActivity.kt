@@ -28,7 +28,6 @@ import com.revertron.mimir.ui.Contact
 import com.revertron.mimir.ui.DisplayMessage
 import com.revertron.mimir.ui.MessageAdapter
 import com.revertron.mimir.ui.MimirMessageProvider
-import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.Hex
 import java.io.File
 import java.lang.Thread.sleep
@@ -230,8 +229,8 @@ class ChatActivity : BaseChatActivity() {
         }
     }
 
-    override fun getMessageForReply(messageId: Long): Pair<String, String>? {
-        val stored = getMimir().getMessage(messageId) ?: return null
+    override fun getMessageForReply(guid: Long): Pair<String, String>? {
+        val stored = getMimir().getMessageByGuid(guid) ?: return null
         val message = DisplayMessage.from(stored)
         val authorName = if (message.incoming) contact.name else myName
         return Pair(authorName, message.getText(this))
