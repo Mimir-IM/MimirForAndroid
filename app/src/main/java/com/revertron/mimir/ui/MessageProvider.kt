@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.drawable.Drawable
 import com.revertron.mimir.R
 import com.revertron.mimir.formatDuration
+import com.revertron.mimir.isUnsupportedMessageType
 import com.revertron.mimir.loadRoundedAvatar
 import com.revertron.mimir.net.MSG_TYPE_REACTION
 import org.bouncycastle.util.encoders.Hex
@@ -91,7 +92,12 @@ data class DisplayMessage(
                         val json = JSONObject(String(data))
                         json.optString("text", "").ifEmpty { context.getString(R.string.video_message) }
                     }
-                    else -> String(data)
+                    else -> if (isUnsupportedMessageType(type)) {
+                        // Forward-compat: a type this client version can't render.
+                        context.getString(R.string.unsupported_message_title)
+                    } else {
+                        String(data)
+                    }
                 }
             } catch (e: JSONException) {
                 "Unable to format message of type $type:\n" + String(data)

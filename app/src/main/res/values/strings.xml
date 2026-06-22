@@ -184,6 +184,8 @@
     <string name="video_processing">Processing video…</string>
     <string name="video_too_short">Hold longer to record a video</string>
     <string name="video_message">Video message</string>
+    <string name="unsupported_message_title">Unsupported message</string>
+    <string name="unsupported_message_desc">Update Mimir to view it</string>
     <string name="video_permissions_required">Camera and microphone permissions are required</string>
     <string name="resize_big_pics">Resize big images</string>
     <string name="resize_big_pics_desc">Before sending resize images bigger than 5 megabytes.</string>

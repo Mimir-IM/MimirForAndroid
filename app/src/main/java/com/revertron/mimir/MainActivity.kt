@@ -627,7 +627,12 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                     val json = org.json.JSONObject(String(msg.data!!))
                     json.optString("text", "").ifEmpty { getString(R.string.video_message) }
                 }
-                else -> String(msg.data!!)
+                else -> if (isUnsupportedMessageType(msg.msgType)) {
+                    // Forward-compat: a type this client version can't render.
+                    "📦 " + getString(R.string.unsupported_message_title)
+                } else {
+                    String(msg.data!!)
+                }
             }
         } catch (_: Exception) { String(msg.data!!) }
     }

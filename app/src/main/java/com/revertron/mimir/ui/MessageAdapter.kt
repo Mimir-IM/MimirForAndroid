@@ -50,6 +50,7 @@ import com.revertron.mimir.AudioPlaybackService
 import com.revertron.mimir.ConnectionService
 import com.revertron.mimir.MSG_TYPE_VIDEO_MESSAGE
 import com.revertron.mimir.R
+import com.revertron.mimir.isUnsupportedMessageType
 import com.revertron.mimir.getAvatarColor
 import org.json.JSONException
 import org.json.JSONObject
@@ -515,26 +516,36 @@ class MessageAdapter(
             holder.avatar?.visibility = View.GONE
         }
 
+        // Forward-compat: a stored message type this client version doesn't
+        // understand is rendered as a distinct "unsupported" panel (see the
+        // `when` below) rather than dumping its payload as raw text.
+        val unsupported = isUnsupportedMessageType(message.type)
+
         // Get message text (system messages need provider-side parsing + member lookup).
         // msgType=1000 means "system message" only in group chats; in 1:1 chats it's plain text.
-        val messageText = if (groupChat && message.type == 1000 && message.data != null) {
-            provider.formatSystemMessage(holder.itemView.context, chatId, message.data)
-                ?: holder.itemView.context.getString(R.string.system_message)
+        if (unsupported) {
+            holder.message.text = ""
+            holder.message.visibility = View.GONE
         } else {
-            message.getText(holder.itemView.context)
-        }
+            val messageText = if (groupChat && message.type == 1000 && message.data != null) {
+                provider.formatSystemMessage(holder.itemView.context, chatId, message.data)
+                    ?: holder.itemView.context.getString(R.string.system_message)
+            } else {
+                message.getText(holder.itemView.context)
+            }
 
-        // Apply link detection based on message type
-        if (message.type != 3) {
-            // For non-file messages, apply custom link detection (web URLs + custom schemes)
-            applyCustomLinks(holder.message, messageText, holder.itemView.context)
-        } else {
-            // For file attachments, disable autoLink to prevent filename from being interpreted as a URL
-            holder.message.autoLinkMask = 0
-            holder.message.text = messageText
-        }
+            // Apply link detection based on message type
+            if (message.type != 3) {
+                // For non-file messages, apply custom link detection (web URLs + custom schemes)
+                applyCustomLinks(holder.message, messageText, holder.itemView.context)
+            } else {
+                // For file attachments, disable autoLink to prevent filename from being interpreted as a URL
+                holder.message.autoLinkMask = 0
+                holder.message.text = messageText
+            }
 
-        holder.message.visibility = View.VISIBLE
+            holder.message.visibility = View.VISIBLE
+        }
         holder.message.setCompoundDrawables(null, null, null ,null)
         holder.sent.visibility = if (message.incoming || message.type == 1000) View.GONE else View.VISIBLE
         holder.videoPanel.visibility = View.GONE
@@ -712,9 +723,15 @@ class MessageAdapter(
                 holder.picturePanel.visibility = View.GONE
             }
             else -> {
-                holder.filePanel.visibility = View.GONE
-                holder.picture.setImageDrawable(null)
-                holder.picturePanel.visibility = View.GONE
+                if (unsupported) {
+                    // Forward-compat placeholder for a message type this client can't render.
+                    bindUnsupportedMessage(holder)
+                } else {
+                    // Plain text (type 0) and other known text-like types.
+                    holder.filePanel.visibility = View.GONE
+                    holder.picture.setImageDrawable(null)
+                    holder.picturePanel.visibility = View.GONE
+                }
             }
         }
         // System messages (type 1000) are now handled by getText() method above
@@ -844,6 +861,29 @@ class MessageAdapter(
         val units = arrayOf("B", "KB", "MB", "GB", "TB")
         val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt()
         return String.format("%.1f %s", bytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
+    }
+
+    /**
+     * Renders a message whose stored type this client version doesn't understand.
+     * Reuses the file-panel chrome (icon + bold title + muted subtitle) so the
+     * placeholder is visually distinct from a normal text bubble and can't be
+     * spoofed by sending the same words as plain text. The raw payload stays in
+     * storage, so the message renders correctly once Mimir is updated.
+     */
+    private fun bindUnsupportedMessage(holder: ViewHolder) {
+        val context = holder.itemView.context
+        holder.message.visibility = View.GONE
+        holder.picture.setImageDrawable(null)
+        holder.picturePanel.visibility = View.GONE
+        holder.videoPanel.visibility = View.GONE
+        holder.fileProgress.visibility = View.GONE
+        holder.fileIcon.visibility = View.VISIBLE
+        holder.fileIcon.setImageResource(R.drawable.ic_message_alert_outline)
+        holder.fileName.text = context.getString(R.string.unsupported_message_title)
+        holder.fileSize.text = context.getString(R.string.unsupported_message_desc)
+        holder.fileIconContainer.setOnClickListener(null)
+        holder.filePanel.setOnClickListener(null)
+        holder.filePanel.visibility = View.VISIBLE
     }
 
     override fun getItemViewType(position: Int): Int {

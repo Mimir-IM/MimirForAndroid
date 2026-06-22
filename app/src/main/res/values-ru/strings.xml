@@ -163,6 +163,8 @@
     <string name="video_processing">Обработка видео…</string>
     <string name="video_too_short">Удерживайте дольше для записи видео</string>
     <string name="video_message">Видеосообщение</string>
+    <string name="unsupported_message_title">Сообщение не поддерживается</string>
+    <string name="unsupported_message_desc">Обновите Mimir, чтобы открыть</string>
     <string name="video_permissions_required">Нужны разрешения на камеру и микрофон</string>
     <string name="resize_big_pics">Сжимать большие картинки</string>
     <string name="resize_big_pics_desc">Перед отправкой сжимать картинки, которые больше 5 мегабайт.</string>

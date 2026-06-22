@@ -39,6 +39,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.zxing.BarcodeFormat
 import com.journeyapps.barcodescanner.BarcodeEncoder
+import com.revertron.mimir.net.MSG_TYPE_REACTION
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.util.encoders.DecoderException
 import org.bouncycastle.util.encoders.Hex
@@ -77,6 +78,23 @@ const val MAX_GROUP_FILE_SIZE = 500L * 1024 * 1024
  * space (where 4 means CHALLENGE2) — keep the two apart.
  */
 const val MSG_TYPE_VIDEO_MESSAGE = 4
+
+/**
+ * Stored message-type codes this client version knows how to render. A message
+ * whose stored `type` is not in this set is shown as a distinct "Unsupported
+ * message — update Mimir" placeholder instead of rendering its payload as raw
+ * bytes. This keeps older clients forward-compatible: types introduced by future
+ * versions degrade gracefully, and — because the raw payload is always retained
+ * in storage — the message renders correctly once the client is updated.
+ *
+ * Stored-type space: 0=text, 1=image, 2=call info, 3=file/voice, 4=video message,
+ * 10=reaction, 1000=text/system. See [MSG_TYPE_VIDEO_MESSAGE].
+ */
+val KNOWN_MESSAGE_TYPES = setOf(0, 1, 2, 3, MSG_TYPE_VIDEO_MESSAGE, MSG_TYPE_REACTION, 1000)
+
+/** True if [type] is a stored message type this client version cannot render. */
+fun isUnsupportedMessageType(type: Int): Boolean = type !in KNOWN_MESSAGE_TYPES
+
 const val UPDATE_SERVER = "https://update.mimir-app.net"
 const val IP_CACHE_DEFAULT_TTL = 900
 
