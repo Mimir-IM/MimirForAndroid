@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Square rounded-corner video-message tile. Constrained directly inside the
+     message ConstraintLayout (sits between the file panel and picture panel).
+     On tap it expands edge-to-edge and plays inline (see MessageAdapter). -->
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/video_panel"
+    android:layout_width="220dp"
+    android:layout_height="220dp"
+    android:layout_marginTop="4dp"
+    android:layout_marginBottom="4dp"
+    android:visibility="gone"
+    app:layout_constraintLeft_toLeftOf="parent"
+    app:layout_constraintTop_toBottomOf="@id/file_panel">
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/video_card"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:cardCornerRadius="20dp"
+        app:cardElevation="0dp">
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:id="@+id/video_poster"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@android:color/black"
+            android:scaleType="centerCrop" />
+
+        <!-- Inline player surface; shown only while this tile is expanded/playing.
+             surface_type=texture_view so the MaterialCardView can mask it to rounded
+             corners (a SurfaceView ignores the parent's rounded clip). -->
+        <androidx.media3.ui.PlayerView
+            android:id="@+id/video_player"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@android:color/black"
+            android:visibility="gone"
+            app:resize_mode="zoom"
+            app:surface_type="texture_view"
+            app:use_controller="false" />
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:id="@+id/video_play_badge"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_gravity="center"
+            android:background="@drawable/video_play_badge_bg"
+            android:padding="14dp"
+            android:src="@drawable/ic_play_outline"
+            app:tint="@color/white" />
+
+        <androidx.appcompat.widget.AppCompatTextView
+            android:id="@+id/video_duration"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|start"
+            android:layout_margin="8dp"
+            android:background="@drawable/video_duration_bg"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:textColor="@color/white"
+            android:textSize="12sp"
+            tools:text="0:12" />
+
+        <!-- Thin progress line at the bottom; shown only while playing. -->
+        <ProgressBar
+            android:id="@+id/video_progress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="3dp"
+            android:layout_gravity="bottom"
+            android:max="1000"
+            android:progress="0"
+            android:progressTint="@color/white"
+            android:visibility="gone" />
+    </com.google.android.material.card.MaterialCardView>
+</FrameLayout>

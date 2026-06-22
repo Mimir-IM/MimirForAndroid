@@ -365,6 +365,7 @@
     <string name="no_orphaned_media">No orphaned media files found</string>
     <string name="error_deleting_orphaned_media">Error deleting orphaned media: %s</string>
     <string name="menu_save">Save file</string>
+    <string name="menu_share">Share file</string>
     <string name="menu_delete_file">Delete file</string>
     <string name="delete_file_dialog_title">Delete file</string>
     <string name="delete_file_dialog_text">Are you sure you want to delete this file from local storage?</string>

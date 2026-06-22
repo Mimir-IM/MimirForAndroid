@@ -1,14 +1,19 @@
 package com.revertron.mimir.ui
 
+import android.animation.ValueAnimator
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.PorterDuff
+import android.graphics.Rect
 import android.graphics.drawable.Drawable
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.Spanned
@@ -17,6 +22,7 @@ import android.text.method.MovementMethod
 import android.text.style.ClickableSpan
 import android.text.util.Linkify
 import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.widget.TextView
 import android.util.Log
 import android.util.TypedValue
@@ -25,6 +31,13 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ProgressBar
+import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import com.google.android.material.progressindicator.CircularProgressIndicator
 import android.widget.Toast
 import java.util.regex.Pattern
@@ -37,7 +50,6 @@ import com.revertron.mimir.AudioPlaybackService
 import com.revertron.mimir.ConnectionService
 import com.revertron.mimir.MSG_TYPE_VIDEO_MESSAGE
 import com.revertron.mimir.R
-import com.revertron.mimir.VideoActivity
 import com.revertron.mimir.getAvatarColor
 import org.json.JSONException
 import org.json.JSONObject
@@ -49,6 +61,7 @@ import java.util.Locale
 import androidx.core.net.toUri
 import kotlin.math.abs
 
+@androidx.annotation.OptIn(markerClass = [UnstableApi::class])
 class MessageAdapter(
     private val provider: MessageProvider,
     private val chatId: Long,
@@ -251,6 +264,41 @@ class MessageAdapter(
     // Cached nicknames and avatars
     private val users: HashMap<Long, Pair<String, Drawable?>?> = HashMap()
 
+    // ---- Inline video playback (single reused player, one expanded tile at a time) ----
+    private var recyclerView: RecyclerView? = null
+    private var exoPlayer: ExoPlayer? = null
+    private var playingHolder: ViewHolder? = null
+    private var playingGuid: Long = 0L
+    private val videoHandler = Handler(Looper.getMainLooper())
+    private var seekRunnable: Runnable? = null
+    private val progressRunnable = object : Runnable {
+        override fun run() {
+            val holder = playingHolder ?: return
+            val player = exoPlayer ?: return
+            val dur = player.duration
+            if (dur > 0) {
+                holder.videoProgress.progress = (player.currentPosition * 1000 / dur).toInt()
+            }
+            videoHandler.postDelayed(this, 200)
+        }
+    }
+    // While a video is expanded, a touch landing outside its panel collapses it.
+    private val outsideTapInterceptor = object : RecyclerView.SimpleOnItemTouchListener() {
+        override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
+            if (e.actionMasked != MotionEvent.ACTION_DOWN) return false
+            val holder = playingHolder ?: return false
+            val panel = holder.videoPanel
+            val rect = Rect(0, 0, panel.width, panel.height)
+            rv.offsetDescendantRectToMyCoords(panel, rect)
+            if (!rect.contains(e.x.toInt(), e.y.toInt())) {
+                collapseVideo(animate = true)
+                return true  // consume so the tap doesn't also open a context menu
+            }
+            return false
+        }
+    }
+
+    @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
     class ViewHolder(view: View, hasAvatar: Boolean): RecyclerView.ViewHolder(view) {
         val avatar: AppCompatImageView? = if (hasAvatar) view.findViewById(R.id.avatar) else null
         val name: AppCompatTextView = view.findViewById(R.id.name)
@@ -265,6 +313,9 @@ class MessageAdapter(
         val fileProgress: CircularProgressIndicator = view.findViewById(R.id.file_progress)
         val videoPanel: View = view.findViewById(R.id.video_panel)
         val videoPoster: AppCompatImageView = view.findViewById(R.id.video_poster)
+        val videoPlayBadge: AppCompatImageView = view.findViewById(R.id.video_play_badge)
+        val videoPlayer: PlayerView = view.findViewById(R.id.video_player)
+        val videoProgress: ProgressBar = view.findViewById(R.id.video_progress)
         val videoDuration: AppCompatTextView = view.findViewById(R.id.video_duration)
         val time: AppCompatTextView = view.findViewById(R.id.time)
         val sent: AppCompatImageView = view.findViewById(R.id.status_image)
@@ -272,6 +323,10 @@ class MessageAdapter(
         val replyToText: AppCompatTextView = view.findViewById(R.id.reply_text)
         val replyToPanel: View = view.findViewById(R.id.reply_panel)
         val reactionsRow: LinearLayout = view.findViewById(R.id.reactions_row)
+
+        // The bubble container — used to read its margins/padding when sizing the
+        // expanded video to the bubble's content width.
+        val bubble: View = view.findViewById(R.id.message)
     }
 
     /**
@@ -333,6 +388,26 @@ class MessageAdapter(
         } catch (e: Exception) {
             Log.e(TAG, "Error opening custom URL: $url", e)
             Toast.makeText(context, "Cannot open URL: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
+        super.onAttachedToRecyclerView(recyclerView)
+        this.recyclerView = recyclerView
+        recyclerView.addOnItemTouchListener(outsideTapInterceptor)
+    }
+
+    override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
+        super.onDetachedFromRecyclerView(recyclerView)
+        recyclerView.removeOnItemTouchListener(outsideTapInterceptor)
+        if (this.recyclerView === recyclerView) this.recyclerView = null
+    }
+
+    override fun onViewRecycled(holder: ViewHolder) {
+        super.onViewRecycled(holder)
+        // A playing tile must never survive recycling — tear it down immediately.
+        if (holder === playingHolder) {
+            collapseVideo(animate = false)
         }
     }
 
@@ -463,6 +538,8 @@ class MessageAdapter(
         holder.message.setCompoundDrawables(null, null, null ,null)
         holder.sent.visibility = if (message.incoming || message.type == 1000) View.GONE else View.VISIBLE
         holder.videoPanel.visibility = View.GONE
+        // A recycled holder may carry leftover inline-video expansion state — reset it.
+        resetVideoExpansionState(holder)
 
         when (message.type) {
             1 -> {
@@ -1008,9 +1085,7 @@ class MessageAdapter(
                 holder.videoDuration.text = ""
                 bindVideoThumb(holder, file, name)
                 holder.videoPanel.setOnClickListener {
-                    val intent = Intent(context, VideoActivity::class.java)
-                    intent.data = Uri.fromFile(file)
-                    context.startActivity(intent)
+                    expandAndPlay(holder, file, message.guid)
                 }
             } else if (message.incoming) {
                 // Not downloaded yet — show a download prompt in the file panel.
@@ -1076,6 +1151,246 @@ class MessageAdapter(
                 Log.w("MessageAdapter", "Video thumb failed: ${e.message}")
             }
         }.start()
+    }
+
+    // ----------------------------- Inline video playback -----------------------------
+
+    private fun dp(context: Context, value: Float): Int =
+        (value * context.resources.displayMetrics.density).toInt()
+
+    private fun getOrCreatePlayer(context: Context): ExoPlayer {
+        exoPlayer?.let { return it }
+        val player = ExoPlayer.Builder(context.applicationContext).build()
+        player.repeatMode = Player.REPEAT_MODE_OFF
+        player.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_ENDED) collapseVideo(animate = true)
+            }
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                // Show the play badge whenever playback is not advancing (paused).
+                val holder = playingHolder ?: return
+                holder.videoPlayBadge.visibility = if (isPlaying) View.GONE else View.VISIBLE
+            }
+        })
+        exoPlayer = player
+        return player
+    }
+
+    /** Largest square that fits inside the message bubble's content area: the column
+     *  width minus the avatar, bubble margins and bubble padding (capped to the visible
+     *  height in landscape). Keeps the normal bubble (rounded background + tail). */
+    private fun expandedVideoSize(holder: ViewHolder): Int {
+        val context = holder.itemView.context
+        val rv = recyclerView
+        val w = if (rv == null || rv.width == 0) context.resources.displayMetrics.widthPixels else rv.width
+        val avatar = holder.avatar
+        val avatarSpace = if (avatar != null && avatar.visibility == View.VISIBLE) {
+            val alp = avatar.layoutParams as ViewGroup.MarginLayoutParams
+            avatar.width.coerceAtLeast(dp(context, 48f)) + alp.leftMargin + alp.rightMargin
+        } else 0
+        val blp = holder.bubble.layoutParams as ViewGroup.MarginLayoutParams
+        var target = w - avatarSpace - blp.marginStart - blp.marginEnd -
+                holder.bubble.paddingStart - holder.bubble.paddingEnd
+        val landscape = context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        if (landscape) {
+            val h = if (rv == null || rv.height == 0) context.resources.displayMetrics.heightPixels else rv.height
+            // Leave room for the bubble's name/time rows and vertical padding.
+            target = minOf(target, h - dp(context, 96f))
+        }
+        return target.coerceAtLeast(dp(context, 220f))
+    }
+
+    /** Enlarges the tapped tile within its bubble and starts playing inline. The bubble
+     *  (rounded background + tail) and the video's rounded-corner mask are preserved.
+     *  Only one tile plays at a time. */
+    private fun expandAndPlay(holder: ViewHolder, file: File, guid: Long) {
+        if (playingHolder != null && playingHolder !== holder) collapseVideo(animate = false)
+        if (playingHolder === holder) return
+
+        val context = holder.itemView.context
+        playingHolder = holder
+        playingGuid = guid
+        val target = expandedVideoSize(holder)
+
+        // Swap the tile from poster to player (bubble chrome is left untouched).
+        holder.videoPoster.visibility = View.GONE
+        holder.videoPlayBadge.visibility = View.GONE
+        holder.videoDuration.visibility = View.GONE
+        holder.videoPlayer.visibility = View.VISIBLE
+        holder.videoProgress.visibility = View.VISIBLE
+        holder.videoProgress.progress = 0
+
+        val player = getOrCreatePlayer(context)
+        holder.videoPlayer.player = player
+        player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+        player.playWhenReady = true
+        player.prepare()
+
+        installVideoTouchListener(holder)
+        animateVideoPanel(holder, target) {
+            // Nudge the now-enlarged bubble fully into view (minimal scroll).
+            val v = holder.videoPanel
+            v.requestRectangleOnScreen(Rect(0, 0, v.width, v.height), false)
+        }
+        videoHandler.removeCallbacks(progressRunnable)
+        videoHandler.post(progressRunnable)
+    }
+
+    /** Collapses the currently expanded tile back to the 220dp square. */
+    private fun collapseVideo(animate: Boolean) {
+        val holder = playingHolder ?: return
+        playingHolder = null
+        playingGuid = 0L
+
+        videoHandler.removeCallbacks(progressRunnable)
+        cancelSeekRepeat()
+        holder.videoPanel.setOnTouchListener(null)
+
+        exoPlayer?.let {
+            it.playWhenReady = false
+            it.stop()
+            it.clearMediaItems()
+        }
+        // Swap back to the poster immediately so the shrink animates the tile look.
+        holder.videoPlayer.player = null
+        holder.videoPlayer.visibility = View.GONE
+        holder.videoProgress.visibility = View.GONE
+        holder.videoPoster.visibility = View.VISIBLE
+        holder.videoPlayBadge.visibility = View.VISIBLE
+        holder.videoDuration.visibility = View.VISIBLE
+
+        val collapsed = dp(holder.itemView.context, 220f)
+        if (animate && holder.videoPanel.height > collapsed) {
+            animateVideoPanel(holder, collapsed)
+        } else {
+            setVideoPanelSize(holder, collapsed)
+        }
+    }
+
+    /** Restores a tile to its collapsed poster state (idempotent; for recycled holders). */
+    private fun resetVideoExpansionState(holder: ViewHolder) {
+        setVideoPanelSize(holder, dp(holder.itemView.context, 220f))
+        holder.videoPlayer.player = null
+        holder.videoPlayer.visibility = View.GONE
+        holder.videoProgress.visibility = View.GONE
+        holder.videoPoster.visibility = View.VISIBLE
+        holder.videoPlayBadge.visibility = View.VISIBLE
+        holder.videoDuration.visibility = View.VISIBLE
+    }
+
+    private fun setVideoPanelSize(holder: ViewHolder, size: Int) {
+        val lp = holder.videoPanel.layoutParams
+        lp.width = size
+        lp.height = size
+        holder.videoPanel.layoutParams = lp
+    }
+
+    private fun animateVideoPanel(holder: ViewHolder, target: Int, onEnd: (() -> Unit)? = null) {
+        val start = holder.videoPanel.height.takeIf { it > 0 } ?: holder.videoPanel.layoutParams.height
+        val animator = ValueAnimator.ofInt(start, target)
+        animator.duration = 220
+        animator.addUpdateListener { a ->
+            val v = a.animatedValue as Int
+            val lp = holder.videoPanel.layoutParams
+            lp.width = v
+            lp.height = v
+            holder.videoPanel.layoutParams = lp
+        }
+        animator.addListener(object : android.animation.AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: android.animation.Animator) { onEnd?.invoke() }
+        })
+        animator.start()
+    }
+
+    /** Tap = play/pause; press-and-hold the left/right half = seek ∓5s, repeating while held. */
+    private fun installVideoTouchListener(holder: ViewHolder) {
+        val longPressTimeout = ViewConfiguration.getLongPressTimeout().toLong()
+        var downX = 0f
+        var seeking = false
+        var pendingLongPress: Runnable? = null
+
+        holder.videoPanel.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.x
+                    seeking = false
+                    val width = v.width
+                    val lp = Runnable {
+                        seeking = true
+                        startSeekRepeat(downX >= width / 2f)
+                    }
+                    pendingLongPress = lp
+                    videoHandler.postDelayed(lp, longPressTimeout)
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    pendingLongPress?.let { videoHandler.removeCallbacks(it) }
+                    pendingLongPress = null
+                    cancelSeekRepeat()
+                    if (!seeking && event.action == MotionEvent.ACTION_UP) togglePlayPause()
+                    seeking = false
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun togglePlayPause() {
+        val player = exoPlayer ?: return
+        if (player.isPlaying) {
+            player.pause()
+        } else {
+            if (player.playbackState == Player.STATE_ENDED) player.seekTo(0)
+            player.play()
+        }
+    }
+
+    private fun startSeekRepeat(forward: Boolean) {
+        cancelSeekRepeat()
+        val step = 5000L
+        val r = object : Runnable {
+            override fun run() {
+                val player = exoPlayer ?: return
+                val dur = player.duration
+                val pos = player.currentPosition
+                val toPos = if (forward) {
+                    if (dur > 0) (pos + step).coerceAtMost(dur) else pos + step
+                } else {
+                    (pos - step).coerceAtLeast(0)
+                }
+                player.seekTo(toPos)
+                videoHandler.postDelayed(this, 500)
+            }
+        }
+        seekRunnable = r
+        videoHandler.post(r)
+    }
+
+    private fun cancelSeekRepeat() {
+        seekRunnable?.let { videoHandler.removeCallbacks(it) }
+        seekRunnable = null
+    }
+
+    /** True while a tile is expanded/playing — lets the activity intercept Back. */
+    fun isVideoExpanded(): Boolean = playingHolder != null
+
+    fun collapseActiveVideo(animate: Boolean = true) {
+        if (playingHolder != null) collapseVideo(animate = animate)
+    }
+
+    /** Releases the shared player; call from the hosting activity's onDestroy. */
+    fun releaseInlinePlayer() {
+        videoHandler.removeCallbacks(progressRunnable)
+        cancelSeekRepeat()
+        playingHolder?.let {
+            it.videoPlayer.player = null
+            resetVideoExpansionState(it)
+        }
+        playingHolder = null
+        playingGuid = 0L
+        exoPlayer?.release()
+        exoPlayer = null
     }
 
     private fun getFileIconForMimeType(mimeType: String): Int {

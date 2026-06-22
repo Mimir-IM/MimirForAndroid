@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -1112,9 +1113,10 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         menuPopup.inputMethodMode = PopupWindow.INPUT_METHOD_NOT_NEEDED
         menuPopup.elevation = 8f * resources.displayMetrics.density
 
-        // Hide "Save" and "Delete file" menu items for messages without file attachments (type != 1, 3, video)
+        // Hide "Save", "Share" and "Delete file" menu items for messages without file attachments (type != 1, 3, video)
         if (messageType != 1 && messageType != 3 && messageType != MSG_TYPE_VIDEO_MESSAGE) {
             menuView.findViewById<View>(R.id.menu_save).visibility = View.GONE
+            menuView.findViewById<View>(R.id.menu_share).visibility = View.GONE
             menuView.findViewById<View>(R.id.menu_delete_file).visibility = View.GONE
         }
 
@@ -1255,6 +1257,12 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             menuPopup.dismiss()
         }
 
+        menuView.findViewById<View>(R.id.menu_share).setOnClickListener {
+            handleShare(anchorView)
+            reactionsPopup?.dismiss()
+            menuPopup.dismiss()
+        }
+
         menuView.findViewById<View>(R.id.menu_delete_file).setOnClickListener {
             handleDeleteFile(anchorView)
             reactionsPopup?.dismiss()
@@ -1383,6 +1391,55 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         } catch (e: Exception) {
             Log.e(TAG, "Error saving file", e)
             Toast.makeText(this, "Error saving file: ${e.message}", Toast.LENGTH_LONG).show()
+            return false
+        }
+    }
+
+    private fun handleShare(view: View): Boolean {
+        val tag = view.tag as? MessageTag ?: return false
+        val message = getMessageFromStorage(tag.messageId)
+        if (message == null) {
+            Toast.makeText(this, "Message not found", Toast.LENGTH_SHORT).show()
+            return false
+        }
+
+        // Only image (type 1), file (type 3) or video-message attachments can be shared
+        if (message.type != 1 && message.type != 3 && message.type != MSG_TYPE_VIDEO_MESSAGE) {
+            return false
+        }
+        if (message.data == null) {
+            Toast.makeText(this, "No file data available", Toast.LENGTH_SHORT).show()
+            return false
+        }
+
+        try {
+            val json = JSONObject(String(message.data))
+            val fileName = json.getString("name")
+            val sourceFile = File(File(this.filesDir, "files"), fileName)
+            if (!sourceFile.exists()) {
+                Toast.makeText(this, getString(R.string.file_not_found_in_storage), Toast.LENGTH_SHORT).show()
+                return false
+            }
+
+            val mime = when (message.type) {
+                1 -> "image/*"
+                MSG_TYPE_VIDEO_MESSAGE -> "video/mp4"
+                else -> json.optString("mimeType", "*/*")
+            }
+            val shareUri = FileProvider.getUriForFile(this, "${packageName}.file_provider", sourceFile)
+            val share = Intent(Intent.ACTION_SEND).apply {
+                type = mime
+                putExtra(Intent.EXTRA_STREAM, shareUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(share, getString(R.string.share)))
+            return true
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(this, R.string.activity_not_found, Toast.LENGTH_SHORT).show()
+            return false
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sharing file", e)
+            Toast.makeText(this, "Error sharing file: ${e.message}", Toast.LENGTH_LONG).show()
             return false
         }
     }
@@ -1942,6 +1999,8 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
             cleanupVideoRecordingUi()
         }
         cancelTranscode()
+        // Stop any inline video playback (frees the player surface).
+        if (::adapter.isInitialized) adapter.collapseActiveVideo(animate = false)
         saveDraft()
         // Clear the foreground-chat marker so notifications resume.
         // Compare-and-clear so a switch to a sibling chat (which already
@@ -1981,7 +2040,18 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     }
 
     override fun onDestroy() {
+        if (::adapter.isInitialized) adapter.releaseInlinePlayer()
         super.onDestroy()
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        // If a video message is playing inline, Back collapses it instead of leaving.
+        if (::adapter.isInitialized && adapter.isVideoExpanded()) {
+            adapter.collapseActiveVideo()
+            return
+        }
+        super.onBackPressed()
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
