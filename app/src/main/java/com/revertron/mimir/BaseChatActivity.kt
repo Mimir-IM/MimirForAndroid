@@ -1924,22 +1924,33 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
     @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
     private fun transcodeAndSendVideo(input: File) {
         Toast.makeText(this, R.string.video_processing, Toast.LENGTH_SHORT).show()
-        val output = File(input.parentFile, "out_${input.nameWithoutExtension}.mp4")
-        videoTranscoder = VideoMessageTranscoder.transcode(
-            this, input, output,
-            onSuccess = {
-                videoTranscoder = null
-                input.delete()
-                attachment = stageVideoForSending(output)
-                performSend()
-            },
-            onError = {
-                videoTranscoder = null
-                input.delete()
-                output.delete()
-                Toast.makeText(this, "Failed to process video", Toast.LENGTH_SHORT).show()
+        // Find the leading black warm-up frames off the main thread, then start
+        // the transcode (media3 requires the main thread) clipping them off.
+        Thread {
+            val startMs = VideoMessageTranscoder.firstNonBlackFrameMs(input)
+            runOnUiThread {
+                if (isFinishing || isDestroyed) {
+                    input.delete()
+                    return@runOnUiThread
+                }
+                val output = File(input.parentFile, "out_${input.nameWithoutExtension}.mp4")
+                videoTranscoder = VideoMessageTranscoder.transcode(
+                    this, input, output, startMs,
+                    onSuccess = {
+                        videoTranscoder = null
+                        input.delete()
+                        attachment = stageVideoForSending(output)
+                        performSend()
+                    },
+                    onError = {
+                        videoTranscoder = null
+                        input.delete()
+                        output.delete()
+                        Toast.makeText(this, "Failed to process video", Toast.LENGTH_SHORT).show()
+                    }
+                )
             }
-        )
+        }.start()
     }
 
     private val videoTimerRunnable = object : Runnable {

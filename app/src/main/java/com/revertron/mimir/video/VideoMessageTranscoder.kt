@@ -1,6 +1,9 @@
 package com.revertron.mimir.video
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.media.MediaCodecInfo
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.util.Log
 import androidx.media3.common.Effect
@@ -32,6 +35,14 @@ object VideoMessageTranscoder {
     const val SIZE = 480
     const val VIDEO_BITRATE = 1_500_000
 
+    // Black-intro probe tuning. Front-camera takes open with a few dark frames
+    // while the sensor warms up; we scan from the start in STEP_MS steps up to
+    // MAX_PROBE_MS and treat a frame as black when its mean luma (0..255) is
+    // below BLACK_LUMA_THRESHOLD.
+    private const val STEP_MS = 66L
+    private const val MAX_PROBE_MS = 1200L
+    private const val BLACK_LUMA_THRESHOLD = 18
+
     /**
      * @return the running [Transformer] so the caller can [Transformer.cancel]
      *   it if the screen goes away mid-transcode.
@@ -41,10 +52,25 @@ object VideoMessageTranscoder {
         context: Context,
         input: File,
         output: File,
+        startMs: Long,
         onSuccess: (File) -> Unit,
         onError: (String) -> Unit,
     ): Transformer {
-        val mediaItem = MediaItem.fromUri(Uri.fromFile(input))
+        // When startMs > 0, clip off the leading black frames. The re-encode
+        // below produces a fresh keyframe at the clip start, so the output (and
+        // its frame-0 poster) begins on real content; audio is clipped in sync.
+        val mediaItem = MediaItem.Builder()
+            .setUri(Uri.fromFile(input))
+            .apply {
+                if (startMs > 0) {
+                    setClippingConfiguration(
+                        MediaItem.ClippingConfiguration.Builder()
+                            .setStartPositionMs(startMs)
+                            .build()
+                    )
+                }
+            }
+            .build()
         val presentation = Presentation.createForWidthAndHeight(
             SIZE, SIZE, Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP
         )
@@ -52,9 +78,21 @@ object VideoMessageTranscoder {
             .setEffects(Effects(/* audioProcessors = */ emptyList(), /* videoEffects = */ listOf<Effect>(presentation)))
             .build()
 
+        // Pin a widely-decodable H.264 profile/level. Left unconstrained, some
+        // hardware encoders tag the 480² clip as High@L6.0, which weaker decoders
+        // (e.g. the emulator's MediaMetadataRetriever) refuse to extract a poster
+        // frame from — the receiver then shows a black tile. Baseline@L4 matches
+        // what every decoder we've seen can read; DefaultEncoderFactory falls back
+        // automatically if an encoder doesn't support the request.
         val encoderFactory = DefaultEncoderFactory.Builder(context)
             .setRequestedVideoEncoderSettings(
-                VideoEncoderSettings.Builder().setBitrate(VIDEO_BITRATE).build()
+                VideoEncoderSettings.Builder()
+                    .setBitrate(VIDEO_BITRATE)
+                    .setEncodingProfileLevel(
+                        MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline,
+                        MediaCodecInfo.CodecProfileLevel.AVCLevel4
+                    )
+                    .build()
             )
             .build()
 
@@ -80,5 +118,53 @@ object VideoMessageTranscoder {
 
         transformer.start(edited, output.absolutePath)
         return transformer
+    }
+
+    /**
+     * Probes [file] for the timestamp (ms) of the first non-black frame, scanning
+     * from the start in [STEP_MS] steps up to [MAX_PROBE_MS]. Lets the transcoder
+     * clip off the dark sensor warm-up frames so the clip starts on real content.
+     *
+     * Returns 0 when no non-black frame is found within the probe window (e.g. a
+     * genuinely dark clip) or on any failure — i.e. "don't trim". May be slow
+     * (decodes a handful of frames), so call it off the main thread.
+     */
+    fun firstNonBlackFrameMs(file: File): Long {
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(file.absolutePath)
+            var t = 0L
+            while (t <= MAX_PROBE_MS) {
+                // OPTION_CLOSEST (not _SYNC): decode the actual frame near t. Sync
+                // would keep returning the same first keyframe, which is the black one.
+                val frame = retriever.getFrameAtTime(t * 1000, MediaMetadataRetriever.OPTION_CLOSEST)
+                if (frame != null) {
+                    val black = isMostlyBlack(frame)
+                    frame.recycle()
+                    if (!black) return t
+                }
+                t += STEP_MS
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Black-frame probe failed: ${e.message}")
+        } finally {
+            try { retriever.release() } catch (_: Exception) {}
+        }
+        return 0L
+    }
+
+    private fun isMostlyBlack(frame: Bitmap): Boolean {
+        val small = Bitmap.createScaledBitmap(frame, 16, 16, true)
+        val pixels = IntArray(16 * 16)
+        small.getPixels(pixels, 0, 16, 0, 0, 16, 16)
+        if (small != frame) small.recycle()
+        var sum = 0L
+        for (p in pixels) {
+            val r = (p shr 16) and 0xFF
+            val g = (p shr 8) and 0xFF
+            val b = p and 0xFF
+            sum += (r * 30 + g * 59 + b * 11) / 100
+        }
+        return sum / pixels.size < BLACK_LUMA_THRESHOLD
     }
 }
