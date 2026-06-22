@@ -456,7 +456,7 @@ abstract class BaseChatActivity : BaseActivity(), Toolbar.OnMenuItemClickListene
         if (editText.text.isNullOrBlank() && attachment == null && !isForwardMode) {
             // "Record mode" — voice or video depending on the toggled sub-mode.
             if (recordMode == RECORD_MODE_VIDEO) {
-                sendButton.setImageResource(R.drawable.ic_video_outline)
+                sendButton.setImageResource(R.drawable.ic_camera_outline)
             } else {
                 sendButton.setImageResource(R.drawable.ic_microphone_outline)
             }
