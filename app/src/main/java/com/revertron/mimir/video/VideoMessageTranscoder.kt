@@ -26,14 +26,14 @@ import java.io.File
  *
  * Center-crops the (rectangular) capture to a square and scales it to
  * [SIZE]x[SIZE], re-encoding video at [VIDEO_BITRATE] (H.264) so the on-the-wire
- * size stays small (~0.19 MB/s) for the P2P network. Must be called on the main
+ * size stays small (~0.06 MB/s) for the P2P network. Must be called on the main
  * thread — media3 Transformer requires a Looper.
  */
 object VideoMessageTranscoder {
 
     private const val TAG = "VideoMsgTranscoder"
     const val SIZE = 480
-    const val VIDEO_BITRATE = 1_500_000
+    const val VIDEO_BITRATE = 500_000
 
     // Black-intro probe tuning. Front-camera takes open with a few dark frames
     // while the sensor warms up; we scan from the start in STEP_MS steps up to
