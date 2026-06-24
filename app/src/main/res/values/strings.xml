@@ -189,6 +189,8 @@
     <string name="video_permissions_required">Camera and microphone permissions are required</string>
     <string name="resize_big_pics">Resize big images</string>
     <string name="resize_big_pics_desc">Before sending resize images bigger than 5 megabytes.</string>
+    <string name="client_priority">Client priority</string>
+    <string name="client_priority_desc">Higher priority device is preferred when your contacts connect to you across your devices (1–100).</string>
     <string name="image_settings">Image settings</string>
     <string name="select_resize_size">Resize images to this size:</string>
     <string name="select_resize_quality">Resave with another quality:</string>
@@ -319,6 +321,10 @@
     <string name="backup_import_warning_title">Import Backup?</string>
     <string name="backup_import_warning_message">This will overwrite all your current data, messages, and media files. This action cannot be undone. Are you sure you want to continue?</string>
     <string name="backup_import_continue">Import</string>
+    <string name="backup_import_sibling_title">New device or replacement?</string>
+    <string name="backup_import_sibling_message">Will you keep using the original device too?\n\nChoose \"Keep both\" to run this as an additional device (a sibling) that stays in sync with the original. Choose \"Replace\" if you are moving to this device and will stop using the old one.</string>
+    <string name="backup_import_sibling_yes">Keep both</string>
+    <string name="backup_import_sibling_no">Replace</string>
     <string name="backup_import_restart_title">Restart Required</string>
     <string name="backup_import_restart_message">The backup has been imported successfully. The app needs to restart to apply the changes.</string>
     <string name="backup_restart_now">Restart</string>

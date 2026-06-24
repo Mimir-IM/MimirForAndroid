@@ -1,6 +1,7 @@
 package com.revertron.mimir
 
 import android.annotation.SuppressLint
+import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -160,6 +161,10 @@ class SendContentActivity : BaseActivity(), View.OnClickListener {
     private fun addSharedContent(intent: Intent) {
         if (sharedUri != null) {
             intent.putExtra(Intent.EXTRA_STREAM, sharedUri)
+            // FLAG_GRANT_READ_URI_PERMISSION only applies to URIs in the intent's
+            // data or ClipData — not to URIs stored in extras. Attach the URI as
+            // ClipData so the read grant actually propagates to the target activity.
+            intent.clipData = ClipData.newRawUri("", sharedUri)
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         } else if (sharedText != null) {
             intent.putExtra(Intent.EXTRA_TEXT, sharedText)

@@ -67,6 +67,29 @@ class ConnectionService : Service() {
                 }
             )
         }
+        override fun onMessagesSynced(contactId: Long) {
+            // Another of our own devices (a sibling) changed read/delivered
+            // state for this conversation; storage is already updated. If
+            // nothing is unread anymore (e.g. read on the other device), clear
+            // this contact's notification. Always refresh any open UI.
+            if ((App.app.mimirApp?.getUnreadCount(contactId) ?: 0) == 0) {
+                NotificationHelper.cancelMessageNotification(this@ConnectionService, contactId)
+            }
+            LocalBroadcastManager.getInstance(this@ConnectionService).sendBroadcast(
+                Intent("ACTION_MESSAGES_SYNCED").putExtra("contact_id", contactId)
+            )
+        }
+        override fun onDraftSynced(chatType: Int, chatId: Long) {
+            // A sibling changed a draft for this chat; storage is already
+            // updated. Refresh the contacts-list draft preview and let the open
+            // chat (if any) restore the synced text.
+            LocalBroadcastManager.getInstance(this@ConnectionService).sendBroadcast(
+                Intent("ACTION_DRAFT_SYNCED").apply {
+                    putExtra("chat_type", chatType)
+                    putExtra("chat_id", chatId)
+                }
+            )
+        }
         override fun onContactConnected(pubkey: ByteArray) {
             peerStatuses[Hex.toHexString(pubkey)] = PeerStatus.Connected
             LocalBroadcastManager.getInstance(this@ConnectionService).sendBroadcast(
@@ -500,6 +523,12 @@ class ConnectionService : Service() {
                                     autoDownloadOthers = 0L,
                                     autoDownloadGroups = 5L * 1024 * 1024,
                                     multicastEnabled = multicast,
+                                    // This device's announce priority among our own clients
+                                    // (siblings). Higher = preferred when a contact connects to
+                                    // us across devices. Set via Settings ("Client priority"),
+                                    // which also calls app.setPriority(...) to re-announce live.
+                                    priority = preferences.getInt(SettingsData.KEY_CLIENT_PRIORITY, SettingsData.DEFAULT_CLIENT_PRIORITY)
+                                        .coerceIn(1, 100).toUByte(),
                                     // Share the attachments directory with Rust so outgoing
                                     // attachments (stage_attachment in app/send.rs) and
                                     // incoming P2P file transfers (InfoProvider.get_files_dir)
@@ -755,6 +784,19 @@ class ConnectionService : Service() {
                             }
                         }.start()
                     } else {
+                        // Also ask our own other devices (siblings) in parallel:
+                        // whoever holds the blob streams it back, and the existing
+                        // ACTION_MESSAGES_SYNCED → refreshAllMessages() clears the
+                        // spinner when it lands. Fires regardless of whether the
+                        // contact request below runs (e.g. contact offline).
+                        Thread {
+                            try {
+                                mimirApp?.downloadSiblingFile(chatId, guid)
+                            } catch (e: Exception) {
+                                Log.w(TAG, "downloadSiblingFile failed: ${e.message}")
+                            }
+                        }.start()
+
                         // Legacy P2P download. The adapter only passes chat_id
                         // (which for a 1:1 chat is the contact id), so resolve the
                         // contact pubkey from it rather than an intent extra.

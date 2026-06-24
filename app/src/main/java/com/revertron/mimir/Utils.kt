@@ -639,19 +639,26 @@ fun stageImageForSending(context: Context, uri: Uri, imageSize: ImageSize, quali
     val tag = "stageImage"
     val rawSize = uri.length(context)
 
-    val bytes: ByteArray = if (rawSize <= PICTURE_MAX_SIZE) {
-        if (checkIfNeedsRotation(context, uri)) {
-            Log.i(tag, "Correcting EXIF rotation")
-            uri.correctExifRotation(context, quality)
+    val bytes: ByteArray = try {
+        if (rawSize <= PICTURE_MAX_SIZE) {
+            if (checkIfNeedsRotation(context, uri)) {
+                Log.i(tag, "Correcting EXIF rotation")
+                uri.correctExifRotation(context, quality)
+            } else {
+                context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    ?: return null
+            }
         } else {
-            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                ?: return null
+            Log.i(tag, "Image too big, resizing")
+            val resized = uri.resizeAndCompress(context, imageSize, quality)
+            if (resized.size.toLong() > PICTURE_MAX_SIZE) return null
+            resized
         }
-    } else {
-        Log.i(tag, "Image too big, resizing")
-        val resized = uri.resizeAndCompress(context, imageSize, quality)
-        if (resized.size.toLong() > PICTURE_MAX_SIZE) return null
-        resized
+    } catch (e: Exception) {
+        // e.g. SecurityException when the URI read grant was not propagated,
+        // or IllegalArgumentException for an undecodable image.
+        Log.e(tag, "Failed to read image from $uri", e)
+        return null
     }
 
     val originalName = getFileNameFromUri(context, uri) ?: "image.jpg"
@@ -1207,11 +1214,16 @@ fun Uri.length(context: Context): Long {
             fromFileDescriptor()
         }
         ContentResolver.SCHEME_CONTENT -> {
-            val contentResolver = context.contentResolver
-            val stream = contentResolver.openInputStream(this)
-            val size = (stream?.available() ?: 0).toLong()
-            stream?.close()
-            size
+            try {
+                val contentResolver = context.contentResolver
+                val stream = contentResolver.openInputStream(this)
+                val size = (stream?.available() ?: 0).toLong()
+                stream?.close()
+                size
+            } catch (e: Exception) {
+                Log.d(TAG, e.message ?: e.javaClass.simpleName)
+                -1
+            }
         }
         ContentResolver.SCHEME_ANDROID_RESOURCE -> {
             fromAssetFileDescriptor()

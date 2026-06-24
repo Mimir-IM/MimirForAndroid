@@ -12,7 +12,7 @@ android {
         minSdk 23
         targetSdk 33
         versionCode 303000 // 3.00.000
-        versionName "3.3.0rc2"
+        versionName "3.3.0rc4"
         resourceConfigurations += ['en', 'ru']
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"

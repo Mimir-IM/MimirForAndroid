@@ -684,8 +684,10 @@ class MessageAdapter(
                             holder.filePanel.setOnClickListener {
                                 openFile(holder.itemView.context, file, mimeType)
                             }
-                        } else if (message.incoming) {
-                            // File not downloaded yet — show download icon and allow manual download
+                        } else {
+                            // Not downloaded here yet — incoming, or an outgoing file synced
+                            // from another device without its bytes. Show a download prompt;
+                            // the tap asks both the contact and our other devices (siblings).
                             val isDownloading = downloadingProgress.containsKey(message.guid)
                             if (isDownloading) {
                                 holder.fileIcon.setImageResource(R.drawable.ic_folder_download_outline)
@@ -939,6 +941,15 @@ class MessageAdapter(
         }
     }
 
+    /**
+     * Rebinds every row so delivery/read indicators re-read their current state
+     * from storage. Used after a sibling device syncs read/delivered changes
+     * (ACTION_MESSAGES_SYNCED), where the affected message ids aren't known.
+     */
+    fun refreshAllMessages() {
+        notifyDataSetChanged()
+    }
+
     fun getMessageIdPosition(id: Long): Int {
         for ((index, message) in messageIds.withIndex()) {
             if (message.first == id) {
@@ -1127,8 +1138,10 @@ class MessageAdapter(
                 holder.videoPanel.setOnClickListener {
                     expandAndPlay(holder, file, message.guid)
                 }
-            } else if (message.incoming) {
-                // Not downloaded yet — show a download prompt in the file panel.
+            } else {
+                // Not downloaded here yet — incoming, or an outgoing video synced
+                // from another device without its bytes. Show a download prompt;
+                // the tap asks both the contact and our other devices (siblings).
                 holder.videoPanel.visibility = View.GONE
                 val isDownloading = downloadingProgress.containsKey(message.guid)
                 holder.fileIcon.setImageResource(R.drawable.ic_folder_download_outline)
@@ -1148,9 +1161,6 @@ class MessageAdapter(
                     }
                 }
                 holder.filePanel.visibility = View.VISIBLE
-            } else {
-                holder.videoPanel.visibility = View.GONE
-                holder.filePanel.visibility = View.GONE
             }
         } catch (_: JSONException) {
             holder.videoPanel.visibility = View.GONE

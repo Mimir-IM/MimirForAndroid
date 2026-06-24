@@ -366,6 +366,12 @@ class ChatActivity : BaseChatActivity() {
                         }
                     }
                 }
+                "ACTION_MESSAGES_SYNCED" -> {
+                    val contactId = intent.getLongExtra("contact_id", 0)
+                    if (contactId == contact.id) {
+                        runOnUiThread { adapter.refreshAllMessages() }
+                    }
+                }
             }
         }
     }
@@ -390,6 +396,7 @@ class ChatActivity : BaseChatActivity() {
             addAction("ACTION_MESSAGE_SENT")
             addAction("ACTION_MESSAGE_RECEIVED")
             addAction("ACTION_MESSAGE_DELIVERED")
+            addAction("ACTION_MESSAGES_SYNCED")
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(messageReceiver, msgFilter)
     }

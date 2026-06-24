@@ -21,6 +21,7 @@ import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.revertron.mimir.ui.SettingsAdapter
+import uniffi.mimir.MimirApp
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -295,7 +296,7 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
             builder.setTitle(R.string.backup_import_warning_title)
             builder.setMessage(R.string.backup_import_warning_message)
             builder.setPositiveButton(R.string.backup_import_continue) { _, _ ->
-                performImport(uri)
+                askSiblingThenImport(uri)
             }
             builder.setNegativeButton(R.string.cancel, null)
             builder.show()
@@ -306,7 +307,29 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
         }
     }
 
-    private fun performImport(uri: Uri) {
+    /**
+     * Ask whether this restore creates a *sibling* (the original device stays in
+     * use, both run the same identity) or *replaces* the old device. A sibling
+     * gets a fresh client_id after import so the two devices don't collide on the
+     * cloned identity and can actually sync. (The ephemeral Yggdrasil key is
+     * regenerated on every launch, so it needs no special handling.)
+     */
+    private fun askSiblingThenImport(uri: Uri) {
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        AlertDialog.Builder(wrapper)
+            .setTitle(R.string.backup_import_sibling_title)
+            .setMessage(R.string.backup_import_sibling_message)
+            .setPositiveButton(R.string.backup_import_sibling_yes) { _, _ ->
+                performImport(uri, createSibling = true)
+            }
+            .setNegativeButton(R.string.backup_import_sibling_no) { _, _ ->
+                performImport(uri, createSibling = false)
+            }
+            .setNeutralButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun performImport(uri: Uri, createSibling: Boolean) {
         // Lock orientation and show progress
         lockOrientation()
         showProgressDialog(R.string.backup_importing)
@@ -388,6 +411,20 @@ class BackupActivity : BaseActivity(), SettingsAdapter.Listener {
 
                         zipIn.closeEntry()
                         entry = zipIn.nextEntry
+                    }
+                }
+
+                // If this restore creates a sibling device (the original stays
+                // in use), give it a fresh client_id so the two don't collide on
+                // the cloned identity. Open the restored DB storage-only, reset
+                // the id, then release the handle before the restart.
+                if (createSibling) {
+                    Log.i(TAG, "Sibling restore: regenerating client_id")
+                    val tmp = MimirApp.open(mimirDir.absolutePath)
+                    try {
+                        tmp.regenerateClientId()
+                    } finally {
+                        tmp.close()
                     }
                 }
 

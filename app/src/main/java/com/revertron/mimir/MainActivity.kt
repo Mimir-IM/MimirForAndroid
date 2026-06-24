@@ -87,6 +87,8 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                 "ACTION_MESSAGE_SENT",
                 "ACTION_MEDIATOR_MESSAGE_SENT",
                 "ACTION_MESSAGE_DELIVERED",
+                "ACTION_MESSAGES_SYNCED",
+                "ACTION_DRAFT_SYNCED",
                 "ACTION_GROUP_MESSAGE_DELIVERED",
                 "ACTION_GROUP_MESSAGE_DELETED",
                 "ACTION_CONTACT_REQUEST_RECEIVED",
@@ -151,6 +153,8 @@ class MainActivity : BaseActivity(), View.OnClickListener, View.OnLongClickListe
                 addAction("ACTION_MESSAGE_SENT")
                 addAction("ACTION_MEDIATOR_MESSAGE_SENT")
                 addAction("ACTION_MESSAGE_DELIVERED")
+                addAction("ACTION_MESSAGES_SYNCED")
+                addAction("ACTION_DRAFT_SYNCED")
                 addAction("ACTION_GROUP_MESSAGE_DELIVERED")
                 addAction("ACTION_GROUP_MESSAGE_DELETED")
                 addAction("ACTION_CONTACT_REQUEST_RECEIVED")

@@ -168,6 +168,8 @@
     <string name="video_permissions_required">Нужны разрешения на камеру и микрофон</string>
     <string name="resize_big_pics">Сжимать большие картинки</string>
     <string name="resize_big_pics_desc">Перед отправкой сжимать картинки, которые больше 5 мегабайт.</string>
+    <string name="client_priority">Приоритет клиента</string>
+    <string name="client_priority_desc">Устройство с большим приоритетом предпочтительнее, когда контакты подключаются к вам на разных устройствах (1–100).</string>
     <string name="image_settings">Настройки картинок</string>
     <string name="select_resize_size">Уменьшать картинки до этого размера:</string>
     <string name="select_resize_quality">Пересохранять с этим качеством:</string>

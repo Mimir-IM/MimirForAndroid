@@ -17,6 +17,8 @@ object SettingsData {
     const val KEY_VOICE_QUALITY = "voice-quality"
     const val KEY_FILE_SERVER_PUBKEY = "file-server-pubkey"
     const val KEY_CALL_MEDIATOR_PUBKEY = "call-mediator-pubkey"
+    const val KEY_CLIENT_PRIORITY = "client-priority"
+    const val DEFAULT_CLIENT_PRIORITY = 1
 
     fun create(context: Context): List<SettingsAdapter.Item> {
         val sp = PreferenceManager.getDefaultSharedPreferences(context)
@@ -34,6 +36,14 @@ object SettingsData {
                 id = R.string.resize_big_pics,
                 titleRes = R.string.resize_big_pics,
                 descriptionRes = R.string.resize_big_pics_desc,
+                isSwitch = false,
+                checked = false
+            ),
+
+            SettingsAdapter.Item(
+                id = R.string.client_priority,
+                titleRes = R.string.client_priority,
+                descriptionRes = R.string.client_priority_desc,
                 isSwitch = false,
                 checked = false
             ),

@@ -755,6 +755,8 @@ class NotificationHelper(private val context: Context) {
         fun showGroupMessageNotification(context: Context, chatId: Long, messageId: Long) {
             val storage = App.app.mimirApp ?: return
             val message = storage.getGroupMessage(chatId, messageId) ?: return
+            // Don't notify about our own messages echoed back by the mediator to our other devices.
+            if (!message.incoming) return
             if (message.data == null || message.msgType == 2 || message.msgType == MSG_TYPE_REACTION) return
 
             val groupChat = storage.getGroupChat(chatId) ?: return

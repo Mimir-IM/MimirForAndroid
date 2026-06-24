@@ -3,8 +3,10 @@ package com.revertron.mimir
 import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
+import android.text.InputType
 import android.view.MenuItem
 import android.view.View
+import android.widget.EditText
 import androidx.appcompat.widget.Toolbar
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.DividerItemDecoration
@@ -101,6 +103,9 @@ class SettingsActivity : BaseActivity(), SettingsAdapter.Listener {
             R.string.voice_message_quality -> {
                 showVoiceQualityDialog()
             }
+            R.string.client_priority -> {
+                showPriorityDialog()
+            }
             R.string.action_about -> {
                 val intent = Intent(this, AboutActivity::class.java)
                 startActivity(intent, animFromRight.toBundle())
@@ -131,6 +136,33 @@ class SettingsActivity : BaseActivity(), SettingsAdapter.Listener {
                 recycler.adapter = SettingsAdapter(SettingsData.create(this), this)
             }
             .setNegativeButton(getString(R.string.cancel), null)
+            .show()
+    }
+
+    private fun showPriorityDialog() {
+        val wrapper = ContextThemeWrapper(this, R.style.MimirDialog)
+        val current = preferences.getInt(SettingsData.KEY_CLIENT_PRIORITY, SettingsData.DEFAULT_CLIENT_PRIORITY)
+
+        val editText = EditText(wrapper).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setText(current.toString())
+            isSingleLine = true
+            setSelection(text.length)
+            setPadding(48, 32, 48, 32)
+        }
+
+        AlertDialog.Builder(wrapper)
+            .setTitle(R.string.client_priority)
+            .setView(editText)
+            .setPositiveButton(R.string.save_button) { _, _ ->
+                val value = editText.text.toString().trim().toIntOrNull()
+                    ?.coerceIn(1, 100) ?: SettingsData.DEFAULT_CLIENT_PRIORITY
+                preferences.edit().putInt(SettingsData.KEY_CLIENT_PRIORITY, value).apply()
+                // Live update + re-announce to trackers; ConnectionService also
+                // reads this value into AppConfig on its next start.
+                getMimir().setPriority(value.toUByte())
+            }
+            .setNegativeButton(R.string.cancel, null)
             .show()
     }
 }
